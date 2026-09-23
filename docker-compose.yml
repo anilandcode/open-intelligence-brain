@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: brain
+      POSTGRES_USER: brain
+      POSTGRES_PASSWORD: brain-local-only
+    volumes:
+      - brain_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./api
+    environment:
+      BRAIN_DATABASE_URL: postgresql+psycopg://brain:brain-local-only@db:5432/brain
+      BRAIN_OWNER_TOKEN: ${BRAIN_OWNER_TOKEN:-local-dev-token}
+      BRAIN_SEED_DEMO: ${BRAIN_SEED_DEMO:-true}
+      BRAIN_CORS_ORIGINS: http://localhost:5173
+    volumes:
+      - brain_data:/app/data
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_API_TOKEN: ${BRAIN_OWNER_TOKEN:-local-dev-token}
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+
+volumes:
+  brain_postgres:
+  brain_data:
+
