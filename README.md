@@ -8,15 +8,17 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-Version 0.2 is a functional vertical slice, not a static mockup. It supports source capture, immutable source versions and exact spans, human review, append-only knowledge revisions, integrity warnings, canonical search, source-grounded answers, tested backup/restore, an audit trail, and a read-only MCP server for coding agents.
+Version 0.3 is a functional vertical slice, not a static mockup. It supports source capture, immutable source versions and exact spans, human review, append-only knowledge revisions, integrity warnings, canonical search, source-grounded answers, tested backup/restore, an audit trail, a research-aligned intelligence workspace, and a read-only MCP server for coding agents.
 
 ## Screens
 
-- Home — metrics, recent approvals, next review, and audit activity.
-- Review inbox — edit and approve exact wording beside its original evidence.
-- Brain — search canonical knowledge only.
+- Overview — live pipeline health, review priorities, recent knowledge, and clear next actions.
+- Inbox — choose a proposal from the queue and edit canonical wording beside its exact evidence.
+- Brain — search canonical knowledge, inspect warnings, and create immutable revisions.
 - Sources — inspect hashes and create immutable source versions without overwriting history.
-- Ask — get an answer from approved knowledge with exact source citations.
+- Ask — get an answer from approved knowledge with exact source citations and abstention.
+- Audit — inspect integrity signals and recent domain events.
+- Studio, Activate, and Analytics — clearly labeled workflow previews for planned milestones.
 
 ## Quick start
 
@@ -106,6 +108,7 @@ Implemented:
 - Approval boundary and double-approval protection.
 - Keyword search and source-grounded answers with abstention.
 - Responsive and keyboard-accessible review experience.
+- Research-aligned application shell with judgement-first review and honest future-state previews.
 - Schema-v2 JSON backup, dry-run preview, empty-workspace restore, and deletion previews.
 - Read-only MCP access for Hermes, Codex, Claude Code, and compatible hosts.
 - Backend and frontend tests.
@@ -119,6 +122,7 @@ Next:
 - Encrypted backup packaging, retention execution, and workspace-level grants.
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
+See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.
 See [docs/operations.md](docs/operations.md) before restoring or planning deletion.
 
 ## Privacy

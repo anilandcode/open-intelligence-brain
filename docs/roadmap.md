@@ -10,6 +10,7 @@
 - Audit activity and portable export.
 - SQLite/PostgreSQL profiles.
 - React workbench, tests, and local documentation.
+- Research-aligned application shell and judgement-first review interface.
 
 ## M2 — durable knowledge (in progress)
 
@@ -26,6 +27,7 @@ Exit: a changed source cannot silently rewrite approved knowledge, and a fresh r
 
 ## M3 — Intelligence Studio
 
+- [x] Interface architecture and clearly labeled non-functional previews.
 - Guided interview sessions.
 - Thesis, story, lesson, framework, and evidence proposal types.
 - Critic/evidence-gap pass as a separately labeled model opinion.

@@ -35,7 +35,7 @@ describe("App", () => {
   it("loads the dashboard and navigates to approved knowledge", async () => {
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Make your thinking compound." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Brain" }));
     expect(screen.getByRole("heading", { name: "Your Brain" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: knowledge.statement })).toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("Recently approved");
-    await user.click(screen.getByRole("button", { name: "Ask" }));
+    await user.click(screen.getByRole("button", { name: "Ask the Brain" }));
     await user.click(screen.getByRole("button", { name: /Ask the Brain/i }));
     await waitFor(() => expect(screen.getByText("Grounded answer")).toBeInTheDocument());
     expect(screen.getByText(source.title)).toBeInTheDocument();
@@ -64,5 +64,14 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Brain" }));
     await user.click(screen.getByText(/1 revision · inspect or supersede/i));
     expect(await screen.findByText("Initial approval")).toBeInTheDocument();
+  });
+
+  it("labels future workflows as previews instead of pretending they are live", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Recently approved");
+    await user.click(screen.getByRole("button", { name: "StudioSoon" }));
+    expect(screen.getByRole("heading", { name: "Intelligence Studio" })).toBeInTheDocument();
+    expect(screen.getByText(/honest interface preview/i)).toBeInTheDocument();
   });
 });
