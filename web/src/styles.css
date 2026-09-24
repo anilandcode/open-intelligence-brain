@@ -80,7 +80,7 @@ main { max-width: 92rem; margin-inline: auto; padding: clamp(2rem, 5vw, 4.5rem) 
 @keyframes spin { to { transform: rotate(1turn); } }
 
 .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(20rem, 0.8fr); gap: 1rem; }
-.metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.metrics { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
 .metric-card, .panel, .focus-card, .review-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .metric-card { min-height: 10rem; padding: 1.3rem; }
 .metric-card--accent { color: white; background: var(--accent); border-color: var(--accent); }
@@ -118,6 +118,14 @@ main { max-width: 92rem; margin-inline: auto; padding: clamp(2rem, 5vw, 4.5rem) 
 .source-main > p { display: -webkit-box; margin-block-end: 0.8rem; color: var(--muted); font-size: 0.82rem; line-height: 1.5; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .source-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; color: #858983; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
 .source-main footer { display: flex; justify-content: space-between; color: #858983; font-size: 0.7rem; }
+.hash-line { display: flex; align-items: center; gap: 0.4rem; margin-block: 0.8rem; color: var(--green); font-size: 0.7rem; }
+.hash-line code { color: #4e554e; }
+.hash-line span { color: #858983; font-weight: 700; }
+.version-disclosure, .history-disclosure { margin-block-start: 0.9rem; border-block-start: 1px solid var(--line); }
+.version-disclosure summary, .history-disclosure summary { padding-block: 0.8rem 0; color: var(--accent-dark); cursor: pointer; font-size: 0.78rem; font-weight: 700; }
+.version-disclosure form, .revision-form { display: grid; gap: 0.5rem; margin-block-start: 0.9rem; padding: 0.9rem; background: #f7f7f3; border: 1px solid #e1e2dc; border-radius: 0.7rem; }
+.version-disclosure label, .revision-form label { font-size: 0.75rem; font-weight: 700; }
+.version-disclosure .primary-button, .revision-form .primary-button { justify-self: start; margin-block-start: 0.4rem; }
 
 .review-stack { display: grid; gap: 1rem; }
 .review-card { padding: 1.3rem; }
@@ -153,6 +161,16 @@ textarea:user-invalid, input:user-invalid { border-color: #b74934; }
 .knowledge-mark { width: 2.25rem; height: 2.25rem; display: grid; place-items: center; color: var(--green); background: var(--green-soft); border-radius: 0.6rem; }
 .knowledge-row h3 { margin-block: 0.35rem 0.3rem; font-size: 0.95rem; line-height: 1.45; letter-spacing: -0.015em; }
 .knowledge-row p { margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.45; }
+.knowledge-row--attention .knowledge-mark { color: #8a5a17; background: #fff3d7; }
+.warning-chip { padding: 0.2rem 0.4rem; color: #754b11; background: #fff3d7; border-radius: 999px; }
+.history-disclosure summary { display: flex; align-items: center; gap: 0.4rem; }
+.revision-list { display: grid; gap: 0.55rem; margin: 0.8rem 0; padding: 0; list-style: none; }
+.revision-list li { padding: 0.75rem; background: #f7f7f3; border-radius: 0.6rem; }
+.revision-list li > div { display: flex; justify-content: space-between; gap: 1rem; }
+.revision-list strong { font-size: 0.76rem; }
+.revision-list time, .revision-list small, .revision-list code { color: #7c807a; font-size: 0.68rem; }
+.revision-list p { margin-block: 0.35rem; color: var(--ink); }
+.revision-list small, .revision-list code { display: block; margin-block-start: 0.25rem; }
 .compact .knowledge-row { padding-block: 0.8rem; }
 
 .ask-layout { display: grid; gap: 1rem; max-width: 58rem; }
@@ -193,6 +211,7 @@ textarea:user-invalid, input:user-invalid { border-color: #b74934; }
   .dashboard-grid { grid-template-columns: 1fr; }
   .activity-panel { grid-column: 1; }
   .review-columns { grid-template-columns: 1fr; }
+  .metrics { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 52rem) {

@@ -18,6 +18,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -e './api[dev]'
       - run: ruff check api
+      - run: ruff format --check api
       - run: pytest api/tests
 
   frontend:
@@ -37,4 +38,3 @@ jobs:
         working-directory: web
       - run: npm run build
         working-directory: web
-

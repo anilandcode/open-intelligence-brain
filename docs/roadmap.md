@@ -11,14 +11,16 @@
 - SQLite/PostgreSQL profiles.
 - React workbench, tests, and local documentation.
 
-## M2 — durable knowledge
+## M2 — durable knowledge (in progress)
 
-- Immutable source versions and content hashes.
-- Source-span offsets, speakers, and parser metadata.
-- Knowledge revisions, supersession, and historical queries.
-- Full-text search and local embeddings with index-version tracking.
-- Conflict and stale-review detection.
-- Backup, restore, and deletion previews.
+- [x] Immutable source versions and content hashes.
+- [x] Source-span offsets, optional speakers, and parser metadata.
+- [x] Knowledge revisions, supersession, and historical queries.
+- [x] Deterministic stale-source and possible-conflict signals.
+- [x] Schema-v2 backup, empty-workspace restore, and deletion previews.
+- [ ] PostgreSQL full-text search and local embeddings with index-version tracking.
+- [ ] Evaluation-backed conflict detection and review policy.
+- [ ] Encrypted backup packaging and reviewed deletion execution.
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
 
@@ -61,4 +63,3 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - Release packaging, compatibility matrix, and hardening.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.
-

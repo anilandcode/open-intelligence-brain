@@ -31,6 +31,7 @@ async def test_mcp_tools_are_read_only_and_query_canonical_knowledge(client, hea
         assert {tool.name for tool in listed.tools} == {
             "ask_brain",
             "brain_status",
+            "inspect_brain_integrity",
             "list_pending_reviews",
             "search_brain",
         }

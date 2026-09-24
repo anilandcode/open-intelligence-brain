@@ -9,6 +9,8 @@ import {
   CircleDot,
   Download,
   FileText,
+  Fingerprint,
+  History,
   Home,
   Inbox,
   Menu,
@@ -17,9 +19,19 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  TriangleAlert,
   X,
 } from "lucide-react";
-import { api, ChatResult, Knowledge, Overview, Proposal, Source } from "./api";
+import {
+  api,
+  ChatResult,
+  Integrity,
+  Knowledge,
+  KnowledgeRevision,
+  Overview,
+  Proposal,
+  Source,
+} from "./api";
 
 type View = "home" | "sources" | "inbox" | "brain" | "ask";
 
@@ -93,6 +105,7 @@ export default function App() {
   const [sources, setSources] = useState<Source[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [knowledge, setKnowledge] = useState<Knowledge[]>([]);
+  const [integrity, setIntegrity] = useState<Integrity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -102,13 +115,14 @@ export default function App() {
   async function refresh() {
     try {
       setError("");
-      const [overviewData, sourceData, proposalData, knowledgeData] = await Promise.all([
-        api.overview(), api.sources(), api.proposals(), api.knowledge(),
+      const [overviewData, sourceData, proposalData, knowledgeData, integrityData] = await Promise.all([
+        api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity(),
       ]);
       setOverview(overviewData);
       setSources(sourceData);
       setProposals(proposalData);
       setKnowledge(knowledgeData);
+      setIntegrity(integrityData);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Could not load the workspace.");
     } finally {
@@ -119,13 +133,14 @@ export default function App() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([api.overview(), api.sources(), api.proposals(), api.knowledge()])
-      .then(([overviewData, sourceData, proposalData, knowledgeData]) => {
+    Promise.all([api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity()])
+      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData]) => {
         if (!active) return;
         setOverview(overviewData);
         setSources(sourceData);
         setProposals(proposalData);
         setKnowledge(knowledgeData);
+        setIntegrity(integrityData);
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -218,10 +233,10 @@ export default function App() {
 
           {loading ? <LoadingState /> : (
             <>
-              {view === "home" && overview && <HomeView overview={overview} proposals={proposals} knowledge={knowledge} onNavigate={navigate} />}
-              {view === "sources" && <SourcesView sources={sources} onCapture={() => setShowCapture(true)} />}
+              {view === "home" && overview && <HomeView overview={overview} proposals={proposals} knowledge={knowledge} integrity={integrity} onNavigate={navigate} />}
+              {view === "sources" && <SourcesView sources={sources} onCapture={() => setShowCapture(true)} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "inbox" && <InboxView proposals={proposals} onChanged={refresh} onNotice={setNotice} onError={setError} />}
-              {view === "brain" && <BrainView initial={knowledge} />}
+              {view === "brain" && <BrainView initial={knowledge} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "ask" && <AskView />}
             </>
           )}
@@ -237,13 +252,14 @@ function LoadingState() {
   return <div className="loading-state" role="status"><span className="spinner" /> Loading your Brain…</div>;
 }
 
-function HomeView({ overview, proposals, knowledge, onNavigate }: { overview: Overview; proposals: Proposal[]; knowledge: Knowledge[]; onNavigate: (view: View) => void }) {
+function HomeView({ overview, proposals, knowledge, integrity, onNavigate }: { overview: Overview; proposals: Proposal[]; knowledge: Knowledge[]; integrity: Integrity | null; onNavigate: (view: View) => void }) {
   return (
     <div className="dashboard-grid">
       <section className="metrics" aria-label="Workspace summary">
         <MetricCard label="Canonical knowledge" value={overview.canonical} note="Approved and reusable" accent />
         <MetricCard label="Pending review" value={overview.pending_reviews} note="Waiting for judgment" />
         <MetricCard label="Sources" value={overview.sources} note="Original material" />
+        <MetricCard label="Integrity signals" value={(integrity?.stale_count ?? 0) + (integrity?.conflict_count ?? 0)} note="Stale or conflicting knowledge" />
       </section>
 
       <section className="focus-card">
@@ -275,16 +291,61 @@ function HomeView({ overview, proposals, knowledge, onNavigate }: { overview: Ov
   );
 }
 
-function SourcesView({ sources, onCapture }: { sources: Source[]; onCapture: () => void }) {
+function SourcesView({ sources, onCapture, onChanged, onNotice, onError }: { sources: Source[]; onCapture: () => void; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   return (
     <section className="panel source-panel">
       <div className="toolbar"><div><strong>{sources.length} sources</strong><span>Each original stays separate from interpreted knowledge.</span></div><button className="primary-button" onClick={onCapture}><Plus size={17} /> Add source</button></div>
       {sources.length === 0 ? <EmptyState icon={<Archive />} title="No sources yet">Capture a project note, interview, decision, or piece of research.</EmptyState> : (
         <div className="source-grid">
-          {sources.map((source) => <article className="source-card" key={source.id}><div className="source-icon"><FileText size={19} /></div><div className="source-main"><div className="source-meta"><span>{source.kind}</span><span>·</span><span>{source.sensitivity}</span></div><h2>{source.title}</h2><p>{source.content}</p><footer><span>{source.proposal_count} proposals</span><time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></footer></div></article>)}
+          {sources.map((source) => <SourceCard key={source.id} source={source} onChanged={onChanged} onNotice={onNotice} onError={onError} />)}
         </div>
       )}
     </section>
+  );
+}
+
+function SourceCard({ source, onChanged, onNotice, onError }: { source: Source; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+  const [content, setContent] = useState(source.content);
+  const [changeNote, setChangeNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await api.addSourceVersion(source.id, content, changeNote);
+      onNotice("Immutable source version created and new proposals added for review.");
+      setChangeNote("");
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Could not add source version.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <article className="source-card">
+      <div className="source-icon"><FileText size={19} /></div>
+      <div className="source-main">
+        <div className="source-meta"><span>{source.kind}</span><span>·</span><span>{source.sensitivity}</span><span>·</span><span>v{source.current_version}</span></div>
+        <h2>{source.title}</h2>
+        <p>{source.content}</p>
+        <div className="hash-line"><Fingerprint size={14} aria-hidden="true" /><code>{source.content_hash.slice(0, 12)}</code><span>SHA-256</span></div>
+        <footer><span>{source.proposal_count} proposals</span><time dateTime={source.created_at}>{timeAgo(source.created_at)}</time></footer>
+        <details className="version-disclosure">
+          <summary>Add immutable version</summary>
+          <form onSubmit={submit}>
+            <label htmlFor={`version-content-${source.id}`}>Revised source content</label>
+            <textarea id={`version-content-${source.id}`} value={content} onChange={(event) => setContent(event.target.value)} rows={6} minLength={20} required />
+            <label htmlFor={`change-note-${source.id}`}>What changed?</label>
+            <input id={`change-note-${source.id}`} value={changeNote} onChange={(event) => setChangeNote(event.target.value)} minLength={3} required aria-describedby={`change-help-${source.id}`} />
+            <span className="field-help" id={`change-help-${source.id}`}>The existing version remains immutable. This creates new review proposals.</span>
+            <button className="primary-button" type="submit" disabled={saving || content === source.content}>{saving ? "Creating…" : "Create next version"}</button>
+          </form>
+        </details>
+      </div>
+    </article>
   );
 }
 
@@ -329,11 +390,40 @@ function ReviewCard({ proposal, onChanged, onNotice, onError }: { proposal: Prop
   );
 }
 
-function KnowledgeRow({ item }: { item: Knowledge }) {
-  return <article className="knowledge-row"><div className="knowledge-mark"><ShieldCheck size={17} /></div><div><div className="source-meta"><span>{item.type}</span><span>·</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span></div><h3>{item.statement}</h3><p>{item.rationale}</p></div></article>;
+function KnowledgeRow({ item, editable = false, onChanged, onNotice, onError }: { item: Knowledge; editable?: boolean; onChanged?: () => Promise<void>; onNotice?: (value: string) => void; onError?: (value: string) => void }) {
+  const [revisions, setRevisions] = useState<KnowledgeRevision[]>([]);
+  const [statement, setStatement] = useState(item.statement);
+  const [rationale, setRationale] = useState(item.rationale);
+  const [changeNote, setChangeNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function loadHistory() {
+    if (revisions.length === 0) {
+      try { setRevisions(await api.knowledgeRevisions(item.id)); }
+      catch (requestError) { onError?.(requestError instanceof Error ? requestError.message : "Could not load revision history."); }
+    }
+  }
+
+  async function supersede(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await api.supersedeKnowledge(item.id, statement, rationale, changeNote);
+      onNotice?.("A new immutable knowledge revision is now canonical.");
+      setChangeNote("");
+      setRevisions([]);
+      await onChanged?.();
+    } catch (requestError) {
+      onError?.(requestError instanceof Error ? requestError.message : "Could not create revision.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <article className={`knowledge-row ${item.stale || item.conflict_ids.length ? "knowledge-row--attention" : ""}`}><div className="knowledge-mark">{item.stale || item.conflict_ids.length ? <TriangleAlert size={17} /> : <ShieldCheck size={17} />}</div><div><div className="source-meta"><span>{item.type}</span><span>·</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span>{item.stale && <span className="warning-chip">Source updated</span>}{item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}</div><h3>{item.statement}</h3><p>{item.rationale}</p>{editable && <details className="history-disclosure" onToggle={(event) => { if (event.currentTarget.open) void loadHistory(); }}><summary><History size={15} aria-hidden="true" /> {item.revision_count} {item.revision_count === 1 ? "revision" : "revisions"} · inspect or supersede</summary><ol className="revision-list">{revisions.map((revision) => <li key={revision.id}><div><strong>v{revision.revision}</strong><time dateTime={revision.approved_at}>{timeAgo(revision.approved_at)}</time></div><p>{revision.statement}</p><small>{revision.change_note}</small><code>{revision.source_version_id}</code></li>)}</ol><form className="revision-form" onSubmit={supersede}><label htmlFor={`revision-statement-${item.id}`}>New canonical wording</label><textarea id={`revision-statement-${item.id}`} value={statement} onChange={(event) => setStatement(event.target.value)} rows={3} minLength={3} required /><label htmlFor={`revision-rationale-${item.id}`}>Rationale</label><textarea id={`revision-rationale-${item.id}`} value={rationale} onChange={(event) => setRationale(event.target.value)} rows={2} /><label htmlFor={`revision-note-${item.id}`}>Revision note</label><input id={`revision-note-${item.id}`} value={changeNote} onChange={(event) => setChangeNote(event.target.value)} minLength={3} required /><button className="primary-button" type="submit" disabled={saving || (statement === item.statement && rationale === item.rationale)}>{saving ? "Saving…" : "Approve new revision"}</button></form></details>}</div></article>;
 }
 
-function BrainView({ initial }: { initial: Knowledge[] }) {
+function BrainView({ initial, onChanged, onNotice, onError }: { initial: Knowledge[]; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
     const needle = query.toLowerCase().trim();
@@ -344,7 +434,7 @@ function BrainView({ initial }: { initial: Knowledge[] }) {
     <section className="panel brain-panel">
       <search><form action="/" method="get" onSubmit={(event) => event.preventDefault()}><label htmlFor="brain-search">Search approved knowledge</label><div className="search-field"><Search size={18} aria-hidden="true" /><input id="brain-search" name="q" type="search" placeholder="Search positions, decisions, lessons…" value={query} onChange={(event) => setQuery(event.target.value)} /></div></form></search>
       <div className="toolbar compact-toolbar"><strong>{filtered.length} canonical items</strong><span>Showing approved revisions only</span></div>
-      <div className="knowledge-list">{filtered.map((item) => <KnowledgeRow key={item.id} item={item} />)}{filtered.length === 0 && <EmptyState icon={<Search />} title="No approved matches">Try broader language, or review pending proposals first.</EmptyState>}</div>
+      <div className="knowledge-list">{filtered.map((item) => <KnowledgeRow key={item.id} item={item} editable onChanged={onChanged} onNotice={onNotice} onError={onError} />)}{filtered.length === 0 && <EmptyState icon={<Search />} title="No approved matches">Try broader language, or review pending proposals first.</EmptyState>}</div>
     </section>
   );
 }

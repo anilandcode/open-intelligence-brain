@@ -33,17 +33,23 @@ flowchart LR
 5. Grounded answers query only `canonical` knowledge.
 6. Every citation points to the original source ID, title, and exact excerpt.
 7. The deterministic extractor does not pretend to be AI inference.
-8. Optional providers must not become required for reading, review, or export.
-9. Agent tools cannot approve proposals or mutate canonical knowledge.
+8. Every source change creates a new version and hash; old evidence remains addressable.
+9. Every canonical wording change creates a new knowledge revision.
+10. Optional providers must not become required for reading, review, or export.
+11. Agent tools cannot approve proposals or mutate canonical knowledge.
 
 ## Data model
 
-- `sources`: original text, type, sensitivity, timestamp.
+- `sources`: stable source identity, original text, type, sensitivity, timestamp.
+- `source_versions`: immutable content, SHA-256 hash, parser version, change note.
+- `source_spans`: exact offsets, immutable excerpt, span hash, optional speaker.
 - `proposals`: extracted candidate, rationale, exact excerpt, review state.
+- `proposal_evidence`: exact source-version and span edge.
 - `knowledge`: approved wording, evidence, version, approval timestamp.
+- `knowledge_revisions`: append-only canonical wording history and provenance.
 - `audit_events`: append-only domain event summary.
 
-The next schema milestone adds immutable source versions, offsets, revision history, workspace grants, and content hashes before external agents receive write tools.
+The next schema milestone adds workspace grants before external agents receive any write tools.
 
 ## Retrieval
 

@@ -40,6 +40,9 @@ Use absolute paths because GUI clients and agent runtimes may not start in the r
 | `search_brain` | Searches only approved knowledge and returns exact evidence |
 | `ask_brain` | Produces a grounded synthesis with citations or abstains |
 | `list_pending_reviews` | Shows the human review queue without mutating it |
+| `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
+
+Search results also include revision counts and a stale flag. Agents should surface those warnings rather than silently relying on an outdated item.
 
 ## Recommended host policy
 
