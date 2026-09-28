@@ -76,6 +76,8 @@ into the caller's.
 - Critic pass (`critic.py`) for evidence gap detection and quality signals on proposals.
 - Daily routines (`routines.py`) for scheduled digest delivery.
 - Usage tracking (`usage.py`) for knowledge citation and reuse analytics.
+- Held-out evaluation (`evaluation.py`) for Jev promotion decisions.
+- Hermes messaging (`messaging.py`) for digest and alert delivery.
 - Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.

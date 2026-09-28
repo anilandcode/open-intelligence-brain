@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.0 — All milestones complete
+
+- Held-out evaluation: compare deterministic vs Jev shadow decisions.
+- Hermes messaging pairing for routine digest delivery.
+- Release packaging script for distribution.
+- 189 backend tests + 5 frontend tests.
+- All 6 milestones (M1–M6) complete.
+
 ## 0.8.0 — Daily routines, usage tracking, MCP smoke tests
 
 - Daily routine digest: pending proposals, stale knowledge, conflicts, recent activity.

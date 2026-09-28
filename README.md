@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-- Version 0.8 adds daily routine digests, usage tracking (which knowledge gets reused), and MCP smoke tests verifying all tools work for Codex, Claude Code, and Hermes.
+- Version 1.0 — all milestones complete. Daily routines, usage tracking, held-out evaluation, Hermes messaging, and release packaging. The Brain is ready for personal beta across all your AI tools.
 
 ## Screens
 
@@ -119,7 +119,9 @@ api/                  FastAPI domain, services, and tests
     critic.py         Critic pass: evidence gap detection and quality signals
     routines.py       Daily routine digests and delivery
     usage.py          Knowledge usage tracking and analytics
-  tests/              177 backend tests across 14 modules
+    evaluation.py     Held-out evaluation for Jev promotion decisions
+    messaging.py      Hermes messaging pairing for digest delivery
+  tests/              189 backend tests across 16 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -175,6 +177,9 @@ Implemented:
 - Daily routine digests with pending proposals, stale knowledge, conflicts.
 - Usage tracking: which knowledge atoms get cited and reused.
 - MCP smoke tests verifying all 5 tools for Codex/Claude/Hermes.
+- Held-out evaluation for comparing deterministic vs Jev shadow decisions.
+- Hermes messaging pairing for routine digest delivery.
+- Release packaging script for distribution.
 - Intelligence Studio: guided interview sessions and draft builder.
 - Interview responses auto-extract into proposals after completion.
 - Drafts assemble approved knowledge into briefs/articles/agent context with citations.
@@ -183,15 +188,15 @@ Implemented:
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 177 backend tests and 5 frontend tests.
+- 189 backend tests and 5 frontend tests.
 
 Next:
 
 - PostgreSQL full-text search and local embeddings with index-version tracking.
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
-- Held-out evaluation before promoting Jev from shadow mode (M5 remaining item).
-- Hermes messaging pairing (M6 remaining item).
+- Four-week personal usage study.
+- Enterprise tenancy, automatic publishing, broad connectors.
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
 See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.

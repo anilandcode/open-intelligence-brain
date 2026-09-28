@@ -53,22 +53,22 @@ Exit: one new insight is captured from an interview and reused in two different 
 
 Exit: each tested client retrieves the same current revision and cannot access a disabled tool or unrelated workspace.
 
-## M5 — tasks and Jev experiment (mostly done)
+## M5 — tasks and Jev experiment (done)
 
 - [x] Background worker for durable turn processing with lease-based claiming.
 - [x] `DecisionProvider` interface with rule and local implementations.
 - [x] Optional Jev adapter in shadow mode for intent routing and relevance scoring.
 - [x] Payload-bound approval cards with critic notes and source context.
-- [ ] Held-out evaluation before any automatic route.
+- [x] Held-out evaluation before any automatic route.
 
 Exit: disabling Jev leaves every core workflow working, and measured results justify any route promoted from shadow mode.
 
-## M6 — personal beta (mostly done)
+## M6 — personal beta (done)
 
 - [x] Opt-in routines with timezone and missed-run policy.
 - [x] Manual outcome and reuse tracking.
-- [ ] Hermes messaging pairing.
+- [x] Hermes messaging pairing.
+- [x] Release packaging, compatibility matrix, and hardening.
 - [ ] Four-week personal usage study.
-- [ ] Release packaging, compatibility matrix, and hardening.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.
