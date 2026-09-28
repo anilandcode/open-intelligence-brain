@@ -930,6 +930,25 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
             </dl>
           </aside>
         </div>
+        {proposal.critic_notes && (() => {
+          try {
+            const notes = JSON.parse(proposal.critic_notes);
+            if (!Array.isArray(notes) || notes.length === 0) return null;
+            return (
+              <div className="critic-panel">
+                <div className="critic-heading"><span><TriangleAlert size={15} /> Critic assessment</span><span className="critic-badge">{notes.length} note{notes.length !== 1 ? "s" : ""}</span></div>
+                <ul>
+                  {notes.map((note: {severity: string; category: string; message: string}, i: number) => (
+                    <li key={i} className={`critic-note critic-note--${note.severity}`}>
+                      <span className="critic-icon">{note.severity === "strong" ? "🔴" : note.severity === "warning" ? "⚠" : "ℹ"}</span>
+                      <span>{note.message}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          } catch { return null; }
+        })()}
         {rejectMode && (
           <div className="reject-panel">
             <div><label htmlFor={`reject-reason-${proposal.id}`}>Why should this proposal be rejected?</label><span id={`reject-help-${proposal.id}`}>The source remains unchanged and the reason is kept in the audit trail.</span></div>

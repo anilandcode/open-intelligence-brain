@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from collections import Counter
@@ -35,6 +36,7 @@ from .retrieval import (
     sync_fts_insert,
     sync_fts_update,
 )
+from .critic import assess_proposal, CriticAssessment
 from .schemas import ChatResponse, Citation, SourceCreate
 
 log = logging.getLogger(__name__)
@@ -174,6 +176,18 @@ def add_source_version(
             )
             db.add(proposal)
             db.flush()
+            # Run critic pass
+            assessment = assess_proposal(
+                proposal_id=proposal.id,
+                statement=statement,
+                declared_type=proposal.type,
+                source_excerpt=text,
+            )
+            if assessment.has_notes:
+                proposal.critic_notes = json.dumps([
+                    {"severity": n.severity, "category": n.category, "message": n.message}
+                    for n in assessment.notes
+                ], ensure_ascii=False)
             db.add(
                 ProposalEvidence(
                     proposal_id=proposal.id,

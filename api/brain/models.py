@@ -129,6 +129,7 @@ class Proposal(Base):
     # Set only on engine-derived proposals: the review decision is echoed back
     # to the engine by memory id so its ranking agrees with ours.
     engine_memory_id: Mapped[str] = mapped_column(String(64), default="")
+    critic_notes: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")

@@ -54,6 +54,7 @@ class ProposalRead(BaseModel):
     rationale: str
     source_excerpt: str
     status: str
+    critic_notes: str = ""
     created_at: datetime
 
 

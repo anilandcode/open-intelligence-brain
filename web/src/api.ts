@@ -115,6 +115,7 @@ export type Proposal = {
   rationale: string;
   source_excerpt: string;
   status: string;
+  critic_notes: string;
   created_at: string;
 };
 

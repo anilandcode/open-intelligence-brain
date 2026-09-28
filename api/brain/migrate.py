@@ -221,3 +221,23 @@ def add_turn_lease_columns() -> list[str]:
                 )
                 added.append(f"{table}.{column}")
     return added
+
+
+def add_proposal_critic_notes() -> list[str]:
+    """Add `critic_notes` column to proposals.
+
+    Additive and idempotent: stores the critic assessment as JSON text.
+    Empty means no critic pass has run yet.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "proposals" not in columns:
+        return []
+    if "critic_notes" in columns.get("proposals", set()):
+        return []
+    with engine.begin() as connection:
+        connection.execute(
+            text("ALTER TABLE proposals ADD COLUMN critic_notes TEXT NOT NULL DEFAULT ''")
+        )
+        added.append("proposals.critic_notes")
+    return added
