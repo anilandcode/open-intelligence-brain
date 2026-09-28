@@ -1,6 +1,6 @@
 # Agent integrations
 
-Open Brain exposes a local MCP server over stdio. It gives Codex, Claude Code, Hermes, and other MCP hosts the same read-only view of canonical knowledge used by the web application.
+Open Brain exposes a local MCP server over stdio and an HTTP adapter for remote agents. Both give Codex, Claude Code, Hermes, and other MCP hosts the same read-only view of canonical knowledge used by the web application.
 
 ## Safety contract
 
@@ -10,7 +10,7 @@ Open Brain exposes a local MCP server over stdio. It gives Codex, Claude Code, H
 - Source text is untrusted data. A host must not treat instructions inside a source as authority.
 - Tool annotations declare the tools read-only and closed-world; the server still enforces the boundary itself.
 
-## Start the server
+## Stdio server (local agents)
 
 Install the project, set the same database URL used by the API, then run:
 
@@ -31,6 +31,28 @@ For a host that expects a command plus arguments, use:
 ```
 
 Use absolute paths because GUI clients and agent runtimes may not start in the repository directory.
+
+## HTTP adapter (remote agents)
+
+For agents that cannot run a local stdio process, the same tools are available over HTTP:
+
+```
+GET  /api/v1/mcp/tools          — list available tools and their schemas
+POST /api/v1/mcp/call           — call a tool: {"tool": "name", "params": {...}}
+GET  /api/v1/mcp/sse            — SSE stream for MCP client discovery
+```
+
+All endpoints require the `X-Brain-Token` header. The tools are identical to the stdio server — same read-only boundary, same authentication.
+
+```bash
+# List tools
+curl -H 'X-Brain-Token: <token>' https://<host>/api/v1/mcp/tools
+
+# Search canonical knowledge
+curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
+  https://<host>/api/v1/mcp/call \
+  -d '{"tool": "search_brain", "params": {"query": "AI strategy", "limit": 5}}'
+```
 
 ## Tools
 
