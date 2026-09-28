@@ -62,7 +62,7 @@ into the caller's.
 ## Current components
 
 - React/TypeScript web application with modular CSS architecture.
-- FastAPI API with 30+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, and proactivity.
+- FastAPI API with 40+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, proactivity, and studio.
 - SQLAlchemy persistence with SQLite locally and PostgreSQL in Compose.
 - Deterministic extraction provider for offline reliability.
 - Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
@@ -70,6 +70,7 @@ into the caller's.
 - Workspace isolation (`access.py`) with role-based access control, sensitivity scoping, and expiring/scoped tokens.
 - Full-text search (`retrieval.py`) using SQLite FTS5 with BM25 ranking, synced after approval and supersession.
 - MCP HTTP adapter (`mcp_http.py`) exposing read-only tools over HTTP for remote agents.
+- Intelligence Studio (`studio.py`, `studio_api.py`) with guided interview sessions and draft builder.
 - Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
@@ -112,6 +113,11 @@ into the caller's.
 - `knowledge`: approved wording, evidence, version, approval timestamp.
 - `knowledge_revisions`: append-only canonical wording history and provenance.
 - `audit_events`: append-only domain event summary.
+- `interview_sessions`: guided conversation metadata (topic, person, audience).
+- `interview_questions`: ordinal questions with responses and extraction status.
+- `drafts`: assembled output document (title, intent, audience).
+- `draft_sections`: ordinal sections with content.
+- `draft_citations`: section-to-knowledge links for source mapping.
 
 `migrate.add_workspace_columns` adds the workspace columns to an existing
 database. `Base.metadata.create_all` creates missing tables but never alters an

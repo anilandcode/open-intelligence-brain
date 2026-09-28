@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-Version 0.4 adds an engine abstraction, a harness layer (event intake, triage, and turn orchestration), workspace isolation with role-based access and sensitivity scoping, and a single-image Cloud Run deployment. The core trust model — nothing becomes canonical without human approval — is unchanged.
+Version 0.5 adds the Intelligence Studio — guided interview sessions and a draft builder for assembling approved knowledge into articles, briefs, and agent context. The core trust model — nothing becomes canonical without human approval — is unchanged.
 
 ## Screens
 
@@ -18,7 +18,8 @@ Version 0.4 adds an engine abstraction, a harness layer (event intake, triage, a
 - Sources — inspect hashes and create immutable source versions without overwriting history.
 - Ask — get an answer from approved knowledge with exact source citations and abstention.
 - Audit — inspect integrity signals and recent domain events.
-- Studio, Activate, and Analytics — clearly labeled workflow previews for planned milestones.
+- Studio — guided interviews and draft builder (live).
+- Activate, and Analytics — clearly labeled workflow previews for planned milestones.
 
 ## Quick start
 
@@ -108,9 +109,12 @@ api/                  FastAPI domain, services, and tests
     models.py         SQLAlchemy models (sources, proposals, knowledge, workspaces)
     schemas.py        Pydantic request/response schemas
     services.py       Domain logic (extraction, approval, search, backup)
+    studio.py         Interview session and draft data models
+    studio_api.py     Intelligence Studio API (interviews, drafts, sections)
+    studio_schemas.py Pydantic schemas for Studio
     triage.py         Deterministic triage with policy enforcement
     turns.py          Turn orchestration (step, steer, suspend, resume, stop)
-  tests/              113 backend tests across 9 modules
+  tests/              160 backend tests across 10 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -157,19 +161,22 @@ Implemented:
 - Per-channel proactivity policy.
 - Single-image Cloud Run deployment with Cloud Build.
 - Self-hosted LLM proxy for engine deployment.
+- Intelligence Studio: guided interview sessions and draft builder.
+- Interview responses auto-extract into proposals after completion.
+- Drafts assemble approved knowledge into briefs/articles/agent context with citations.
 - SQLite FTS5 full-text search with BM25 ranking over canonical knowledge.
 - Scoped workspace grants and expiring tokens with create/list/revoke API.
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 134 backend tests and 5 frontend tests.
+- 160 backend tests and 5 frontend tests.
 
 Next:
 
 - PostgreSQL full-text search and local embeddings with index-version tracking.
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
-- Guided interview sessions and drafting workflows (M3 — Intelligence Studio).
+- Critic/evidence-gap pass as a separately labeled model opinion (M3 remaining item).
 - Scoped workspace principals, expiring tokens, and MCP HTTP adapter (M4).
 - Durable background tasks and optional Jev decision adapter (M5).
 

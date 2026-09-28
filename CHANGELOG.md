@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 — Intelligence Studio
+
+- Interview sessions: create, add questions, submit responses, extract proposals.
+- Draft builder: assemble approved knowledge into briefs/articles/agent context.
+- Studio API with 13 endpoints under `/api/v1/studio/`.
+- Live Studio UI replacing preview: interviews tab, drafts tab, detail views.
+- 160 backend tests + 5 frontend tests.
+
 ## 0.4.1 — FTS5 search, expiring tokens, MCP HTTP, richer types
 
 - Added SQLite FTS5 full-text search with BM25 ranking, synced after approval/supersession.

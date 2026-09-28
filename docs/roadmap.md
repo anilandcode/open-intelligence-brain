@@ -26,14 +26,14 @@
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
 
-## M3 — Intelligence Studio
+## M3 — Intelligence Studio (mostly done)
 
 - [x] Interface architecture and clearly labeled non-functional previews.
-- Guided interview sessions.
-- Thesis, story, lesson, framework, and evidence proposal types.
-- Critic/evidence-gap pass as a separately labeled model opinion.
-- Article outline and website narrative draft workflows.
-- Claim-to-source mapping in generated drafts.
+- [x] Guided interview sessions with add questions, submit responses, complete & extract.
+- [x] Thesis, story, lesson, framework, evidence, question, and decision proposal types.
+- [x] Draft builder: assemble approved knowledge into briefs/articles/agent context.
+- [x] Claim-to-source mapping in generated drafts with citations.
+- [ ] Critic/evidence-gap pass as a separately labeled model opinion.
 
 Exit: one new insight is captured from an interview and reused in two different drafts with inspectable evidence.
 
