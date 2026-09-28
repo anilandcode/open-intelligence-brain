@@ -270,6 +270,19 @@ def grant_workspace(
     return grant
 
 
+def token_preview(principal: str) -> str:
+    """A recognisable, non-recoverable preview of a credential.
+
+    Listings must never carry live tokens: enough of the string to tell two
+    grants apart, never enough to use one. Long tokens keep a head and a
+    tail; short ones (which are not recoverable to begin with, but must not
+    leak either) keep only a head.
+    """
+    if len(principal) <= 12:
+        return principal[:4] + "…"
+    return f"{principal[:8]}…{principal[-4:]}"
+
+
 def audit_access(db: Session, access: WorkspaceAccess, action: str, detail: str = "") -> None:
     """Record a workspace-level event in the same stream as record events."""
     db.add(

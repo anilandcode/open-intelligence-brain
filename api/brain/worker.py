@@ -18,25 +18,21 @@ from __future__ import annotations
 
 import logging
 import signal
-import sys
 import time
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .database import SessionLocal, engine
+from .access import ReadScope
+from .database import SessionLocal
 from .harness import Turn, TurnStep
 from .models import new_id
 from .services import search_knowledge
 from .turns import (
-    OPEN_STATUSES,
     advance_turn,
-    checkpoint,
     is_terminal,
-    load_turn,
-    stop_turn,
     turn_plan,
 )
 
@@ -162,8 +158,11 @@ def _execute_tool(db: Session, turn: Turn, tool_name: str) -> str:
     if tool_name == "search_knowledge":
         results = search_knowledge(db, _fake_scope(turn), turn.instructions or "general query")
         if results:
+            # search_knowledge returns Knowledge ORM objects, NOT tuples —
+            # index them by attribute. (top[0]/top[4] raised TypeError and
+            # failed every turn that actually matched something.)
             top = results[0]
-            return f"Found {len(results)} results. Top: {top[0]} (v{top[4]})"
+            return f"Found {len(results)} results. Top: {top.statement[:120]} (v{top.version})"
         return "No matching knowledge found."
     elif tool_name == "list_sources":
         from .models import Source
@@ -173,9 +172,12 @@ def _execute_tool(db: Session, turn: Turn, tool_name: str) -> str:
         return f"Found {len(sources)} sources."
     elif tool_name == "get_proposal":
         from .models import Proposal
+        # The proposal vocabulary is "proposed"/"approved"/"rejected" —
+        # filtering on "pending" matched nothing and the worker always
+        # reported 0 pending proposals.
         proposals = list(db.scalars(select(Proposal).where(
             Proposal.workspace_id == turn.workspace_id,
-            Proposal.status == "pending",
+            Proposal.status == "proposed",
         ).limit(5)).all())
         return f"Found {len(proposals)} pending proposals."
     else:
@@ -192,15 +194,15 @@ class _fake_access:
         self.sensitivity_ceiling = "private"
 
 
-class _fake_scope:
-    """Minimal read scope for worker searches."""
-    def __init__(self, turn: Turn):
-        self.workspace_id = turn.workspace_id
-        self.role = "admin"
-        self.sensitivity_ceiling = "private"
+def _fake_scope(turn: Turn) -> ReadScope:
+    """The worker's read scope: a real ReadScope with admin role.
 
-    def apply(self, stmt, model):
-        return stmt.where(model.workspace_id == self.workspace_id)
+    Duck-typing a scope that filtered only by workspace_id let worker
+    queries skip the sensitivity ceiling that every API read enforces.
+    The worker runs as admin within the turn's own workspace — the same
+    reach an admin token has — so build the real thing.
+    """
+    return ReadScope(turn.workspace_id, "admin")
 
 
 class Worker:

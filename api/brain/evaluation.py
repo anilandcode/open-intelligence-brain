@@ -14,16 +14,9 @@ they disagree — so a human can decide whether to promote.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-
-from sqlalchemy.orm import Session
 
 from .decision import DecisionProvider, DecisionSuggestion, DeterministicProvider, JevShadowProvider
-from .harness import BrainEvent
-from .models import new_id
-from .triage import ProactivityPolicy, classify_event, decide_event
 
 
 @dataclass(frozen=True)

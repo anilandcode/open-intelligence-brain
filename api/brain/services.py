@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope, workspace_counts
+from .critic import assess_proposal
 from .database import SessionLocal
 from .engine import (
     ContainerTagRejected,
@@ -29,14 +30,10 @@ from .models import (
     new_id,
 )
 from .retrieval import (
-    ensure_fts,
-    rebuild_fts,
     search_fts,
-    sync_fts_delete,
     sync_fts_insert,
     sync_fts_update,
 )
-from .critic import assess_proposal, CriticAssessment
 from .schemas import ChatResponse, Citation, SourceCreate
 
 log = logging.getLogger(__name__)
@@ -899,13 +896,17 @@ def overview(db: Session, scope: ReadScope) -> dict:
     }
 
 
-def export_workspace_data(db: Session, workspace_id: str) -> dict:
-    # Root tables carry workspace_id and are filtered by it. Child tables do not:
-    # they are reached through the ids of roots that are already in scope, so a
-    # child can never be exported without its parent.
+def export_workspace_data(db: Session, scope: ReadScope) -> dict:
+    # An export is a read, so it carries the caller's ReadScope like every
+    # other collection read: a member's export omits private material the
+    # list endpoints already hide from them. Root tables are filtered by
+    # workspace AND sensitivity ceiling; child tables do not carry either —
+    # they are reached through the ids of roots that are already in scope, so
+    # a child can never be exported without its readable parent.
+    workspace_id = scope.workspace_id
     sources = sorted(
         db.scalars(
-            select(Source).where(Source.workspace_id == workspace_id).order_by(Source.created_at)
+            scope.apply(select(Source).order_by(Source.created_at), Source)
         ).all(),
         key=lambda row: row.created_at,
     )
@@ -927,9 +928,7 @@ def export_workspace_data(db: Session, workspace_id: str) -> dict:
     )
     proposals = sorted(
         db.scalars(
-            select(Proposal)
-            .where(Proposal.workspace_id == workspace_id)
-            .order_by(Proposal.created_at)
+            scope.apply(select(Proposal).order_by(Proposal.created_at), Proposal)
         ).all(),
         key=lambda row: row.created_at,
     )
@@ -942,9 +941,7 @@ def export_workspace_data(db: Session, workspace_id: str) -> dict:
     )
     knowledge = sorted(
         db.scalars(
-            select(Knowledge)
-            .where(Knowledge.workspace_id == workspace_id)
-            .order_by(Knowledge.approved_at)
+            scope.apply(select(Knowledge).order_by(Knowledge.approved_at), Knowledge)
         ).all(),
         key=lambda row: row.approved_at,
     )

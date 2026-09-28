@@ -205,6 +205,11 @@ class TokenCreate(BaseModel):
     expires_in_hours: int | None = Field(default=None, ge=1, le=8760)  # max 1 year
 
 class TokenRead(BaseModel):
+    """The creation response — the ONLY place a raw token string is returned.
+
+    A listing must never carry live credentials: one captured response or XSS
+    would hand over every token in the workspace, including the owner's.
+    """
     model_config = ConfigDict(from_attributes=True)
     id: str
     workspace_id: str
@@ -213,6 +218,18 @@ class TokenRead(BaseModel):
     scope: str | None = None
     expires_at: datetime | None = None
     created_at: datetime
+
+class TokenListRead(BaseModel):
+    """A listed token: a recognisable preview, never the credential itself."""
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    principal_preview: str
+    role: str
+    scope: str | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
+
 class EventCreate(BaseModel):
     """One inbound message, as a channel or an agent would report it.
 

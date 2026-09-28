@@ -121,7 +121,7 @@ api/                  FastAPI domain, services, and tests
     usage.py          Knowledge usage tracking and analytics
     evaluation.py     Held-out evaluation for Jev promotion decisions
     messaging.py      Hermes messaging pairing for digest delivery
-  tests/              189 backend tests across 16 modules
+  tests/              221 backend tests across 17 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -188,7 +188,8 @@ Implemented:
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 189 backend tests and 5 frontend tests.
+- Security hardening (v1.0.1): static-file containment, MCP scope binding, export/usage sensitivity ceiling, token previews, SSRF-free evaluation config, admin-gated restore — each pinned by a regression test.
+- 221 backend tests and 5 frontend tests.
 
 Next:
 

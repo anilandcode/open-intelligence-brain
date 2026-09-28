@@ -20,13 +20,18 @@ from .access import (
     grant_workspace,
     require_in_workspace,
     resolve_workspace,
+    token_preview,
 )
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
-from .migrate import add_engine_link_columns, add_grant_scope_and_expiry, add_nullable_evidence_span, add_workspace_columns
 from .mcp_http import router as mcp_http_router
-from .studio_api import router as studio_router
+from .migrate import (
+    add_engine_link_columns,
+    add_grant_scope_and_expiry,
+    add_nullable_evidence_span,
+    add_workspace_columns,
+)
 from .models import (
     AuditEvent,
     Knowledge,
@@ -40,6 +45,7 @@ from .models import (
     WorkspaceGrant,
     new_id,
 )
+from .retrieval import ensure_fts, rebuild_fts
 from .schemas import (
     ApprovalRequest,
     ChatRequest,
@@ -69,14 +75,15 @@ from .schemas import (
     StopRequest,
     SupersedeRequest,
     SuspendRequest,
+    TokenCreate,
+    TokenListRead,
+    TokenRead,
     TriageRead,
     TurnDetail,
     TurnRead,
     TurnStepRead,
     WorkspaceCreate,
     WorkspaceRead,
-    TokenCreate,
-    TokenRead,
 )
 from .services import (
     add_source_version,
@@ -100,7 +107,12 @@ from .services import (
     supersede_knowledge,
     sync_derived_proposals,
 )
-from .retrieval import ensure_fts, rebuild_fts
+from .studio_api import router as studio_router
+
+# Imported at module level on purpose: UsageEvent must be registered on Base
+# before lifespan's create_all runs, or usage_events never exists on a fresh
+# database and every /api/v1/usage* route 500s. Do not make this lazy.
+from .usage import top_used, track_batch, unused_knowledge, usage_summary
 
 settings = get_settings()
 
@@ -160,7 +172,7 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="0.4.0",
+    version="1.0.1",
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
@@ -333,13 +345,19 @@ def create_workspace_token(
     return grant
 
 
-@app.get("/api/v1/workspaces/{workspace_slug}/tokens", response_model=list[TokenRead])
+@app.get("/api/v1/workspaces/{workspace_slug}/tokens", response_model=list[TokenListRead])
 def list_workspace_tokens(
     workspace_slug: str,
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
-    """List all tokens for a workspace. Only owners and admins."""
+    """List all tokens for a workspace. Only owners and admins.
+
+    Returns a preview of each credential, never the credential: the raw
+    string is shown exactly once, in the creation response. A listing that
+    carried live tokens would hand every one of them — including the owner
+    token — to anything that can capture an admin response.
+    """
     if not access.can_administer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -348,11 +366,21 @@ def list_workspace_tokens(
     workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
     if workspace is None or workspace.id != access.workspace_id:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    return list(
-        db.scalars(
-            select(WorkspaceGrant).where(WorkspaceGrant.workspace_id == workspace.id)
-        ).all()
-    )
+    grants = db.scalars(
+        select(WorkspaceGrant).where(WorkspaceGrant.workspace_id == workspace.id)
+    ).all()
+    return [
+        TokenListRead(
+            id=grant.id,
+            workspace_id=grant.workspace_id,
+            principal_preview=token_preview(grant.principal),
+            role=grant.role,
+            scope=grant.scope,
+            expires_at=grant.expires_at,
+            created_at=grant.created_at,
+        )
+        for grant in grants
+    ]
 
 
 @app.delete("/api/v1/workspaces/{workspace_slug}/tokens/{token_id}", status_code=204)
@@ -701,7 +729,6 @@ def chat(
     result = answer_question(db, scope, payload.question)
     # Track which knowledge atoms were cited
     if result.citations:
-        from .usage import track_batch
         track_batch(
             db, scope.workspace_id,
             [c.knowledge_id for c in result.citations],
@@ -712,8 +739,11 @@ def chat(
 
 
 @app.get("/api/v1/export")
-def export_workspace(access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)):
-    return export_workspace_data(db, access.workspace_id)
+def export_workspace(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
+    # Scoped read: a member's export excludes private material exactly like
+    # every list endpoint does. Passing a bare workspace_id here is what let
+    # a member export sources above their ceiling.
+    return export_workspace_data(db, scope)
 
 
 @app.post("/api/v1/restore/preview", response_model=RestorePreview)
@@ -722,6 +752,13 @@ def preview_restore(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
+    # Restore is a destructive admin-class operation; preview is gated the
+    # same way so a member cannot probe backup validity either.
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can preview a restore",
+        )
     return restore_preview(db, payload.backup, access.workspace_id)
 
 
@@ -731,6 +768,11 @@ def restore(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can restore a workspace",
+        )
     if not payload.confirm_empty_workspace:
         raise HTTPException(
             status_code=400,
@@ -962,8 +1004,8 @@ def get_routine_digest(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
-    from .routines import build_digest, format_digest
     from .access import ReadScope
+    from .routines import build_digest, format_digest
     scope = ReadScope(access.workspace_id, access.role)
     digest = build_digest(db, scope, since_hours=hours)
     return {
@@ -981,41 +1023,48 @@ def get_routine_digest(
 
 @app.get("/api/v1/usage")
 def get_usage_summary(
-    access: WorkspaceAccess = Depends(resolve_access),
+    scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    from .usage import usage_summary
-    return usage_summary(db, access.workspace_id)
+    return usage_summary(db, scope)
 
 
 @app.get("/api/v1/usage/top")
 def get_usage_top(
     limit: int = 10,
     days: int = 30,
-    access: WorkspaceAccess = Depends(resolve_access),
+    scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    from .usage import top_used
-    return top_used(db, access.workspace_id, limit=limit, since_days=days)
+    return top_used(db, scope, limit=limit, since_days=days)
 
 
 @app.get("/api/v1/usage/unused")
 def get_usage_unused(
     limit: int = 10,
-    access: WorkspaceAccess = Depends(resolve_access),
+    scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    from .usage import unused_knowledge
-    return unused_knowledge(db, access.workspace_id, limit=limit)
+    return unused_knowledge(db, scope, limit=limit)
 
 
 @app.get("/api/v1/evaluation")
 def run_jev_evaluation(
-    jev_url: str | None = None,
     access: WorkspaceAccess = Depends(resolve_access),
 ):
+    """Run the held-out evaluation against the CONFIGURED Jev shadow URL.
+
+    The URL comes from settings (BRAIN_JEV_URL), never from a query param:
+    a caller-named URL would let any token make the server POST to arbitrary
+    internal hosts or cloud metadata (SSRF). Admin-only, like proactivity.
+    """
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can run the evaluation",
+        )
     from .evaluation import run_evaluation
-    report = run_evaluation(jev_url=jev_url)
+    report = run_evaluation(jev_url=settings.jev_url or None)
     return report.to_dict()
 
 
@@ -1045,6 +1094,16 @@ if frontend.exists():
         if path.startswith("api/v1"):
             raise HTTPException(status_code=404, detail="Unknown endpoint")
         requested = frontend / path
-        if path and requested.is_file():
-            return FileResponse(requested)
+        # Starlette unquotes %2f AFTER routing, so `path` can contain ../
+        # segments that were invisible to the router. Without this containment
+        # check the fallback serves arbitrary files — the project's .env
+        # (owner token), the live SQLite database, anything the process can
+        # read. Resolve first, then require the result to stay inside dist.
+        try:
+            resolved = requested.resolve()
+            resolved.relative_to(frontend.resolve())
+        except (OSError, ValueError):
+            raise HTTPException(status_code=404, detail="Not found") from None
+        if path and resolved.is_file():
+            return FileResponse(resolved)
         return FileResponse(frontend / "index.html")

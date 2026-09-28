@@ -5,18 +5,27 @@ items that were cited get a usage event. This lets you see which atoms are
 actually valuable vs. which are just sitting there.
 
 Usage data is append-only and lightweight — just a row per citation event.
+
+Reads take a ReadScope like every other collection read: counts and listings
+that include private material would leak its existence to a member, so every
+query here narrows Knowledge by workspace AND sensitivity ceiling.
+
+This module MUST be imported at main.py module level (not lazily inside a
+route body) so UsageEvent is registered on Base before lifespan's create_all
+runs — otherwise usage_events never exists on a fresh database and every
+/api/v1/usage* route 500s.
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime, timedelta
 
-from .models import new_id
+from sqlalchemy import DateTime, ForeignKey, String, Text, func, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
+
+from .access import ReadScope
 from .harness import Base
-from sqlalchemy import String, Text, DateTime, Integer, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column
+from .models import Knowledge, new_id
 
 
 class UsageEvent(Base):
@@ -67,14 +76,13 @@ def track_batch(
 
 def top_used(
     db: Session,
-    workspace_id: str,
+    scope: ReadScope,
     limit: int = 10,
     since_days: int = 30,
 ) -> list[dict]:
-    """Most-used knowledge atoms in the workspace."""
-    from .models import Knowledge
-    since = datetime.now(UTC) - __import__("datetime").timedelta(days=since_days)
-    rows = list(db.execute(
+    """Most-used knowledge atoms the caller may read."""
+    since = datetime.now(UTC) - timedelta(days=since_days)
+    stmt = (
         select(
             UsageEvent.knowledge_id,
             func.count(UsageEvent.id).label("usage_count"),
@@ -83,13 +91,17 @@ def top_used(
         )
         .join(Knowledge, Knowledge.id == UsageEvent.knowledge_id)
         .where(
-            UsageEvent.workspace_id == workspace_id,
+            UsageEvent.workspace_id == scope.workspace_id,
             UsageEvent.created_at >= since,
         )
         .group_by(UsageEvent.knowledge_id)
         .order_by(func.count(UsageEvent.id).desc())
         .limit(limit)
-    ).all())
+    )
+    # Narrow through the Knowledge side of the join: a member must not see
+    # usage rows — or statements — for private atoms.
+    stmt = scope.apply(stmt, Knowledge)
+    rows = list(db.execute(stmt).all())
     return [
         {"knowledge_id": r[0], "count": r[1], "statement": r[2][:120], "type": r[3]}
         for r in rows
@@ -98,44 +110,48 @@ def top_used(
 
 def unused_knowledge(
     db: Session,
-    workspace_id: str,
+    scope: ReadScope,
     limit: int = 10,
 ) -> list[dict]:
-    """Canonical knowledge that has never been cited."""
-    from .models import Knowledge
+    """Canonical knowledge the caller may read that has never been cited."""
     used_ids = select(UsageEvent.knowledge_id).where(
-        UsageEvent.workspace_id == workspace_id
+        UsageEvent.workspace_id == scope.workspace_id
     ).scalar_subquery()
-    items = list(db.scalars(
+    stmt = scope.apply(
         select(Knowledge).where(
-            Knowledge.workspace_id == workspace_id,
             Knowledge.status == "canonical",
             Knowledge.id.notin_(used_ids),
-        ).order_by(Knowledge.approved_at).limit(limit)
-    ).all())
+        ),
+        Knowledge,
+    )
+    items = list(db.scalars(stmt.order_by(Knowledge.approved_at).limit(limit)).all())
     return [
         {"id": k.id, "statement": k.statement[:120], "type": k.type, "approved_at": k.approved_at.isoformat()}
         for k in items
     ]
 
 
-def usage_summary(db: Session, workspace_id: str) -> dict:
-    """Overview of knowledge usage patterns."""
-    from .models import Knowledge
+def usage_summary(db: Session, scope: ReadScope) -> dict:
+    """Overview of knowledge usage patterns, narrowed to the caller's ceiling."""
     total_knowledge = db.scalar(
-        select(func.count(Knowledge.id)).where(
-            Knowledge.workspace_id == workspace_id,
-            Knowledge.status == "canonical",
+        scope.apply(
+            select(func.count(Knowledge.id)).where(Knowledge.status == "canonical"),
+            Knowledge,
         )
     ) or 0
+    # Count only events whose atom the caller may read, so totals cannot leak
+    # the existence of private rows through the numbers alone.
+    readable_ids = scope.apply(select(Knowledge.id), Knowledge).scalar_subquery()
     total_usage = db.scalar(
         select(func.count(UsageEvent.id)).where(
-            UsageEvent.workspace_id == workspace_id,
+            UsageEvent.workspace_id == scope.workspace_id,
+            UsageEvent.knowledge_id.in_(readable_ids),
         )
     ) or 0
     unique_used = db.scalar(
         select(func.count(func.distinct(UsageEvent.knowledge_id))).where(
-            UsageEvent.workspace_id == workspace_id,
+            UsageEvent.workspace_id == scope.workspace_id,
+            UsageEvent.knowledge_id.in_(readable_ids),
         )
     ) or 0
     return {
@@ -143,6 +159,6 @@ def usage_summary(db: Session, workspace_id: str) -> dict:
         "total_usage_events": total_usage,
         "unique_atoms_used": unique_used,
         "reuse_rate": round(unique_used / max(total_knowledge, 1), 2),
-        "top_used": top_used(db, workspace_id, limit=5),
+        "top_used": top_used(db, scope, limit=5),
         "unused_count": max(total_knowledge - unique_used, 0),
     }

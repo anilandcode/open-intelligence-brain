@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import re
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .models import Knowledge

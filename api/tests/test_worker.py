@@ -1,17 +1,13 @@
 """Tests for the background worker and decision provider."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from brain.decision import (
-    DecisionSuggestion,
     DeterministicProvider,
     JevShadowProvider,
     create_provider,
 )
-from brain.harness import Turn
-from brain.models import new_id
-from brain.worker import _fake_access, _fake_scope, _execute_tool
+from brain.worker import _fake_access, _fake_scope
 
 
 class TestDecisionProvider:
@@ -58,4 +54,9 @@ class TestWorkerHelpers:
         turn.workspace_id = "ws_test"
         scope = _fake_scope(turn)
         assert scope.workspace_id == "ws_test"
-        assert scope.sensitivity_ceiling == "private"
+        # The worker runs as admin within the turn's workspace, so its scope
+        # carries the admin sensitivity ceiling (may read private material),
+        # matching what an admin token would reach — but a real ReadScope, so
+        # every query is narrowed identically to the API.
+        assert scope.role == "admin"
+        assert scope.permitted == {"public", "internal", "private"}

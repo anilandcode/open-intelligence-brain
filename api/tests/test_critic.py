@@ -1,7 +1,6 @@
 """Tests for the critic pass."""
 
-import pytest
-from brain.critic import assess_proposal, CriticNote, CriticAssessment
+from brain.critic import CriticAssessment, assess_proposal
 
 
 class TestCriticAssessment:

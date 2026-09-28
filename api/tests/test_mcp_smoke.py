@@ -5,16 +5,20 @@ without starting an actual stdio/HTTP transport. This verifies the contract
 that any MCP host (Codex, Claude Code, Hermes) depends on.
 """
 
-import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from brain.access import ReadScope, ensure_default_workspace
 from brain.database import SessionLocal
-from brain.access import ensure_default_workspace
-from brain.models import Knowledge, Proposal, Source, SourceVersion, ProposalEvidence, new_id
-from brain.services import create_source_with_proposals, approve_proposal, search_knowledge, integrity_snapshot, overview
-from brain.access import ReadScope
+from brain.models import Proposal
 from brain.schemas import SourceCreate
-from sqlalchemy import select
+from brain.services import (
+    approve_proposal,
+    create_source_with_proposals,
+    integrity_snapshot,
+    overview,
+    search_knowledge,
+)
 
 
 def _seed_full(db: Session, workspace_id: str):

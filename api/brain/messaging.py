@@ -29,7 +29,7 @@ class HermesConfig:
     timeout: float = 10.0
 
     @classmethod
-    def from_env(cls) -> "HermesConfig":
+    def from_env(cls) -> HermesConfig:
         return cls(
             api_url=os.environ.get("BRAIN_HERMES_URL", ""),
             channel=os.environ.get("BRAIN_HERMES_CHANNEL", "digital-brain"),

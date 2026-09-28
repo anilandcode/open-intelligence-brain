@@ -1,7 +1,6 @@
 """Tests for Intelligence Studio — interviews and drafts."""
 
 import pytest
-from sqlalchemy.orm import Session
 
 from brain.database import SessionLocal
 from brain.models import Knowledge, Source, new_id
@@ -148,7 +147,6 @@ class TestDrafts:
         assert len(detail.json()["sections"]) == 2
 
     def test_assemble_draft_from_knowledge(self, client, headers, knowledge_items):
-        kid = knowledge_items[0].id
         r = client.post("/api/v1/studio/drafts/assemble", json={
             "title": "Assembled brief",
             "intent": "brief",

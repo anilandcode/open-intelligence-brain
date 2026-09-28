@@ -14,12 +14,25 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 - Approval and rejection events are audited.
 - Source versions and source spans are immutable and SHA-256 addressed.
 - Knowledge revisions are append-only; supersession is an explicit owner action.
-- Restore refuses to overwrite a non-empty workspace.
+- Restore refuses to overwrite a non-empty workspace, and both restore endpoints require an owner or admin.
 - Source deletion is preview-only and reports blocking canonical dependencies.
+- The SPA static fallback containment-checks every resolved path inside `web/dist`; encoded traversal (`%2f`) cannot reach files outside it.
+- The sensitivity ceiling applies to every read path, including export and usage analytics: a member's export and usage counts exclude private material exactly like the list endpoints.
+- MCP over HTTP binds every tool to the resolved caller's workspace and role; a member token reads as a member, and a token granted only to another workspace cannot read the default one.
+- Token listings return a non-recoverable preview; a raw token string is shown exactly once, in the creation response.
+- Outbound URLs (Jev evaluation) come from server configuration only — no endpoint accepts a caller-supplied destination URL.
+- Every boundary above is pinned by a regression test in `api/tests/test_security_regressions.py`, each proven to fail when its fix is reverted.
+
+## Known gaps (deliberate, documented)
+
+- **Token `scope` is stored and returned but NOT enforced.** `TokenCreate` accepts a `scope` string and grants carry it, but no route checks it — a "read-only" scoped token can still write. Do not rely on scope for restriction until it is enforced; use role and expiry, which are enforced.
+- The owner token is a long-lived static bearer credential.
+- SQLite/Postgres access control is application-level only; there is no row-level security in the database.
 
 ## Before remote deployment
 
 - Replace the long-lived owner token with standard identity and short-lived scoped sessions.
+- Enforce or remove token `scope` — a field that promises restriction and delivers none is worse than no field.
 - Enforce TLS, strict host/origin policy, rate limits, and secure headers.
 - Add workspace-scoped grants and PostgreSQL row-level security as defense in depth.
 - Store original uploaded files outside the database with malware-safe parsing.

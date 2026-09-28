@@ -1,13 +1,12 @@
 """Tests for routines (daily digest) and usage tracking."""
 
-import pytest
 from sqlalchemy.orm import Session
 
-from brain.database import SessionLocal
-from brain.models import Knowledge, Proposal, Source, SourceVersion, ProposalEvidence, new_id
 from brain.access import ReadScope
-from brain.routines import build_digest, format_digest, RoutineDigest, LogDelivery
-from brain.usage import track_usage, track_batch, top_used, unused_knowledge, usage_summary
+from brain.database import SessionLocal
+from brain.models import Knowledge, Proposal, ProposalEvidence, Source, SourceVersion, new_id
+from brain.routines import LogDelivery, RoutineDigest, build_digest, format_digest
+from brain.usage import top_used, track_batch, track_usage, unused_knowledge, usage_summary
 
 
 def _seed(db: Session, workspace_id: str):
@@ -120,7 +119,7 @@ class TestUsage:
             _, _, knowledge = _seed(db, ws.id)
             track_usage(db, ws.id, knowledge.id, context="search")
             db.commit()
-            summary = usage_summary(db, ws.id)
+            summary = usage_summary(db, ReadScope(ws.id, "owner"))
             assert summary["total_knowledge"] >= 1
             assert summary["total_usage_events"] >= 1
             assert summary["unique_atoms_used"] >= 1
@@ -136,7 +135,7 @@ class TestUsage:
             track_usage(db, ws.id, knowledge.id, context="search")
             track_usage(db, ws.id, knowledge.id, context="answer")
             db.commit()
-            top = top_used(db, ws.id)
+            top = top_used(db, ReadScope(ws.id, "owner"))
             assert len(top) >= 1
             assert top[0]["count"] >= 2
         finally:
@@ -148,7 +147,7 @@ class TestUsage:
             from brain.access import ensure_default_workspace
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
-            unused = unused_knowledge(db, ws.id)
+            unused = unused_knowledge(db, ReadScope(ws.id, "owner"))
             # The seeded knowledge should be unused
             ids = [u["id"] for u in unused]
             assert knowledge.id in ids

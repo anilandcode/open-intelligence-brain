@@ -42,7 +42,7 @@ POST /api/v1/mcp/call           — call a tool: {"tool": "name", "params": {...
 GET  /api/v1/mcp/sse            — SSE stream for MCP client discovery
 ```
 
-All endpoints require the `X-Brain-Token` header. The tools are identical to the stdio server — same read-only boundary, same authentication.
+All endpoints require the `X-Brain-Token` header. The tools are identical to the stdio server — same read-only boundary, same authentication — with one difference: over HTTP every tool is bound to the **resolved caller's** workspace and role. A member token reads exactly what that member may read through the REST API (private material excluded), and a token granted only to another workspace cannot read the default one. The stdio server runs locally with the owner token and reads the single granted workspace.
 
 ```bash
 # List tools

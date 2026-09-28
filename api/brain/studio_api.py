@@ -20,8 +20,8 @@ from sqlalchemy.orm import Session
 from .access import AccessDenied, ReadScope, WorkspaceAccess, resolve_workspace
 from .database import get_db
 from .models import Knowledge, new_id
-from .services import audit, create_source_with_proposals
 from .schemas import SourceCreate
+from .services import audit, create_source_with_proposals
 from .studio import (
     Draft,
     DraftCitation,

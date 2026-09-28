@@ -69,6 +69,8 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - [x] Manual outcome and reuse tracking.
 - [x] Hermes messaging pairing.
 - [x] Release packaging, compatibility matrix, and hardening.
+- [x] Security audit pass (v1.0.1): static-file containment, MCP caller-scope binding, export/usage ceiling, token previews, SSRF-free evaluation, admin-gated restore, worker path fixes — 32 regression tests.
+- [ ] Enforce (or remove) workspace-token `scope` — stored but currently unenforced.
 - [ ] Four-week personal usage study.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.

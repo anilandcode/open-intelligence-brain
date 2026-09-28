@@ -69,7 +69,7 @@ into the caller's.
 - Harness layer: event intake (`harness.py`), deterministic triage with policy enforcement (`triage.py`), and turn orchestration with budgets, steering, suspension, and cooperative cancellation (`turns.py`).
 - Workspace isolation (`access.py`) with role-based access control, sensitivity scoping, and expiring/scoped tokens.
 - Full-text search (`retrieval.py`) using SQLite FTS5 with BM25 ranking, synced after approval and supersession.
-- MCP HTTP adapter (`mcp_http.py`) exposing read-only tools over HTTP for remote agents.
+- MCP HTTP adapter (`mcp_http.py`) exposing read-only tools over HTTP for remote agents. Every tool implementation takes an explicit `ReadScope` (`*_scoped` functions in `mcp_server.py`); the HTTP transport passes the resolved caller's scope, the stdio server passes the local owner scope.
 - Intelligence Studio (`studio.py`, `studio_api.py`) with guided interview sessions and draft builder.
 - Background worker (`worker.py`) for durable turn processing with lease-based claiming.
 - Decision provider interface (`decision.py`) with deterministic and Jev shadow adapters.

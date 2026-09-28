@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # forgets cannot dial out anyway.
     strict_local: bool = False
 
+    # Jev shadow decision provider. Configuration lives here — never in a
+    # request parameter — so no API caller can point the server at an
+    # arbitrary URL (SSRF). Empty means the deterministic provider only.
+    jev_url: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property

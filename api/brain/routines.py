@@ -13,7 +13,6 @@ This is what makes the Brain go from "a place to store knowledge" to
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -22,10 +21,9 @@ from typing import Protocol
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .harness import BrainEvent, ProactivitySetting
-from .models import AuditEvent, Knowledge, Proposal, Source, new_id
+from .access import ReadScope
+from .models import Knowledge, Proposal, Source
 from .services import integrity_snapshot, knowledge_is_stale
-from .access import ReadScope, WorkspaceAccess
 
 logger = logging.getLogger("brain.routines")
 

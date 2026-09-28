@@ -1,5 +1,65 @@
 # Changelog
 
+## 1.0.1 — Security hardening
+
+Audited every boundary with live probes against a running server; all eleven
+findings fixed and each pinned by a regression test.
+
+### Security
+
+- **Unauthenticated arbitrary file read (critical).** The SPA catch-all joined
+  the request path onto `web/dist` without a containment check, and Starlette
+  unquotes `%2f` only *after* routing — so `GET /..%2f..%2f.env` with no token
+  at all returned the real `.env`, including `BRAIN_OWNER_TOKEN`, and the live
+  SQLite database was downloadable in one request. Now resolved paths must stay
+  inside `dist`; anything else 404s.
+- **MCP HTTP ignored the caller's identity (critical).** `mcp_http` authenticated
+  the token and then discarded it, calling tool functions that hardcode owner
+  scope over the default workspace. A member token read private atoms the REST
+  API correctly withheld, and a token granted only to *another* workspace read
+  the default one. Every MCP tool now takes an explicit `ReadScope` and the HTTP
+  transport passes the resolved caller's.
+- **Export bypassed the sensitivity ceiling.** `export_workspace_data` took a
+  bare `workspace_id`, so a member's export contained private sources with full
+  content. It now takes a `ReadScope` like every other collection read.
+- **Token listing returned raw credentials**, including the owner token. The
+  listing now returns a non-recoverable `principal_preview`; the raw string
+  appears exactly once, in the creation response.
+- **SSRF via `GET /api/v1/evaluation?jev_url=`.** A caller-named URL made the
+  server issue 15 outbound POSTs anywhere, including cloud metadata. The URL now
+  comes from `BRAIN_JEV_URL` config only, and the endpoint is admin-only.
+- **Restore had no admin gate.** `POST /api/v1/restore` and `/restore/preview`
+  accepted any member token; both now require `can_administer`.
+
+### Bugs
+
+- **`ask_brain` never worked.** `CitationResult.model_validate(Citation)` raised a
+  `ValidationError` on every grounded answer — the flagship MCP tool returned an
+  error to every caller. The existing smoke test passed because it called
+  `answer_question` directly instead of the tool.
+- **`usage_events` was never created on a fresh database.** `brain.usage` was
+  imported lazily inside route bodies, after `lifespan`'s `create_all` had
+  already run, so `/api/v1/usage`, `/usage/top`, and `/usage/unused` all returned
+  HTTP 500. Now imported at module level; a fresh-interpreter test pins it, since
+  pytest collection masked the bug.
+- **The background worker crashed on its main path.** `_execute_tool` indexed
+  `Knowledge` ORM objects as tuples (`top[0]`, `top[4]`) → `TypeError` on every
+  investigate turn that actually matched something. It also filtered proposals on
+  status `"pending"` when the real vocabulary is `"proposed"`, so it always
+  reported zero. The duck-typed worker scope also skipped the sensitivity ladder;
+  it now builds a real `ReadScope`.
+- **Token `scope` was decorative.** Still true, and now documented as unenforced
+  rather than silently promised — see `docs/security.md`.
+
+### Hygiene
+
+- `make lint` was red with 72 ruff findings (unused imports across
+  decision/evaluation/routines/worker/services, unsorted import blocks, a blind
+  `pytest.raises(Exception)`, a shadowed `Session`). All cleared.
+- 32 new regression tests in `api/tests/test_security_regressions.py`, one per
+  finding. Every fix was mechanically negated and confirmed to fail its own test.
+- 221 backend tests + 5 frontend tests.
+
 ## 1.0.0 — All milestones complete
 
 - Held-out evaluation: compare deterministic vs Jev shadow decisions.

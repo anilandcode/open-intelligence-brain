@@ -40,13 +40,18 @@ def _resolve_access(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
 
-# The MCP server functions create their own scope, so we call them directly.
+# The MCP tool implementations take an explicit ReadScope, so the HTTP
+# transport passes the CALLER's resolved scope — never the stdio server's
+# default owner scope. That is the whole point of this transport: a member
+# token gets member reach, a token granted only to another workspace gets
+# its own workspace, exactly like the REST API.
+from .access import ReadScope  # noqa: E402
 from .mcp_server import (  # noqa: E402
-    ask_brain,
-    brain_status,
-    inspect_brain_integrity,
-    list_pending_reviews,
-    search_brain,
+    ask_brain_scoped,
+    brain_status_scoped,
+    inspect_brain_integrity_scoped,
+    list_pending_reviews_scoped,
+    search_brain_scoped,
 )
 
 TOOL_DEFS = [
@@ -87,18 +92,31 @@ TOOL_DEFS = [
 TOOL_NAMES = {t["name"] for t in TOOL_DEFS}
 
 
-def _call_tool(name: str, params: dict) -> Any:
-    """Dispatch an MCP tool call to the matching implementation."""
+def _call_tool(name: str, params: dict, scope: ReadScope) -> Any:
+    """Dispatch an MCP tool call to the matching implementation.
+
+    `scope` is the resolved caller's read scope — every implementation is
+    bound to it, so an HTTP caller can never read wider than the REST API
+    would allow the same token.
+    """
     if name == "brain_status":
-        return brain_status().model_dump()
+        return brain_status_scoped(scope).model_dump()
     elif name == "search_brain":
-        return search_brain(query=params.get("query", ""), limit=params.get("limit", 10)).model_dump()
+        return search_brain_scoped(
+            query=params.get("query", ""),
+            limit=params.get("limit", 10),
+            scope=scope,
+        ).model_dump()
     elif name == "ask_brain":
-        return ask_brain(question=params.get("question", "")).model_dump()
+        return ask_brain_scoped(
+            question=params.get("question", ""), scope=scope
+        ).model_dump()
     elif name == "list_pending_reviews":
-        return list_pending_reviews(limit=params.get("limit", 10)).model_dump()
+        return list_pending_reviews_scoped(
+            limit=params.get("limit", 10), scope=scope
+        ).model_dump()
     elif name == "inspect_brain_integrity":
-        return inspect_brain_integrity().model_dump()
+        return inspect_brain_integrity_scoped(scope).model_dump()
     else:
         return {"error": f"Unknown tool: {name}"}
 
@@ -120,6 +138,10 @@ async def call_tool(
 
     Expects JSON body: {"tool": "tool_name", "params": {...}}
     Returns the tool result as JSON.
+
+    The caller's resolved access is turned into a ReadScope here, and every
+    tool implementation is bound to it — the same narrowing the REST API
+    applies to the same token.
     """
     body = await request.json()
     tool_name = body.get("tool", "")
@@ -128,8 +150,9 @@ async def call_tool(
     if tool_name not in TOOL_NAMES:
         return {"error": f"Unknown tool: {tool_name}. Available: {sorted(TOOL_NAMES)}"}
 
+    scope = ReadScope.of(access)
     try:
-        result = _call_tool(tool_name, params)
+        result = _call_tool(tool_name, params, scope)
         return {"tool": tool_name, "result": result}
     except Exception as exc:
         log.warning("MCP tool %s failed: %s", tool_name, exc)
@@ -156,7 +179,7 @@ async def sse_endpoint(
             if await request.is_disconnected():
                 break
             await asyncio.sleep(30)
-            yield f"event: ping\ndata: {{}}\n\n"
+            yield "event: ping\ndata: {}\n\n"
 
     return StreamingResponse(
         event_stream(),

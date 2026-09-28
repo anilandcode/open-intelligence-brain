@@ -4,9 +4,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
-from brain.access import grant_workspace, resolve_workspace, ensure_default_workspace
+from brain.access import AccessDenied, ensure_default_workspace, grant_workspace, resolve_workspace
 from brain.database import Base
 from brain.models import Knowledge, Source, new_id
 from brain.retrieval import ensure_fts, rebuild_fts, search_fts, sync_fts_insert
@@ -127,7 +127,7 @@ class TestExpiringTokens:
         expires = datetime.now(UTC) - timedelta(hours=1)
         grant_workspace(db, workspace, "expired_token", role="member", expires_at=expires)
         db.commit()
-        with pytest.raises(Exception):
+        with pytest.raises(AccessDenied):
             resolve_workspace(db, "expired_token")
 
     def test_valid_token_accepted(self, db):

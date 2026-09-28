@@ -15,10 +15,8 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Protocol
 
 logger = logging.getLogger("brain.decision")
@@ -48,7 +46,7 @@ class DeterministicProvider:
     name = "deterministic"
 
     def score(self, *, text: str, channel: str, addressed: bool = False) -> DecisionSuggestion:
-        from .triage import classify_event, decide_event, ProactivityPolicy
+        from .triage import ProactivityPolicy, classify_event, decide_event
         kind = classify_event(text=text, channel=channel, addressed=addressed, is_bot=False)
         policy = ProactivityPolicy()
         decision = decide_event(kind=kind, text=text, policy=policy)

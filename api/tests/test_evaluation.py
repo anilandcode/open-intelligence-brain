@@ -1,15 +1,13 @@
 """Tests for held-out evaluation and Hermes messaging."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from brain.decision import DeterministicProvider
 from brain.evaluation import (
-    run_evaluation,
-    evaluate_event,
-    EvaluationReport,
     DEFAULT_TEST_EVENTS,
+    EvaluationReport,
+    evaluate_event,
+    run_evaluation,
 )
-from brain.decision import DeterministicProvider, JevShadowProvider, DecisionSuggestion
-from brain.messaging import HermesMessenger, HermesConfig
+from brain.messaging import HermesConfig, HermesMessenger
 
 
 class TestEvaluation:
