@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-- Version 0.6 adds a background worker for durable turn processing, a decision provider interface with Jev shadow mode, and a Hermes skill for one-command MCP connection.
+- Version 0.7 adds a critic pass that reviews proposals for evidence gaps, vague language, and type mismatches — displayed as inline notes on approval cards.
 
 ## Screens
 
@@ -116,7 +116,8 @@ api/                  FastAPI domain, services, and tests
     turns.py          Turn orchestration (step, steer, suspend, resume, stop)
     worker.py         Background worker for durable turn processing
     decision.py       Decision provider interface (deterministic + Jev shadow)
-  tests/              154 backend tests across 11 modules
+    critic.py         Critic pass: evidence gap detection and quality signals
+  tests/              162 backend tests across 12 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -164,6 +165,8 @@ Implemented:
 - Per-channel proactivity policy.
 - Single-image Cloud Run deployment with Cloud Build.
 - Self-hosted LLM proxy for engine deployment.
+- Critic pass: evidence gap detection, vague language, type mismatches, weak sourcing.
+- Payload-bound approval cards with inline critic notes and severity color-coding.
 - Background worker for durable turn processing with lease-based claiming.
 - Decision provider interface with deterministic and Jev shadow adapters.
 - Hermes skill for one-command Brain connection via MCP.
@@ -175,16 +178,14 @@ Implemented:
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 154 backend tests and 5 frontend tests.
+- 162 backend tests and 5 frontend tests.
 
 Next:
 
 - PostgreSQL full-text search and local embeddings with index-version tracking.
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
-- Critic/evidence-gap pass as a separately labeled model opinion (M3 remaining item).
-- Payload-bound approval cards and held-out evaluation (M5 remaining items).
-- Durable background tasks and optional Jev decision adapter (M5).
+- Held-out evaluation before promoting Jev from shadow mode (M5 remaining item).
 - Daily routines, Hermes messaging, and usage tracking (M6 — personal beta).
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.

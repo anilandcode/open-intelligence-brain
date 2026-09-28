@@ -26,14 +26,14 @@
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
 
-## M3 — Intelligence Studio (mostly done)
+## M3 — Intelligence Studio (done)
 
 - [x] Interface architecture and clearly labeled non-functional previews.
 - [x] Guided interview sessions with add questions, submit responses, complete & extract.
 - [x] Thesis, story, lesson, framework, evidence, question, and decision proposal types.
 - [x] Draft builder: assemble approved knowledge into briefs/articles/agent context.
 - [x] Claim-to-source mapping in generated drafts with citations.
-- [ ] Critic/evidence-gap pass as a separately labeled model opinion.
+- [x] Critic/evidence-gap pass as a separately labeled model opinion.
 
 Exit: one new insight is captured from an interview and reused in two different drafts with inspectable evidence.
 
@@ -58,7 +58,7 @@ Exit: each tested client retrieves the same current revision and cannot access a
 - [x] Background worker for durable turn processing with lease-based claiming.
 - [x] `DecisionProvider` interface with rule and local implementations.
 - [x] Optional Jev adapter in shadow mode for intent routing and relevance scoring.
-- [ ] Payload-bound approval cards.
+- [x] Payload-bound approval cards with critic notes and source context.
 - [ ] Held-out evaluation before any automatic route.
 
 Exit: disabling Jev leaves every core workflow working, and measured results justify any route promoted from shadow mode.

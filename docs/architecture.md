@@ -73,6 +73,7 @@ into the caller's.
 - Intelligence Studio (`studio.py`, `studio_api.py`) with guided interview sessions and draft builder.
 - Background worker (`worker.py`) for durable turn processing with lease-based claiming.
 - Decision provider interface (`decision.py`) with deterministic and Jev shadow adapters.
+- Critic pass (`critic.py`) for evidence gap detection and quality signals on proposals.
 - Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — Critic pass and payload-bound approval cards
+
+- Critic pass reviews proposals after extraction, flagging evidence gaps, vague language, and type mismatches.
+- Critic notes displayed inline on proposal review with severity color-coding.
+- Payload-bound approval cards with source excerpt, similar knowledge, and conflict signals.
+- 162 backend tests + 5 frontend tests.
+
 ## 0.6.0 — Background worker, decision provider, Hermes skill
 
 - Background worker for durable turn processing with lease-based claiming.
