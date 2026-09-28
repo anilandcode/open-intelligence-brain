@@ -193,3 +193,31 @@ def add_grant_scope_and_expiry() -> list[str]:
                 )
                 added.append(f"{table}.{column}")
     return added
+
+
+def add_turn_lease_columns() -> list[str]:
+    """Add `leased_by` and `lease_expires_at` columns to turns.
+
+    Additive and idempotent: two new nullable columns with no default needed,
+    since NULL means 'not leased' which is the existing behavior.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "turns" not in columns:
+        return []
+    wanted = {
+        "turns": [
+            ("leased_by", "VARCHAR(60)"),
+            ("lease_expires_at", "TIMESTAMP"),
+        ]
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                )
+                added.append(f"{table}.{column}")
+    return added

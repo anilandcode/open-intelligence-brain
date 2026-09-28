@@ -89,6 +89,8 @@ class Turn(Base):
     suspension: Mapped[str] = mapped_column(Text, default="")
     superseded_by: Mapped[str] = mapped_column(String(32), default="")
     stop_reason: Mapped[str] = mapped_column(String(40), default="")
+    leased_by: Mapped[str | None] = mapped_column(String(60), nullable=True, default=None)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
