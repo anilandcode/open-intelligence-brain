@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-Version 0.5 adds the Intelligence Studio — guided interview sessions and a draft builder for assembling approved knowledge into articles, briefs, and agent context. The core trust model — nothing becomes canonical without human approval — is unchanged.
+- Version 0.6 adds a background worker for durable turn processing, a decision provider interface with Jev shadow mode, and a Hermes skill for one-command MCP connection.
 
 ## Screens
 
@@ -114,7 +114,9 @@ api/                  FastAPI domain, services, and tests
     studio_schemas.py Pydantic schemas for Studio
     triage.py         Deterministic triage with policy enforcement
     turns.py          Turn orchestration (step, steer, suspend, resume, stop)
-  tests/              160 backend tests across 10 modules
+    worker.py         Background worker for durable turn processing
+    decision.py       Decision provider interface (deterministic + Jev shadow)
+  tests/              154 backend tests across 11 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -130,6 +132,7 @@ web/                  React + TypeScript workbench
     favicon.svg       App favicon
 engine/               Self-hosted LLM proxy (Dockerfile + entrypoint + proxy)
 scripts/              Deploy scripts (Cloud Run, engine, fetch)
+hermes-skill/         Hermes skill for one-command MCP connection
 docs/                 Architecture, security, roadmap, interface, deploy, harness
 docker-compose.yml    PostgreSQL + API + frontend development stack
 Dockerfile            Single-image build for Cloud Run
@@ -161,6 +164,9 @@ Implemented:
 - Per-channel proactivity policy.
 - Single-image Cloud Run deployment with Cloud Build.
 - Self-hosted LLM proxy for engine deployment.
+- Background worker for durable turn processing with lease-based claiming.
+- Decision provider interface with deterministic and Jev shadow adapters.
+- Hermes skill for one-command Brain connection via MCP.
 - Intelligence Studio: guided interview sessions and draft builder.
 - Interview responses auto-extract into proposals after completion.
 - Drafts assemble approved knowledge into briefs/articles/agent context with citations.
@@ -169,7 +175,7 @@ Implemented:
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 160 backend tests and 5 frontend tests.
+- 154 backend tests and 5 frontend tests.
 
 Next:
 
@@ -177,8 +183,9 @@ Next:
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
 - Critic/evidence-gap pass as a separately labeled model opinion (M3 remaining item).
-- Scoped workspace principals, expiring tokens, and MCP HTTP adapter (M4).
+- Payload-bound approval cards and held-out evaluation (M5 remaining items).
 - Durable background tasks and optional Jev decision adapter (M5).
+- Daily routines, Hermes messaging, and usage tracking (M6 — personal beta).
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
 See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.

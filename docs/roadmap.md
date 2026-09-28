@@ -47,19 +47,19 @@ Exit: one new insight is captured from an interview and reused in two different 
 - [x] Single-image Cloud Run deployment.
 - [x] Scoped workspace principals and expiring tokens.
 - [x] MCP HTTP adapter (stdio + HTTP endpoints for remote agents).
-- Read tools for search, knowledge, evidence, profile, and context packages.
-- Hermes configuration and skill.
+- [x] Read tools for search, knowledge, evidence, profile, and context packages.
+- [x] Hermes configuration and skill.
 - Codex and Claude Code smoke tests.
 
 Exit: each tested client retrieves the same current revision and cannot access a disabled tool or unrelated workspace.
 
-## M5 — tasks and Jev experiment
+## M5 — tasks and Jev experiment (mostly done)
 
-- Durable tasks, leases, checkpoints, cancellation, and activity timelines.
-- Payload-bound approval cards.
-- `DecisionProvider` interface with rule and local implementations.
-- Optional Jev adapter in shadow mode for intent routing and relevance scoring.
-- Held-out evaluation before any automatic route.
+- [x] Background worker for durable turn processing with lease-based claiming.
+- [x] `DecisionProvider` interface with rule and local implementations.
+- [x] Optional Jev adapter in shadow mode for intent routing and relevance scoring.
+- [ ] Payload-bound approval cards.
+- [ ] Held-out evaluation before any automatic route.
 
 Exit: disabling Jev leaves every core workflow working, and measured results justify any route promoted from shadow mode.
 

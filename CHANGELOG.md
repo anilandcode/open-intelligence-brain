@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — Background worker, decision provider, Hermes skill
+
+- Background worker for durable turn processing with lease-based claiming.
+- Decision provider interface with deterministic and Jev shadow adapters.
+- Hermes skill for one-command Brain connection via MCP.
+- Turn lease columns for multi-worker coordination.
+- 154 backend tests + 5 frontend tests.
+
 ## 0.5.0 — Intelligence Studio
 
 - Interview sessions: create, add questions, submit responses, extract proposals.
