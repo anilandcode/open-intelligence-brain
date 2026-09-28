@@ -165,3 +165,31 @@ def add_workspace_columns() -> list[str]:
             text("CREATE INDEX IF NOT EXISTS ix_workspaces_slug ON workspaces (slug)")
         )
     return applied
+
+
+def add_grant_scope_and_expiry() -> list[str]:
+    """Add `scope` and `expires_at` columns to workspace_grants.
+
+    Additive and idempotent: two new nullable columns with no default needed,
+    since NULL means 'full access, no expiry' which is the existing behavior.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "workspace_grants" not in columns:
+        return []
+    wanted = {
+        "workspace_grants": [
+            ("scope", "VARCHAR(80)"),
+            ("expires_at", "TIMESTAMP"),
+        ]
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                )
+                added.append(f"{table}.{column}")
+    return added

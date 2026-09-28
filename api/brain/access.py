@@ -11,6 +11,7 @@ row disagree with its own parent after a bad write.
 """
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
@@ -119,6 +120,7 @@ class WorkspaceAccess:
     workspace: Workspace
     principal: str
     role: str
+    scope: str | None = None
 
     @property
     def workspace_id(self) -> str:
@@ -223,11 +225,23 @@ def resolve_workspace(
     workspace = db.get(Workspace, target.workspace_id)
     if workspace is None:
         raise AccessDenied("Unknown workspace")
-    return WorkspaceAccess(workspace=workspace, principal=token, role=target.role)
+    # Check token expiration — SQLite stores naive datetimes, so compare
+    # after stripping timezone info from both sides.
+    if target.expires_at is not None:
+        expiry = target.expires_at.replace(tzinfo=None) if target.expires_at.tzinfo is None else target.expires_at
+        now = datetime.now(UTC).replace(tzinfo=None) if expiry.tzinfo is None else datetime.now(UTC)
+        if expiry < now:
+            raise AccessDenied("This Brain token has expired")
+    return WorkspaceAccess(workspace=workspace, principal=token, role=target.role, scope=target.scope)
 
 
 def grant_workspace(
-    db: Session, workspace: Workspace | None, principal: str, role: str = "member"
+    db: Session,
+    workspace: Workspace | None,
+    principal: str,
+    role: str = "member",
+    scope: str | None = None,
+    expires_at: datetime | None = None,
 ) -> WorkspaceGrant:
     """Give a principal access to a workspace, replacing any existing grant."""
     if workspace is None:
@@ -240,12 +254,16 @@ def grant_workspace(
     )
     if existing is not None:
         existing.role = role
+        existing.scope = scope
+        existing.expires_at = expires_at
         return existing
     grant = WorkspaceGrant(
         id=new_id("wsg"),
         workspace_id=workspace.id,
         principal=principal,
         role=role,
+        scope=scope,
+        expires_at=expires_at,
     )
     db.add(grant)
     db.flush()

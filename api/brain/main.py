@@ -1,6 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +24,8 @@ from .access import (
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
-from .migrate import add_engine_link_columns, add_nullable_evidence_span, add_workspace_columns
+from .migrate import add_engine_link_columns, add_grant_scope_and_expiry, add_nullable_evidence_span, add_workspace_columns
+from .mcp_http import router as mcp_http_router
 from .models import (
     AuditEvent,
     Knowledge,
@@ -71,6 +74,8 @@ from .schemas import (
     TurnStepRead,
     WorkspaceCreate,
     WorkspaceRead,
+    TokenCreate,
+    TokenRead,
 )
 from .services import (
     add_source_version,
@@ -94,6 +99,7 @@ from .services import (
     supersede_knowledge,
     sync_derived_proposals,
 )
+from .retrieval import ensure_fts, rebuild_fts
 
 settings = get_settings()
 
@@ -116,6 +122,17 @@ async def lifespan(_: FastAPI):
     linked = add_engine_link_columns()
     if linked:
         logging.getLogger(__name__).info("Added engine link columns to: %s", ", ".join(linked))
+    # Adds scope and expires_at to workspace_grants for expiring/scoped tokens.
+    granted = add_grant_scope_and_expiry()
+    if granted:
+        logging.getLogger(__name__).info("Added grant columns: %s", ", ".join(granted))
+    # Build the FTS5 index for full-text search over canonical knowledge.
+    with SessionLocal() as db:
+        if ensure_fts(db):
+            count = rebuild_fts(db)
+            logging.getLogger(__name__).info("FTS5 index built: %d canonical items", count)
+        else:
+            logging.getLogger(__name__).info("FTS5 not available, using ILIKE fallback")
     # Every deployment starts with a real workspace and a grant for the configured
     # token, so a single-company Brain works with no extra setup.
     with SessionLocal() as db:
@@ -142,9 +159,10 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="0.2.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
+app.include_router(mcp_http_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -270,6 +288,93 @@ def create_workspace(
     db.commit()
     db.refresh(workspace)
     return workspace
+
+
+@app.post("/api/v1/workspaces/{workspace_slug}/tokens", response_model=TokenRead, status_code=201)
+def create_workspace_token(
+    workspace_slug: str,
+    payload: TokenCreate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Create a scoped or expiring access token for a workspace.
+
+    Only owners and admins can create tokens. The generated token string is
+    returned in the `principal` field — give it to the person or agent that
+    needs access. Scoped tokens can only perform actions within their scope;
+    expiring tokens stop working after `expires_in_hours`.
+    """
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can create access tokens",
+        )
+    workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if workspace.id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    token_string = f"brn_{uuid4().hex}"
+    expires_at = None
+    if payload.expires_in_hours is not None:
+        expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
+    grant = grant_workspace(
+        db, workspace, token_string,
+        role=payload.role, scope=payload.scope, expires_at=expires_at,
+    )
+    audit_access(
+        db, access, "token.created",
+        f"Created {payload.role} token" + (f" scoped to {payload.scope}" if payload.scope else ""),
+    )
+    db.commit()
+    db.refresh(grant)
+    return grant
+
+
+@app.get("/api/v1/workspaces/{workspace_slug}/tokens", response_model=list[TokenRead])
+def list_workspace_tokens(
+    workspace_slug: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """List all tokens for a workspace. Only owners and admins."""
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can list tokens",
+        )
+    workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
+    if workspace is None or workspace.id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return list(
+        db.scalars(
+            select(WorkspaceGrant).where(WorkspaceGrant.workspace_id == workspace.id)
+        ).all()
+    )
+
+
+@app.delete("/api/v1/workspaces/{workspace_slug}/tokens/{token_id}", status_code=204)
+def revoke_workspace_token(
+    workspace_slug: str,
+    token_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Revoke an access token. Only owners and admins."""
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can revoke tokens",
+        )
+    workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
+    if workspace is None or workspace.id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    grant = db.get(WorkspaceGrant, token_id)
+    if grant is None or grant.workspace_id != workspace.id:
+        raise HTTPException(status_code=404, detail="Token not found")
+    db.delete(grant)
+    audit_access(db, access, "token.revoked", f"Revoked token {token_id}")
+    db.commit()
 
 
 @app.get("/api/v1/overview", response_model=OverviewRead)

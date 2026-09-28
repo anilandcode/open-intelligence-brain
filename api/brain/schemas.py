@@ -196,6 +196,22 @@ class WorkspaceRead(BaseModel):
     slug: str
     name: str
     created_at: datetime
+
+class TokenCreate(BaseModel):
+    """Create a scoped or expiring access token for a workspace."""
+    role: str = Field(default="member", pattern="^(owner|admin|member)$")
+    scope: str | None = Field(default=None, max_length=80)
+    expires_in_hours: int | None = Field(default=None, ge=1, le=8760)  # max 1 year
+
+class TokenRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    principal: str
+    role: str
+    scope: str | None = None
+    expires_at: datetime | None = None
+    created_at: datetime
 class EventCreate(BaseModel):
     """One inbound message, as a channel or an agent would report it.
 

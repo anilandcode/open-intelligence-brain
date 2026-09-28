@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope, workspace_counts
+from .database import SessionLocal
 from .engine import (
     ContainerTagRejected,
     container_tag_for,
@@ -25,6 +26,14 @@ from .models import (
     SourceSpan,
     SourceVersion,
     new_id,
+)
+from .retrieval import (
+    ensure_fts,
+    rebuild_fts,
+    search_fts,
+    sync_fts_delete,
+    sync_fts_insert,
+    sync_fts_update,
 )
 from .schemas import ChatResponse, Citation, SourceCreate
 
@@ -76,14 +85,24 @@ def audit(
 
 def classify_statement(statement: str) -> str:
     lowered = statement.lower()
+    # Check thesis before decision/belief because "because" + "should" is common
+    if any(word in lowered for word in ("because", "therefore", "means that")):
+        return "thesis"
     if any(word in lowered for word in ("believe", "should", "prefer", "matters")):
         return "belief"
     if any(word in lowered for word in ("learned", "lesson", "realized")):
         return "lesson"
-    if any(word in lowered for word in ("because", "therefore", "means that")):
-        return "thesis"
-    if any(word in lowered for word in ("decided", "decision", "chose")):
+    # "decided" and "decision" — use word boundary to avoid matching "decisions" in evidence sentences
+    if re.search(r"\b(?:decided|decision|chose)\b", lowered):
         return "decision"
+    if any(word in lowered for word in ("framework", "model", "principle", "approach", "methodology")):
+        return "framework"
+    if any(word in lowered for word in ("evidence", "data shows", "research shows", "study found", "measured")):
+        return "evidence"
+    if any(word in lowered for word in ("story", "example", "case", "instance", "scenario")):
+        return "story"
+    if "?" in lowered or any(word in lowered for word in ("how to", "what is", "why do", "when should")):
+        return "question"
     return "fact"
 
 
@@ -404,6 +423,12 @@ def approve_proposal(
     )
     db.commit()
     db.refresh(canonical)
+    # Keep FTS index in sync
+    try:
+        with SessionLocal() as fts_db:
+            sync_fts_insert(fts_db, canonical)
+    except Exception:
+        pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return canonical
 
 
@@ -449,6 +474,12 @@ def supersede_knowledge(
     )
     db.commit()
     db.refresh(item)
+    # Keep FTS index in sync
+    try:
+        with SessionLocal() as fts_db:
+            sync_fts_update(fts_db, item)
+    except Exception:
+        pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return item
 
 
@@ -563,11 +594,41 @@ def _query_terms(query: str) -> list[str]:
 def search_knowledge(
     db: Session, scope: ReadScope, query: str, limit: int = 20
 ) -> list[Knowledge]:
-    terms = _query_terms(query)
-    stmt = scope.apply(
+    """Search canonical knowledge.
+
+    Uses FTS5 BM25 ranking when available, falls back to ILIKE. Both paths
+    respect workspace and sensitivity scoping through the same ReadScope.
+    """
+    base = scope.apply(
         select(Knowledge).where(Knowledge.status == "canonical"),
         Knowledge,
     )
+    if not query.strip():
+        return list(db.scalars(base.order_by(Knowledge.approved_at.desc()).limit(limit)).all())
+
+    # Try FTS5 first
+    fts_ids = search_fts(db, query, limit=limit)
+    if fts_ids:
+        # Preserve FTS ranking order; filter by scope
+        items = list(
+            db.scalars(
+                scope.apply(
+                    select(Knowledge).where(
+                        Knowledge.id.in_(fts_ids),
+                        Knowledge.status == "canonical",
+                    ),
+                    Knowledge,
+                )
+            ).all()
+        )
+        # Re-order to match FTS ranking
+        id_order = {kid: i for i, kid in enumerate(fts_ids)}
+        items.sort(key=lambda item: id_order.get(item.id, 999))
+        return items[:limit]
+
+    # ILIKE fallback
+    terms = _query_terms(query)
+    stmt = base
     if terms:
         filters = []
         for term in terms:
@@ -616,42 +677,54 @@ def knowledge_is_stale(db: Session, item: Knowledge) -> bool:
     return bool(current_revision and latest and current_revision.source_version_id != latest.id)
 
 
-def _conflict_key(statement: str) -> tuple[set[str], bool]:
+def _conflict_key(statement: str) -> tuple[set[str], bool, str]:
+    """Extract conflict-relevant features from a statement.
+
+    Returns (content_terms, has_negation, subject_ngram). The subject ngram
+    is the first few significant words, used to detect same-topic contradictions.
+    """
     lowered = statement.lower().replace("cannot", "can not")
-    negative = bool(re.search(r"\b(?:not|never|no)\b", lowered))
+    negative = bool(re.search(r"\b(?:not|never|no|cannot|shouldn't|won't|doesn't|isn't)\b", lowered))
     ignored = {
-        "a",
-        "an",
-        "and",
-        "are",
-        "be",
-        "is",
-        "not",
-        "no",
-        "never",
-        "our",
-        "should",
-        "the",
-        "to",
-        "we",
+        "a", "an", "and", "are", "be", "is", "not", "no", "never",
+        "our", "should", "the", "to", "we", "it", "that", "this",
+        "with", "from", "for", "but", "or", "so", "if", "when",
     }
     terms = {
         term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
     }
-    return terms, negative
+    # Subject ngram: first 3 significant words for same-topic detection
+    sig_words = [term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored]
+    subject = " ".join(sig_words[:3])
+    return terms, negative, subject
 
 
 def conflict_map(items: list[Knowledge]) -> dict[str, list[str]]:
+    """Detect possible conflicts between canonical knowledge items.
+
+    Two items conflict when they share significant terms but express opposite
+    polarity (one affirms, the other denies). Also flags same-topic items of
+    the same type with very high overlap as potential contradictions.
+    """
     conflicts: dict[str, list[str]] = {item.id: [] for item in items}
     keyed = {item.id: _conflict_key(item.statement) for item in items}
     for index, left in enumerate(items):
-        left_terms, left_negative = keyed[left.id]
+        left_terms, left_negative, left_subject = keyed[left.id]
         for right in items[index + 1 :]:
-            right_terms, right_negative = keyed[right.id]
-            if left_negative == right_negative or not left_terms or not right_terms:
+            right_terms, right_negative, right_subject = keyed[right.id]
+            if not left_terms or not right_terms:
                 continue
             overlap = len(left_terms & right_terms) / max(len(left_terms | right_terms), 1)
-            if overlap >= 0.55:
+            # Case 1: opposite polarity with high term overlap
+            if left_negative != right_negative and overlap >= 0.50:
+                conflicts[left.id].append(right.id)
+                conflicts[right.id].append(left.id)
+                continue
+            # Case 2: same topic, same type, very high overlap — possible duplicate/contradiction
+            if (left.type == right.type
+                    and left_subject == right_subject
+                    and overlap >= 0.70
+                    and left.id not in conflicts[right.id]):
                 conflicts[left.id].append(right.id)
                 conflicts[right.id].append(left.id)
     return conflicts

@@ -55,6 +55,12 @@ class WorkspaceGrant(Base):
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     principal: Mapped[str] = mapped_column(String(120), index=True)
     role: Mapped[str] = mapped_column(String(20), default="member")
+    # Scoped grants: a grant can be limited to a specific purpose.
+    # None means full access; a string limits what the principal can do.
+    scope: Mapped[str | None] = mapped_column(String(80), nullable=True, default=None)
+    # Expiring grants: after this time the grant is no longer valid.
+    # None means no expiry (the default for local development).
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
