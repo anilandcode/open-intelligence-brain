@@ -90,7 +90,9 @@ class Turn(Base):
     superseded_by: Mapped[str] = mapped_column(String(32), default="")
     stop_reason: Mapped[str] = mapped_column(String(40), default="")
     leased_by: Mapped[str | None] = mapped_column(String(60), nullable=True, default=None)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now_utc, onupdate=now_utc
@@ -124,9 +126,7 @@ class ProactivitySetting(Base):
     """
 
     __tablename__ = "proactivity_settings"
-    __table_args__ = (
-        UniqueConstraint("workspace_id", "channel", name="uq_proactivity_channel"),
-    )
+    __table_args__ = (UniqueConstraint("workspace_id", "channel", name="uq_proactivity_channel"),)
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(

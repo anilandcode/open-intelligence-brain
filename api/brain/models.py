@@ -60,7 +60,9 @@ class WorkspaceGrant(Base):
     scope: Mapped[str | None] = mapped_column(String(80), nullable=True, default=None)
     # Expiring grants: after this time the grant is no longer valid.
     # None means no expiry (the default for local development).
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 

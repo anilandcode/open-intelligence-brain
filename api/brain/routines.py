@@ -31,6 +31,7 @@ logger = logging.getLogger("brain.routines")
 @dataclass(frozen=True)
 class RoutineDigest:
     """What the Brain wants to tell you."""
+
     pending_proposals: int = 0
     stale_knowledge: int = 0
     conflict_count: int = 0
@@ -52,11 +53,13 @@ class RoutineDigest:
 
 class DeliveryChannel(Protocol):
     """Where the routine digest goes."""
+
     def send(self, message: str, channel: str) -> bool: ...
 
 
 class LogDelivery:
     """Default delivery — logs the digest. Replace with Hermes/Slack/email."""
+
     name = "log"
 
     def send(self, message: str, channel: str) -> bool:
@@ -66,6 +69,7 @@ class LogDelivery:
 
 class HermesDelivery:
     """Deliver through Hermes messaging."""
+
     name = "hermes"
 
     def __init__(self, api_url: str | None = None):
@@ -77,6 +81,7 @@ class HermesDelivery:
             return True
         try:
             import httpx
+
             httpx.post(
                 f"{self.api_url}/api/v1/send",
                 json={"channel": channel, "message": message},
@@ -93,20 +98,25 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     since = datetime.now(UTC) - timedelta(hours=since_hours)
 
     # Pending proposals
-    pending = db.scalar(
-        select(func.count(Proposal.id)).where(
-            Proposal.workspace_id == scope.workspace_id,
-            Proposal.status == "proposed",
+    pending = (
+        db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.workspace_id == scope.workspace_id,
+                Proposal.status == "proposed",
+            )
         )
-    ) or 0
+        or 0
+    )
 
     # Stale knowledge
-    items = list(db.scalars(
-        select(Knowledge).where(
-            Knowledge.workspace_id == scope.workspace_id,
-            Knowledge.status == "canonical",
-        )
-    ).all())
+    items = list(
+        db.scalars(
+            select(Knowledge).where(
+                Knowledge.workspace_id == scope.workspace_id,
+                Knowledge.status == "canonical",
+            )
+        ).all()
+    )
     stale = sum(1 for item in items if knowledge_is_stale(db, item))
 
     # Conflicts
@@ -115,32 +125,40 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     warnings = [issue["detail"] for issue in integrity.get("issues", [])[:5]]
 
     # Recent activity
-    approvals = db.scalar(
-        select(func.count(Knowledge.id)).where(
-            Knowledge.workspace_id == scope.workspace_id,
-            Knowledge.approved_at >= since,
+    approvals = (
+        db.scalar(
+            select(func.count(Knowledge.id)).where(
+                Knowledge.workspace_id == scope.workspace_id,
+                Knowledge.approved_at >= since,
+            )
         )
-    ) or 0
+        or 0
+    )
 
-    sources = db.scalar(
-        select(func.count(Source.id)).where(
-            Source.workspace_id == scope.workspace_id,
-            Source.created_at >= since,
+    sources = (
+        db.scalar(
+            select(func.count(Source.id)).where(
+                Source.workspace_id == scope.workspace_id,
+                Source.created_at >= since,
+            )
         )
-    ) or 0
+        or 0
+    )
 
     # Top pending proposals (most recent 3)
-    top = list(db.scalars(
-        select(Proposal).where(
-            Proposal.workspace_id == scope.workspace_id,
-            Proposal.status == "proposed",
-        ).order_by(Proposal.created_at.desc()).limit(3)
-    ).all())
+    top = list(
+        db.scalars(
+            select(Proposal)
+            .where(
+                Proposal.workspace_id == scope.workspace_id,
+                Proposal.status == "proposed",
+            )
+            .order_by(Proposal.created_at.desc())
+            .limit(3)
+        ).all()
+    )
 
-    top_proposals = [
-        {"id": p.id, "type": p.type, "statement": p.statement[:120]}
-        for p in top
-    ]
+    top_proposals = [{"id": p.id, "type": p.type, "statement": p.statement[:120]} for p in top]
 
     # Build summary
     parts = []
@@ -159,7 +177,9 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     if not parts:
         summary = "✨ Nothing needs attention. Your Brain is healthy."
     else:
-        summary = "Good morning! Here's what needs your attention:\n" + "\n".join(f"  {p}" for p in parts)
+        summary = "Good morning! Here's what needs your attention:\n" + "\n".join(
+            f"  {p}" for p in parts
+        )
 
     return RoutineDigest(
         pending_proposals=pending,

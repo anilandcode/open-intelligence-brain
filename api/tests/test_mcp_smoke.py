@@ -39,12 +39,16 @@ def _seed_full(db: Session, workspace_id: str):
         workspace_id,
     )
     # Approve the first proposal
-    proposals = list(db.scalars(
-        select(Proposal).where(
-            Proposal.workspace_id == workspace_id,
-            Proposal.status == "proposed",
-        ).limit(1)
-    ).all())
+    proposals = list(
+        db.scalars(
+            select(Proposal)
+            .where(
+                Proposal.workspace_id == workspace_id,
+                Proposal.status == "proposed",
+            )
+            .limit(1)
+        ).all()
+    )
     if proposals:
         approve_proposal(db, proposals[0], None, None)
     return source
@@ -91,6 +95,7 @@ class TestMCPSmoke:
         db = SessionLocal()
         try:
             from brain.services import answer_question
+
             ws = ensure_default_workspace(db)
             scope = ReadScope(ws.id, "owner")
             _seed_full(db, ws.id)
@@ -119,12 +124,14 @@ class TestMCPSmoke:
         try:
             ws = ensure_default_workspace(db)
             _seed_full(db, ws.id)
-            pending = list(db.scalars(
-                select(Proposal).where(
-                    Proposal.workspace_id == ws.id,
-                    Proposal.status == "proposed",
-                )
-            ).all())
+            pending = list(
+                db.scalars(
+                    select(Proposal).where(
+                        Proposal.workspace_id == ws.id,
+                        Proposal.status == "proposed",
+                    )
+                ).all()
+            )
             # May be 0 if all were approved, but should not error
             assert isinstance(pending, list)
         finally:

@@ -7,7 +7,9 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/brain.db"
     owner_token: str = "local-dev-token"
     seed_demo: bool = True
-    cors_origins: str = "http://localhost:5173,http://localhost:5186,http://127.0.0.1:5173,http://127.0.0.1:5186"
+    cors_origins: str = (
+        "http://localhost:5173,http://localhost:5186,http://127.0.0.1:5173,http://127.0.0.1:5186"
+    )
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
     # Memory engine. Hosted by default because the engine is what turns capture

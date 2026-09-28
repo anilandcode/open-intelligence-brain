@@ -56,17 +56,18 @@ def _claim_pending_turns(db: Session, worker_id: str) -> list[Turn]:
     # Find turns that are pending and either unleased or lease-expired
     turns = list(
         db.scalars(
-            select(Turn).where(
+            select(Turn)
+            .where(
                 Turn.status == "pending",
                 (Turn.leased_by.is_(None)) | (Turn.lease_expires_at < now),
-            ).order_by(Turn.created_at).limit(10)
+            )
+            .order_by(Turn.created_at)
+            .limit(10)
         ).all()
     )
     for turn in turns:
         turn.leased_by = worker_id
-        turn.lease_expires_at = datetime.fromtimestamp(
-            now.timestamp() + LEASE_DURATION, tz=UTC
-        )
+        turn.lease_expires_at = datetime.fromtimestamp(now.timestamp() + LEASE_DURATION, tz=UTC)
     if turns:
         db.flush()
     return turns
@@ -166,19 +167,29 @@ def _execute_tool(db: Session, turn: Turn, tool_name: str) -> str:
         return "No matching knowledge found."
     elif tool_name == "list_sources":
         from .models import Source
-        sources = list(db.scalars(select(Source).where(
-            Source.workspace_id == turn.workspace_id
-        ).limit(5)).all())
+
+        sources = list(
+            db.scalars(
+                select(Source).where(Source.workspace_id == turn.workspace_id).limit(5)
+            ).all()
+        )
         return f"Found {len(sources)} sources."
     elif tool_name == "get_proposal":
         from .models import Proposal
+
         # The proposal vocabulary is "proposed"/"approved"/"rejected" —
         # filtering on "pending" matched nothing and the worker always
         # reported 0 pending proposals.
-        proposals = list(db.scalars(select(Proposal).where(
-            Proposal.workspace_id == turn.workspace_id,
-            Proposal.status == "proposed",
-        ).limit(5)).all())
+        proposals = list(
+            db.scalars(
+                select(Proposal)
+                .where(
+                    Proposal.workspace_id == turn.workspace_id,
+                    Proposal.status == "proposed",
+                )
+                .limit(5)
+            ).all()
+        )
         return f"Found {len(proposals)} pending proposals."
     else:
         return f"Unknown tool: {tool_name}"
@@ -186,6 +197,7 @@ def _execute_tool(db: Session, turn: Turn, tool_name: str) -> str:
 
 class _fake_access:
     """Minimal access object for worker-processed turns."""
+
     def __init__(self, turn: Turn):
         self.workspace_id = turn.workspace_id
         self.principal = "worker"
@@ -220,8 +232,12 @@ class Worker:
 
     def run(self) -> None:
         """Main worker loop."""
-        logger.info("Worker %s starting (poll=%ds, lease=%ds)",
-                     self.worker_id, POLL_INTERVAL, LEASE_DURATION)
+        logger.info(
+            "Worker %s starting (poll=%ds, lease=%ds)",
+            self.worker_id,
+            POLL_INTERVAL,
+            LEASE_DURATION,
+        )
 
         while self.running:
             try:
@@ -243,11 +259,14 @@ class Worker:
             logger.info("Claimed %d turn(s)", len(turns))
             for turn in turns:
                 try:
-                    logger.info("Processing turn %s (action=%s, budget=%d)",
-                               turn.id, turn.action, turn.step_budget)
+                    logger.info(
+                        "Processing turn %s (action=%s, budget=%d)",
+                        turn.id,
+                        turn.action,
+                        turn.step_budget,
+                    )
                     _process_turn(db, turn, self.worker_id)
-                    logger.info("Turn %s finished: %s (%s)",
-                               turn.id, turn.status, turn.stop_reason)
+                    logger.info("Turn %s finished: %s (%s)", turn.id, turn.status, turn.stop_reason)
                 except Exception as exc:
                     logger.error("Turn %s failed: %s", turn.id, exc, exc_info=True)
                     try:

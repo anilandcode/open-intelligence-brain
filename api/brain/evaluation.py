@@ -22,6 +22,7 @@ from .decision import DecisionProvider, DecisionSuggestion, DeterministicProvide
 @dataclass(frozen=True)
 class EventVerdict:
     """One event evaluated by both providers."""
+
     event_text: str
     channel: str
     addressed: bool
@@ -33,6 +34,7 @@ class EventVerdict:
 @dataclass(frozen=True)
 class EvaluationReport:
     """The full comparison report."""
+
     total_events: int = 0
     agreement_count: int = 0
     disagreement_count: int = 0
@@ -54,7 +56,10 @@ class EvaluationReport:
                 {
                     "text": d.event_text[:120],
                     "channel": d.channel,
-                    "deterministic": {"action": d.deterministic.action, "confidence": d.deterministic.confidence},
+                    "deterministic": {
+                        "action": d.deterministic.action,
+                        "confidence": d.deterministic.confidence,
+                    },
                     "jev": {"action": d.jev.action, "confidence": d.jev.confidence},
                 }
                 for d in self.disagreements
@@ -71,18 +76,34 @@ DEFAULT_TEST_EVENTS = [
     {"text": "What did we decide about pricing?", "channel": "slack", "addressed": True},
     # Mentions — should be answered when addressed
     {"text": "@brain what's the status of the project?", "channel": "slack", "addressed": True},
-    {"text": "Hey brain, can you summarize the last meeting?", "channel": "slack", "addressed": True},
+    {
+        "text": "Hey brain, can you summarize the last meeting?",
+        "channel": "slack",
+        "addressed": True,
+    },
     # Passive chatter — should pass
     {"text": "Nice weather today", "channel": "slack", "addressed": False},
     {"text": "I'm going to lunch", "channel": "slack", "addressed": False},
     {"text": "lol that's funny", "channel": "slack", "addressed": False},
     # Investigate-worthy — complex questions
-    {"text": "Why did we lose the Acme deal? What could we have done differently?", "channel": "slack", "addressed": True},
-    {"text": "What patterns do we see in customer feedback?", "channel": "slack", "addressed": True},
+    {
+        "text": "Why did we lose the Acme deal? What could we have done differently?",
+        "channel": "slack",
+        "addressed": True,
+    },
+    {
+        "text": "What patterns do we see in customer feedback?",
+        "channel": "slack",
+        "addressed": True,
+    },
     # Edge cases
     {"text": "", "channel": "slack", "addressed": False},  # Empty
     {"text": "a", "channel": "slack", "addressed": False},  # Very short
-    {"text": "I think we should probably maybe look into possibly changing something", "channel": "slack", "addressed": False},  # Vague
+    {
+        "text": "I think we should probably maybe look into possibly changing something",
+        "channel": "slack",
+        "addressed": False,
+    },  # Vague
     {"text": "URGENT: the server is down!!!", "channel": "slack", "addressed": True},  # Urgent
     {"text": "Can you help me write an email?", "channel": "dm", "addressed": True},  # DM
 ]
@@ -138,14 +159,8 @@ def run_evaluation(
 
     agreements = sum(1 for v in verdicts if v.agrees)
     disagreements = [v for v in verdicts if not v.agrees]
-    jev_higher = sum(
-        1 for v in verdicts
-        if v.jev.confidence > v.deterministic.confidence
-    )
-    det_higher = sum(
-        1 for v in verdicts
-        if v.deterministic.confidence > v.jev.confidence
-    )
+    jev_higher = sum(1 for v in verdicts if v.jev.confidence > v.deterministic.confidence)
+    det_higher = sum(1 for v in verdicts if v.deterministic.confidence > v.jev.confidence)
 
     total = len(verdicts)
     rate = agreements / max(total, 1)

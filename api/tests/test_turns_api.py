@@ -59,9 +59,9 @@ def test_turn_detail_carries_the_transcript_and_the_plan(client):
 
 
 def test_an_answer_turn_spends_two_steps_and_then_stops(client):
-    turn_id = _intake(
-        client, model_output="ANSWER conf=0.95", evidence_strength=0.95
-    ).json()["turn"]["id"]
+    turn_id = _intake(client, model_output="ANSWER conf=0.95", evidence_strength=0.95).json()[
+        "turn"
+    ]["id"]
     detail = client.get(f"/api/v1/turns/{turn_id}", headers=HEADERS).json()
     assert detail["action"] == "answer"
     assert detail["step_budget"] == 2
@@ -174,9 +174,9 @@ def test_a_channel_policy_changes_what_arrives(client):
     assert quiet.json()["triage"]["source"] == "policy"
     assert quiet.json()["turn"]["status"] == "completed"
 
-    assert [row["channel"] for row in client.get("/api/v1/proactivity", headers=HEADERS).json()] == [
-        "#quiet"
-    ]
+    assert [
+        row["channel"] for row in client.get("/api/v1/proactivity", headers=HEADERS).json()
+    ] == ["#quiet"]
     # The mode is a closed set; a typo is refused rather than stored.
     assert (
         client.put(

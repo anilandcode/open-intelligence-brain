@@ -30,14 +30,19 @@ from .models import Knowledge, new_id
 
 class UsageEvent(Base):
     """One citation of a knowledge atom."""
+
     __tablename__ = "usage_events"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     knowledge_id: Mapped[str] = mapped_column(ForeignKey("knowledge.id"), index=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
-    context: Mapped[str] = mapped_column(String(40), default="search")  # search, answer, draft, export
+    context: Mapped[str] = mapped_column(
+        String(40), default="search"
+    )  # search, answer, draft, export
     query: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
 
 
 def track_usage(
@@ -103,8 +108,7 @@ def top_used(
     stmt = scope.apply(stmt, Knowledge)
     rows = list(db.execute(stmt).all())
     return [
-        {"knowledge_id": r[0], "count": r[1], "statement": r[2][:120], "type": r[3]}
-        for r in rows
+        {"knowledge_id": r[0], "count": r[1], "statement": r[2][:120], "type": r[3]} for r in rows
     ]
 
 
@@ -114,9 +118,11 @@ def unused_knowledge(
     limit: int = 10,
 ) -> list[dict]:
     """Canonical knowledge the caller may read that has never been cited."""
-    used_ids = select(UsageEvent.knowledge_id).where(
-        UsageEvent.workspace_id == scope.workspace_id
-    ).scalar_subquery()
+    used_ids = (
+        select(UsageEvent.knowledge_id)
+        .where(UsageEvent.workspace_id == scope.workspace_id)
+        .scalar_subquery()
+    )
     stmt = scope.apply(
         select(Knowledge).where(
             Knowledge.status == "canonical",
@@ -126,34 +132,48 @@ def unused_knowledge(
     )
     items = list(db.scalars(stmt.order_by(Knowledge.approved_at).limit(limit)).all())
     return [
-        {"id": k.id, "statement": k.statement[:120], "type": k.type, "approved_at": k.approved_at.isoformat()}
+        {
+            "id": k.id,
+            "statement": k.statement[:120],
+            "type": k.type,
+            "approved_at": k.approved_at.isoformat(),
+        }
         for k in items
     ]
 
 
 def usage_summary(db: Session, scope: ReadScope) -> dict:
     """Overview of knowledge usage patterns, narrowed to the caller's ceiling."""
-    total_knowledge = db.scalar(
-        scope.apply(
-            select(func.count(Knowledge.id)).where(Knowledge.status == "canonical"),
-            Knowledge,
+    total_knowledge = (
+        db.scalar(
+            scope.apply(
+                select(func.count(Knowledge.id)).where(Knowledge.status == "canonical"),
+                Knowledge,
+            )
         )
-    ) or 0
+        or 0
+    )
     # Count only events whose atom the caller may read, so totals cannot leak
     # the existence of private rows through the numbers alone.
     readable_ids = scope.apply(select(Knowledge.id), Knowledge).scalar_subquery()
-    total_usage = db.scalar(
-        select(func.count(UsageEvent.id)).where(
-            UsageEvent.workspace_id == scope.workspace_id,
-            UsageEvent.knowledge_id.in_(readable_ids),
+    total_usage = (
+        db.scalar(
+            select(func.count(UsageEvent.id)).where(
+                UsageEvent.workspace_id == scope.workspace_id,
+                UsageEvent.knowledge_id.in_(readable_ids),
+            )
         )
-    ) or 0
-    unique_used = db.scalar(
-        select(func.count(func.distinct(UsageEvent.knowledge_id))).where(
-            UsageEvent.workspace_id == scope.workspace_id,
-            UsageEvent.knowledge_id.in_(readable_ids),
+        or 0
+    )
+    unique_used = (
+        db.scalar(
+            select(func.count(func.distinct(UsageEvent.knowledge_id))).where(
+                UsageEvent.workspace_id == scope.workspace_id,
+                UsageEvent.knowledge_id.in_(readable_ids),
+            )
         )
-    ) or 0
+        or 0
+    )
     return {
         "total_knowledge": total_knowledge,
         "total_usage_events": total_usage,

@@ -25,6 +25,7 @@ logger = logging.getLogger("brain.decision")
 @dataclass(frozen=True)
 class DecisionSuggestion:
     """A provider's opinion on what to do with an event."""
+
     action: str  # "answer", "investigate", "pass"
     confidence: float  # 0.0-1.0
     reason: str = ""
@@ -34,6 +35,7 @@ class DecisionSuggestion:
 
 class DecisionProvider(Protocol):
     """Interface for scoring events."""
+
     def score(self, *, text: str, channel: str, addressed: bool = False) -> DecisionSuggestion: ...
 
 
@@ -43,10 +45,12 @@ class DeterministicProvider:
     This exists so the provider interface is always satisfied, even when
     no external provider is configured.
     """
+
     name = "deterministic"
 
     def score(self, *, text: str, channel: str, addressed: bool = False) -> DecisionSuggestion:
         from .triage import ProactivityPolicy, classify_event, decide_event
+
         kind = classify_event(text=text, channel=channel, addressed=addressed, is_bot=False)
         policy = ProactivityPolicy()
         decision = decide_event(kind=kind, text=text, policy=policy)
@@ -69,6 +73,7 @@ class JevShadowProvider:
     Shadow mode means: record the suggestion, never act on it. A human
     reviews the comparison and decides whether to promote Jev to authority.
     """
+
     name = "jev-shadow"
 
     def __init__(self, api_url: str, timeout: float = 5.0):
@@ -78,6 +83,7 @@ class JevShadowProvider:
     def score(self, *, text: str, channel: str, addressed: bool = False) -> DecisionSuggestion:
         try:
             import httpx
+
             response = httpx.post(
                 f"{self.api_url}/api/v1/score",
                 json={"text": text, "channel": channel, "addressed": addressed},

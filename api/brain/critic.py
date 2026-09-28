@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 @dataclass(frozen=True)
 class CriticNote:
     """One observation from the critic pass."""
+
     severity: str  # "info", "warning", "strong"
     category: str  # "evidence_gap", "specificity", "type_mismatch", "weak_sourcing"
     message: str
@@ -31,6 +32,7 @@ class CriticNote:
 @dataclass(frozen=True)
 class CriticAssessment:
     """The full critic assessment for a proposal."""
+
     proposal_id: str
     notes: list[CriticNote] = field(default_factory=list)
     confidence: float = 0.0  # 0.0-1.0, how confident the critic is in its assessment
@@ -65,10 +67,22 @@ _VAGUE_PATTERNS = [
 
 # Patterns that suggest the claim exceeds its evidence
 _BROAD_CLAIM_PATTERNS = [
-    (r"\b(?:all|every|each)\s+\w+\s+(?:is|are|should|must|will)\b", "Universal claim — does the excerpt support 'all'?"),
-    (r"\b(?:the\s+best|the\s+only|the\s+most|the\s+worst)\b", "Superlative — is this the strongest defensible wording?"),
-    (r"\b(?:always|never|impossible|cannot)\b", "Absolute — does the evidence rule out exceptions?"),
-    (r"\b(?:proves?|demonstrates?|shows?)\s+that\b", "Causal claim — does the excerpt actually show causation?"),
+    (
+        r"\b(?:all|every|each)\s+\w+\s+(?:is|are|should|must|will)\b",
+        "Universal claim — does the excerpt support 'all'?",
+    ),
+    (
+        r"\b(?:the\s+best|the\s+only|the\s+most|the\s+worst)\b",
+        "Superlative — is this the strongest defensible wording?",
+    ),
+    (
+        r"\b(?:always|never|impossible|cannot)\b",
+        "Absolute — does the evidence rule out exceptions?",
+    ),
+    (
+        r"\b(?:proves?|demonstrates?|shows?)\s+that\b",
+        "Causal claim — does the excerpt actually show causation?",
+    ),
 ]
 
 
@@ -81,11 +95,13 @@ def _check_specificity(statement: str) -> list[CriticNote]:
         if match:
             word = match.group(0)
             message = message_template.replace("{word}", word)
-            notes.append(CriticNote(
-                severity="info",
-                category="specificity",
-                message=message,
-            ))
+            notes.append(
+                CriticNote(
+                    severity="info",
+                    category="specificity",
+                    message=message,
+                )
+            )
     return notes
 
 
@@ -93,11 +109,13 @@ def _check_evidence_gap(statement: str, excerpt: str) -> list[CriticNote]:
     """Flag claims that seem broader than their evidence."""
     notes = []
     if not excerpt:
-        notes.append(CriticNote(
-            severity="warning",
-            category="weak_sourcing",
-            message="No source excerpt — reviewer cannot verify the claim against its evidence.",
-        ))
+        notes.append(
+            CriticNote(
+                severity="warning",
+                category="weak_sourcing",
+                message="No source excerpt — reviewer cannot verify the claim against its evidence.",
+            )
+        )
         return notes
 
     for pattern, message in _BROAD_CLAIM_PATTERNS:
@@ -105,27 +123,35 @@ def _check_evidence_gap(statement: str, excerpt: str) -> list[CriticNote]:
             # Check if the excerpt actually contains supporting language
             excerpt_lower = excerpt.lower()
             # If the claim is broad but the excerpt uses hedging language, flag it
-            hedging = re.search(r"\b(?:suggests?|indicates?|appears?|seems?|may|might|could)\b", excerpt_lower)
+            hedging = re.search(
+                r"\b(?:suggests?|indicates?|appears?|seems?|may|might|could)\b", excerpt_lower
+            )
             if hedging:
-                notes.append(CriticNote(
-                    severity="warning",
-                    category="evidence_gap",
-                    message=f"{message} The source excerpt uses hedging language ('{hedging.group(0)}').",
-                ))
+                notes.append(
+                    CriticNote(
+                        severity="warning",
+                        category="evidence_gap",
+                        message=f"{message} The source excerpt uses hedging language ('{hedging.group(0)}').",
+                    )
+                )
             else:
-                notes.append(CriticNote(
-                    severity="info",
-                    category="evidence_gap",
-                    message=message,
-                ))
+                notes.append(
+                    CriticNote(
+                        severity="info",
+                        category="evidence_gap",
+                        message=message,
+                    )
+                )
 
     # Check if the statement is much longer than the excerpt (potential over-extraction)
     if len(statement) > len(excerpt) * 2 and len(statement) > 200:
-        notes.append(CriticNote(
-            severity="warning",
-            category="evidence_gap",
-            message="The statement is much longer than its source excerpt — is it adding interpretation?",
-        ))
+        notes.append(
+            CriticNote(
+                severity="warning",
+                category="evidence_gap",
+                message="The statement is much longer than its source excerpt — is it adding interpretation?",
+            )
+        )
 
     return notes
 
@@ -139,31 +165,37 @@ def _check_type_mismatch(statement: str, declared_type: str) -> list[CriticNote]
     if declared_type == "fact":
         belief_markers = ["believe", "think", "feel", "should", "ought", "prefer"]
         if any(marker in lowered for marker in belief_markers):
-            notes.append(CriticNote(
-                severity="info",
-                category="type_mismatch",
-                message="Declared as 'fact' but reads like a belief or opinion.",
-            ))
+            notes.append(
+                CriticNote(
+                    severity="info",
+                    category="type_mismatch",
+                    message="Declared as 'fact' but reads like a belief or opinion.",
+                )
+            )
 
     # A "belief" that reads like a data-backed claim
     if declared_type == "belief":
         evidence_markers = ["data shows", "research shows", "measured", "study found", "statistics"]
         if any(marker in lowered for marker in evidence_markers):
-            notes.append(CriticNote(
-                severity="info",
-                category="type_mismatch",
-                message="Declared as 'belief' but cites evidence — consider reclassifying as 'evidence'.",
-            ))
+            notes.append(
+                CriticNote(
+                    severity="info",
+                    category="type_mismatch",
+                    message="Declared as 'belief' but cites evidence — consider reclassifying as 'evidence'.",
+                )
+            )
 
     # A "question" that isn't actually a question
     if declared_type == "question" and "?" not in statement:
         question_starters = ["how to", "what is", "why do", "when should"]
         if not any(s in lowered for s in question_starters):
-            notes.append(CriticNote(
-                severity="info",
-                category="type_mismatch",
-                message="Declared as 'question' but doesn't read as one.",
-            ))
+            notes.append(
+                CriticNote(
+                    severity="info",
+                    category="type_mismatch",
+                    message="Declared as 'question' but doesn't read as one.",
+                )
+            )
 
     return notes
 
@@ -175,7 +207,27 @@ def _check_excerpt_coverage(statement: str, excerpt: str) -> list[CriticNote]:
         return notes
 
     # Extract significant terms from the statement
-    stop = {"the", "and", "are", "for", "that", "this", "with", "from", "but", "not", "you", "all", "can", "had", "her", "was", "one", "our", "out"}
+    stop = {
+        "the",
+        "and",
+        "are",
+        "for",
+        "that",
+        "this",
+        "with",
+        "from",
+        "but",
+        "not",
+        "you",
+        "all",
+        "can",
+        "had",
+        "her",
+        "was",
+        "one",
+        "our",
+        "out",
+    }
     statement_terms = {t for t in re.findall(r"[a-z]{3,}", statement.lower()) if t not in stop}
     excerpt_terms = {t for t in re.findall(r"[a-z]{3,}", excerpt.lower()) if t not in stop}
 
@@ -184,17 +236,21 @@ def _check_excerpt_coverage(statement: str, excerpt: str) -> list[CriticNote]:
 
     coverage = len(statement_terms & excerpt_terms) / len(statement_terms)
     if coverage < 0.3 and len(statement_terms) >= 3:
-        notes.append(CriticNote(
-            severity="strong",
-            category="weak_sourcing",
-            message=f"Only {coverage:.0%} of key terms in the statement appear in the excerpt — is this the right source?",
-        ))
+        notes.append(
+            CriticNote(
+                severity="strong",
+                category="weak_sourcing",
+                message=f"Only {coverage:.0%} of key terms in the statement appear in the excerpt — is this the right source?",
+            )
+        )
     elif coverage < 0.5 and len(statement_terms) >= 4:
-        notes.append(CriticNote(
-            severity="warning",
-            category="weak_sourcing",
-            message=f"Low excerpt coverage ({coverage:.0%}) — some claims may not be supported by this source.",
-        ))
+        notes.append(
+            CriticNote(
+                severity="warning",
+                category="weak_sourcing",
+                message=f"Low excerpt coverage ({coverage:.0%}) — some claims may not be supported by this source.",
+            )
+        )
 
     return notes
 

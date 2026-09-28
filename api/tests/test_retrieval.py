@@ -15,7 +15,9 @@ from brain.services import classify_statement
 
 @pytest.fixture
 def db(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path}/test.db", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{tmp_path}/test.db", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -25,13 +27,22 @@ def db(tmp_path):
 
 class TestClassifyStatement:
     def test_framework(self):
-        assert classify_statement("Our framework for evaluating AI tools is based on three principles") == "framework"
+        assert (
+            classify_statement("Our framework for evaluating AI tools is based on three principles")
+            == "framework"
+        )
 
     def test_evidence(self):
-        assert classify_statement("Research shows that evidence-based decisions outperform intuition") == "evidence"
+        assert (
+            classify_statement("Research shows that evidence-based decisions outperform intuition")
+            == "evidence"
+        )
 
     def test_story(self):
-        assert classify_statement("An example of this pattern is the case of the failed launch") == "story"
+        assert (
+            classify_statement("An example of this pattern is the case of the failed launch")
+            == "story"
+        )
 
     def test_question(self):
         assert classify_statement("How to evaluate whether a tool is worth adopting?") == "question"
@@ -40,7 +51,9 @@ class TestClassifyStatement:
         assert classify_statement("We believe that quality matters more than speed") == "belief"
 
     def test_lesson(self):
-        assert classify_statement("I learned that shipping early beats shipping perfect") == "lesson"
+        assert (
+            classify_statement("I learned that shipping early beats shipping perfect") == "lesson"
+        )
 
     def test_thesis(self):
         assert classify_statement("Because the market is shifting, we should pivot") == "thesis"
@@ -59,13 +72,20 @@ class TestFTS5:
 
     def test_rebuild_fts(self, db):
         ensure_fts(db)
-        source = Source(id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content")
+        source = Source(
+            id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content"
+        )
         db.add(source)
         db.flush()
         item = Knowledge(
-            id=new_id("know"), workspace_id="ws_default", proposal_id=new_id("prop"),
-            source_id=source.id, type="belief", statement="We believe AI should be grounded in evidence",
-            rationale="Because ungrounded claims are dangerous", source_excerpt="evidence",
+            id=new_id("know"),
+            workspace_id="ws_default",
+            proposal_id=new_id("prop"),
+            source_id=source.id,
+            type="belief",
+            statement="We believe AI should be grounded in evidence",
+            rationale="Because ungrounded claims are dangerous",
+            source_excerpt="evidence",
         )
         db.add(item)
         db.commit()
@@ -74,13 +94,20 @@ class TestFTS5:
 
     def test_search_fts(self, db):
         ensure_fts(db)
-        source = Source(id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content")
+        source = Source(
+            id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content"
+        )
         db.add(source)
         db.flush()
         item = Knowledge(
-            id=new_id("know"), workspace_id="ws_default", proposal_id=new_id("prop"),
-            source_id=source.id, type="belief", statement="Grounded AI output is more trustworthy",
-            rationale="Evidence-based claims are reliable", source_excerpt="trustworthy",
+            id=new_id("know"),
+            workspace_id="ws_default",
+            proposal_id=new_id("prop"),
+            source_id=source.id,
+            type="belief",
+            statement="Grounded AI output is more trustworthy",
+            rationale="Evidence-based claims are reliable",
+            source_excerpt="trustworthy",
         )
         db.add(item)
         db.commit()
@@ -92,13 +119,20 @@ class TestFTS5:
 
     def test_sync_fts_insert(self, db):
         ensure_fts(db)
-        source = Source(id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content")
+        source = Source(
+            id=new_id("src"), workspace_id="ws_default", title="Test", content="Test content"
+        )
         db.add(source)
         db.flush()
         item = Knowledge(
-            id=new_id("know"), workspace_id="ws_default", proposal_id=new_id("prop"),
-            source_id=source.id, type="fact", statement="The API handles 10k requests per second",
-            rationale="Load tested", source_excerpt="10k",
+            id=new_id("know"),
+            workspace_id="ws_default",
+            proposal_id=new_id("prop"),
+            source_id=source.id,
+            type="fact",
+            statement="The API handles 10k requests per second",
+            rationale="Load tested",
+            source_excerpt="10k",
         )
         db.add(item)
         db.commit()

@@ -66,9 +66,7 @@ def test_sources_are_invisible_across_workspaces(client):
 
     globex_sources = client.get("/api/v1/sources", headers=FIRM_B).json()
     assert globex_sources == []
-    assert acme_source.json()["id"] not in [
-        row["id"] for row in globex_sources
-    ]
+    assert acme_source.json()["id"] not in [row["id"] for row in globex_sources]
 
 
 def test_other_workspace_records_are_reported_as_not_found(client):
@@ -85,9 +83,7 @@ def test_other_workspace_records_are_reported_as_not_found(client):
         },
     ).json()
 
-    leaked = client.get(
-        f"/api/v1/sources/{acme_source['id']}/deletion-preview", headers=FIRM_B
-    )
+    leaked = client.get(f"/api/v1/sources/{acme_source['id']}/deletion-preview", headers=FIRM_B)
     assert leaked.status_code == 404
 
     versions = client.get(f"/api/v1/sources/{acme_source['id']}/versions", headers=FIRM_B)
@@ -97,7 +93,10 @@ def test_other_workspace_records_are_reported_as_not_found(client):
         client.post(
             f"/api/v1/sources/{acme_source['id']}/versions",
             headers=FIRM_B,
-            json={"content": "We learned that Globex should never read this source.", "change_note": "probe"},
+            json={
+                "content": "We learned that Globex should never read this source.",
+                "change_note": "probe",
+            },
         ).status_code
         == 404
     )
@@ -249,9 +248,7 @@ def test_export_is_per_workspace_and_restore_refuses_another_company(client):
     assert globex_export["workspace"]["id"] == "ws_globex"
 
     # Restoring Acme's backup into Globex is refused, not silently re-homed.
-    preview = client.post(
-        "/api/v1/restore/preview", headers=FIRM_B, json={"backup": backup}
-    ).json()
+    preview = client.post("/api/v1/restore/preview", headers=FIRM_B, json={"backup": backup}).json()
     assert preview["valid"] is False
     assert any("different workspace" in blocker for blocker in preview["blockers"])
 

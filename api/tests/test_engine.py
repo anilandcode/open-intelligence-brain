@@ -219,8 +219,7 @@ def test_probe_cleans_up_even_when_extraction_succeeds(stub_server, monkeypatch)
         "/v3/documents": (200, {"id": "d-probe", "status": "queued"}),
         "GET /v3/documents/d-probe": (
             200,
-            {"status": "done", "memories": [{"id": "m1", "memory": "x",
-                                             "isInference": False}]},
+            {"status": "done", "memories": [{"id": "m1", "memory": "x", "isInference": False}]},
         ),
     }
     _no_sleep(monkeypatch)
@@ -278,8 +277,7 @@ def test_a_working_engine_is_not_degraded(stub_server, monkeypatch):
         "/v3/documents": (200, {"id": "d1", "status": "queued"}),
         "/v3/documents/d1": (
             200,
-            {"status": "done", "memories": [{"id": "m1", "memory": "x",
-                                             "isInference": True}]},
+            {"status": "done", "memories": [{"id": "m1", "memory": "x", "isInference": True}]},
         ),
     }
     engine = get_engine()
@@ -296,8 +294,7 @@ def test_probe_writes_only_to_the_healthcheck_tag(stub_server, monkeypatch):
         "/v3/documents": (200, {"id": "d1", "status": "queued"}),
         "/v3/documents/d1": (
             200,
-            {"status": "done", "memories": [{"id": "m1", "memory": "x",
-                                             "isInference": True}]},
+            {"status": "done", "memories": [{"id": "m1", "memory": "x", "isInference": True}]},
         ),
     }
     engine = get_engine()
@@ -329,8 +326,7 @@ def test_probe_result_is_cached(stub_server, monkeypatch):
         "/v3/documents": (200, {"id": "d1", "status": "queued"}),
         "/v3/documents/d1": (
             200,
-            {"status": "done", "memories": [{"id": "m1", "memory": "x",
-                                             "isInference": True}]},
+            {"status": "done", "memories": [{"id": "m1", "memory": "x", "isInference": True}]},
         ),
     }
     engine = get_engine()
@@ -351,7 +347,7 @@ def test_container_tag_rejects_what_the_engine_would_reject():
     never reaches the engine — a data gap nobody sees until they need the
     index. Better to refuse the tag where the id is turned into one.
     """
-    for bad in ("acme corp", "team/sub", "a@b", "quote\"d"):
+    for bad in ("acme corp", "team/sub", "a@b", 'quote"d'):
         with pytest.raises(ContainerTagRejected):
             container_tag_for(bad)
 
@@ -455,10 +451,13 @@ def test_derived_facts_map_to_the_documented_shape(stub_server):
                         "createdAt": "2026-01-15T10:30:00.000Z",
                         "isInference": True,
                     },
-                    {"id": "mem_b", "memory": "   ", "parentCount": 1,
-                     "isInference": True},
-                    {"id": "mem_c", "memory": "A verbatim quote.",
-                     "parentCount": 1, "isInference": False},
+                    {"id": "mem_b", "memory": "   ", "parentCount": 1, "isInference": True},
+                    {
+                        "id": "mem_c",
+                        "memory": "A verbatim quote.",
+                        "parentCount": 1,
+                        "isInference": False,
+                    },
                 ],
             },
         )

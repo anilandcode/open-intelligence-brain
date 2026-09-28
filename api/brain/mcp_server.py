@@ -109,6 +109,7 @@ class IntegrityResult(BaseModel):
 # member token — or a token granted only to another workspace — from reading
 # the default workspace as its owner.
 
+
 def brain_status_scoped(scope: ReadScope) -> BrainStatus:
     with SessionLocal() as db:
         return BrainStatus.model_validate(overview(db, scope))
@@ -147,8 +148,7 @@ def ask_brain_scoped(question: str, scope: ReadScope) -> GroundedAnswer:
             # raises ValidationError. Cross via model_dump(). Regression
             # pinned by test_mcp_tools_are_scope_bound.
             citations=[
-                CitationResult.model_validate(item.model_dump())
-                for item in result.citations
+                CitationResult.model_validate(item.model_dump()) for item in result.citations
             ],
         )
 

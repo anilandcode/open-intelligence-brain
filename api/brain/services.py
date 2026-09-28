@@ -94,13 +94,20 @@ def classify_statement(statement: str) -> str:
     # "decided" and "decision" — use word boundary to avoid matching "decisions" in evidence sentences
     if re.search(r"\b(?:decided|decision|chose)\b", lowered):
         return "decision"
-    if any(word in lowered for word in ("framework", "model", "principle", "approach", "methodology")):
+    if any(
+        word in lowered for word in ("framework", "model", "principle", "approach", "methodology")
+    ):
         return "framework"
-    if any(word in lowered for word in ("evidence", "data shows", "research shows", "study found", "measured")):
+    if any(
+        word in lowered
+        for word in ("evidence", "data shows", "research shows", "study found", "measured")
+    ):
         return "evidence"
     if any(word in lowered for word in ("story", "example", "case", "instance", "scenario")):
         return "story"
-    if "?" in lowered or any(word in lowered for word in ("how to", "what is", "why do", "when should")):
+    if "?" in lowered or any(
+        word in lowered for word in ("how to", "what is", "why do", "when should")
+    ):
         return "question"
     return "fact"
 
@@ -181,10 +188,13 @@ def add_source_version(
                 source_excerpt=text,
             )
             if assessment.has_notes:
-                proposal.critic_notes = json.dumps([
-                    {"severity": n.severity, "category": n.category, "message": n.message}
-                    for n in assessment.notes
-                ], ensure_ascii=False)
+                proposal.critic_notes = json.dumps(
+                    [
+                        {"severity": n.severity, "category": n.category, "message": n.message}
+                        for n in assessment.notes
+                    ],
+                    ensure_ascii=False,
+                )
             db.add(
                 ProposalEvidence(
                     proposal_id=proposal.id,
@@ -203,16 +213,12 @@ def add_source_version(
     return version
 
 
-def create_source_with_proposals(
-    db: Session, payload: SourceCreate, workspace_id: str
-) -> Source:
+def create_source_with_proposals(db: Session, payload: SourceCreate, workspace_id: str) -> Source:
     source = Source(id=new_id("src"), workspace_id=workspace_id, **payload.model_dump())
     db.add(source)
     db.flush()
     add_source_version(db, source, payload.content, "Initial capture")
-    audit(
-        db, workspace_id, "source.ingested", "source", source.id, f"Imported {source.title}"
-    )
+    audit(db, workspace_id, "source.ingested", "source", source.id, f"Imported {source.title}")
     db.commit()
     db.refresh(source)
     offer_to_engine(source)
@@ -261,9 +267,7 @@ def offer_to_engine(source: Source) -> str:
     return document_id
 
 
-def sync_derived_proposals(
-    db: Session, scope: ReadScope, source_id: str, limit: int = 50
-) -> int:
+def sync_derived_proposals(db: Session, scope: ReadScope, source_id: str, limit: int = 50) -> int:
     """Pull the engine's inferred facts for one source into the review queue.
 
     The engine derives facts from patterns across memories rather than being
@@ -332,9 +336,7 @@ def sync_derived_proposals(
         # because it requires immutable source evidence before it will create
         # canonical knowledge. Evidence is mandatory; a span is not.
         version_id = db.scalar(
-            select(func.max(SourceVersion.version)).where(
-                SourceVersion.source_id == source.id
-            )
+            select(func.max(SourceVersion.version)).where(SourceVersion.source_id == source.id)
         )
         latest = db.scalar(
             select(SourceVersion.id).where(
@@ -365,9 +367,7 @@ def sync_derived_proposals(
     return created
 
 
-def record_review_with_engine(
-    proposal: Proposal, action: str, memory_id: str | None
-) -> bool:
+def record_review_with_engine(proposal: Proposal, action: str, memory_id: str | None) -> bool:
     """Tell the engine how a review resolved, so its ranking matches ours.
 
     Our table decides; this only keeps the retrieval index in agreement. A
@@ -496,9 +496,7 @@ def supersede_knowledge(
 
 def backfill_provenance(db: Session, workspace_id: str) -> None:
     changed = False
-    for source in db.scalars(
-        select(Source).where(Source.workspace_id == workspace_id)
-    ).all():
+    for source in db.scalars(select(Source).where(Source.workspace_id == workspace_id)).all():
         version = db.scalar(
             select(SourceVersion)
             .where(SourceVersion.source_id == source.id)
@@ -543,9 +541,7 @@ def backfill_provenance(db: Session, workspace_id: str) -> None:
                 )
             )
             changed = True
-    for item in db.scalars(
-        select(Knowledge).where(Knowledge.workspace_id == workspace_id)
-    ).all():
+    for item in db.scalars(select(Knowledge).where(Knowledge.workspace_id == workspace_id)).all():
         exists = db.scalar(
             select(KnowledgeRevision.id).where(KnowledgeRevision.knowledge_id == item.id)
         )
@@ -602,9 +598,7 @@ def _query_terms(query: str) -> list[str]:
     ]
 
 
-def search_knowledge(
-    db: Session, scope: ReadScope, query: str, limit: int = 20
-) -> list[Knowledge]:
+def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20) -> list[Knowledge]:
     """Search canonical knowledge.
 
     Uses FTS5 BM25 ranking when available, falls back to ILIKE. Both paths
@@ -695,17 +689,43 @@ def _conflict_key(statement: str) -> tuple[set[str], bool, str]:
     is the first few significant words, used to detect same-topic contradictions.
     """
     lowered = statement.lower().replace("cannot", "can not")
-    negative = bool(re.search(r"\b(?:not|never|no|cannot|shouldn't|won't|doesn't|isn't)\b", lowered))
+    negative = bool(
+        re.search(r"\b(?:not|never|no|cannot|shouldn't|won't|doesn't|isn't)\b", lowered)
+    )
     ignored = {
-        "a", "an", "and", "are", "be", "is", "not", "no", "never",
-        "our", "should", "the", "to", "we", "it", "that", "this",
-        "with", "from", "for", "but", "or", "so", "if", "when",
+        "a",
+        "an",
+        "and",
+        "are",
+        "be",
+        "is",
+        "not",
+        "no",
+        "never",
+        "our",
+        "should",
+        "the",
+        "to",
+        "we",
+        "it",
+        "that",
+        "this",
+        "with",
+        "from",
+        "for",
+        "but",
+        "or",
+        "so",
+        "if",
+        "when",
     }
     terms = {
         term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
     }
     # Subject ngram: first 3 significant words for same-topic detection
-    sig_words = [term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored]
+    sig_words = [
+        term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
+    ]
     subject = " ".join(sig_words[:3])
     return terms, negative, subject
 
@@ -732,10 +752,12 @@ def conflict_map(items: list[Knowledge]) -> dict[str, list[str]]:
                 conflicts[right.id].append(left.id)
                 continue
             # Case 2: same topic, same type, very high overlap — possible duplicate/contradiction
-            if (left.type == right.type
-                    and left_subject == right_subject
-                    and overlap >= 0.70
-                    and left.id not in conflicts[right.id]):
+            if (
+                left.type == right.type
+                and left_subject == right_subject
+                and overlap >= 0.70
+                and left.id not in conflicts[right.id]
+            ):
                 conflicts[left.id].append(right.id)
                 conflicts[right.id].append(left.id)
     return conflicts
@@ -814,9 +836,7 @@ def answer_question(db: Session, scope: ReadScope, question: str) -> ChatRespons
 
 
 def seed_demo(db: Session, workspace_id: str) -> None:
-    existing = db.scalar(
-        select(func.count(Source.id)).where(Source.workspace_id == workspace_id)
-    )
+    existing = db.scalar(select(func.count(Source.id)).where(Source.workspace_id == workspace_id))
     if (existing or 0) > 0:
         return
     samples = [
@@ -905,9 +925,7 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
     # a child can never be exported without its readable parent.
     workspace_id = scope.workspace_id
     sources = sorted(
-        db.scalars(
-            scope.apply(select(Source).order_by(Source.created_at), Source)
-        ).all(),
+        db.scalars(scope.apply(select(Source).order_by(Source.created_at), Source)).all(),
         key=lambda row: row.created_at,
     )
     source_ids = {row.id for row in sources}
@@ -921,15 +939,11 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
     )
     version_ids = {row.id for row in versions}
     spans = sorted(
-        db.scalars(
-            select(SourceSpan).where(SourceSpan.source_version_id.in_(version_ids))
-        ).all(),
+        db.scalars(select(SourceSpan).where(SourceSpan.source_version_id.in_(version_ids))).all(),
         key=lambda row: (row.source_version_id, row.start_offset),
     )
     proposals = sorted(
-        db.scalars(
-            scope.apply(select(Proposal).order_by(Proposal.created_at), Proposal)
-        ).all(),
+        db.scalars(scope.apply(select(Proposal).order_by(Proposal.created_at), Proposal)).all(),
         key=lambda row: row.created_at,
     )
     proposal_ids = {row.id for row in proposals}
@@ -940,9 +954,7 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
         key=lambda row: row.proposal_id,
     )
     knowledge = sorted(
-        db.scalars(
-            scope.apply(select(Knowledge).order_by(Knowledge.approved_at), Knowledge)
-        ).all(),
+        db.scalars(scope.apply(select(Knowledge).order_by(Knowledge.approved_at), Knowledge)).all(),
         key=lambda row: row.approved_at,
     )
     knowledge_ids = {row.id for row in knowledge}
@@ -1095,8 +1107,16 @@ def restore_preview(db: Session, backup: dict, workspace_id: str) -> dict:
     if backup_workspace and backup_workspace != workspace_id:
         blockers.append("This backup belongs to a different workspace")
     foreign = {
-        "sources": sum(1 for row in backup.get("sources", []) if row.get("workspace_id", workspace_id) != workspace_id),
-        "knowledge": sum(1 for row in backup.get("knowledge", []) if row.get("workspace_id", workspace_id) != workspace_id),
+        "sources": sum(
+            1
+            for row in backup.get("sources", [])
+            if row.get("workspace_id", workspace_id) != workspace_id
+        ),
+        "knowledge": sum(
+            1
+            for row in backup.get("knowledge", [])
+            if row.get("workspace_id", workspace_id) != workspace_id
+        ),
     }
     leaked = {name: count for name, count in foreign.items() if count}
     if leaked:

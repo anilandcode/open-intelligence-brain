@@ -65,7 +65,11 @@ TOOL_DEFS = [
         "description": "Search canonical knowledge by keyword. Returns matching items with source citations.",
         "parameters": {
             "query": {"type": "string", "description": "Search query", "required": True},
-            "limit": {"type": "integer", "description": "Max results (default 10)", "required": False},
+            "limit": {
+                "type": "integer",
+                "description": "Max results (default 10)",
+                "required": False,
+            },
         },
     },
     {
@@ -79,7 +83,11 @@ TOOL_DEFS = [
         "name": "list_pending_reviews",
         "description": "List proposals awaiting human review. Returns the queue with source excerpts.",
         "parameters": {
-            "limit": {"type": "integer", "description": "Max results (default 10)", "required": False},
+            "limit": {
+                "type": "integer",
+                "description": "Max results (default 10)",
+                "required": False,
+            },
         },
     },
     {
@@ -108,13 +116,9 @@ def _call_tool(name: str, params: dict, scope: ReadScope) -> Any:
             scope=scope,
         ).model_dump()
     elif name == "ask_brain":
-        return ask_brain_scoped(
-            question=params.get("question", ""), scope=scope
-        ).model_dump()
+        return ask_brain_scoped(question=params.get("question", ""), scope=scope).model_dump()
     elif name == "list_pending_reviews":
-        return list_pending_reviews_scoped(
-            limit=params.get("limit", 10), scope=scope
-        ).model_dump()
+        return list_pending_reviews_scoped(limit=params.get("limit", 10), scope=scope).model_dump()
     elif name == "inspect_brain_integrity":
         return inspect_brain_integrity_scoped(scope).model_dump()
     else:
@@ -172,9 +176,11 @@ async def sse_endpoint(
     server-initiated messages, but our tools are request/response, so the
     SSE stream is primarily for compatibility with MCP clients that expect it.
     """
+
     async def event_stream():
         yield f"event: tools\ndata: {json.dumps({'tools': TOOL_DEFS})}\n\n"
         import asyncio
+
         while True:
             if await request.is_disconnected():
                 break

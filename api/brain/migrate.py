@@ -53,9 +53,7 @@ def add_engine_link_columns() -> list[str]:
                 continue
             if column in columns[table]:
                 continue
-            connection.execute(
-                text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-            )
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
             added.append(f"{table}.{column}")
     return added
 
@@ -113,7 +111,9 @@ def add_nullable_evidence_span() -> list[str]:
             )
         )
         connection.execute(text("DROP TABLE proposal_evidence"))
-        connection.execute(text("ALTER TABLE proposal_evidence_relaxed RENAME TO proposal_evidence"))
+        connection.execute(
+            text("ALTER TABLE proposal_evidence_relaxed RENAME TO proposal_evidence")
+        )
         connection.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_proposal_evidence_source_version_id "
@@ -188,9 +188,7 @@ def add_grant_scope_and_expiry() -> list[str]:
             for column, definition in cols:
                 if column in columns[table]:
                     continue
-                connection.execute(
-                    text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-                )
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
                 added.append(f"{table}.{column}")
     return added
 
@@ -216,9 +214,7 @@ def add_turn_lease_columns() -> list[str]:
             for column, definition in cols:
                 if column in columns[table]:
                     continue
-                connection.execute(
-                    text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-                )
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
                 added.append(f"{table}.{column}")
     return added
 

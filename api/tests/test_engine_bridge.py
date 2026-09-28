@@ -141,7 +141,9 @@ def test_derived_proposal_can_be_approved(client, engine_stub):
     ]
     assert len(derived) == 1
 
-    approved = client.post(f"/api/v1/proposals/{derived[0]['id']}/approve", headers=HEADERS, json={})
+    approved = client.post(
+        f"/api/v1/proposals/{derived[0]['id']}/approve", headers=HEADERS, json={}
+    )
     assert approved.status_code == 200, approved.text
     assert approved.json()["statement"] == derived[0]["statement"]
 
@@ -192,7 +194,9 @@ def test_canonical_excerpt_falls_back_to_the_pinned_version(client, engine_stub)
         for p in client.get("/api/v1/proposals", headers=HEADERS).json()
         if p["statement"].startswith("The team keeps discussing")
     ]
-    approved = client.post(f"/api/v1/proposals/{derived[0]['id']}/approve", headers=HEADERS, json={})
+    approved = client.post(
+        f"/api/v1/proposals/{derived[0]['id']}/approve", headers=HEADERS, json={}
+    )
     assert "payment retries" in approved.json()["source_excerpt"]
 
 
@@ -251,9 +255,7 @@ def test_refused_approval_strands_nothing(client, engine_stub):
     with Session(engine) as db:
         sync_derived_proposals(db, ReadScope(WS, "owner"), source_id)
         proposal_id = db.scalar(
-            select(Proposal.id).where(
-                Proposal.statement.like("The team keeps discussing%")
-            )
+            select(Proposal.id).where(Proposal.statement.like("The team keeps discussing%"))
         )
     # Strip the evidence edge directly, so the gate has to refuse.
     with Session(engine) as db:
@@ -272,8 +274,7 @@ def test_refused_approval_strands_nothing(client, engine_stub):
         ), "a refused approval must not create canonical knowledge"
         # And the queue must still offer it, so the reviewer can retry.
         assert any(
-            p["id"] == proposal_id
-            for p in client.get("/api/v1/proposals", headers=HEADERS).json()
+            p["id"] == proposal_id for p in client.get("/api/v1/proposals", headers=HEADERS).json()
         )
 
 
@@ -296,9 +297,7 @@ def test_migration_relaxes_not_null_and_keeps_every_row(tmp_path):
                 """
             )
         )
-        connection.execute(
-            text("CREATE TABLE source_spans (id VARCHAR(32) NOT NULL PRIMARY KEY)")
-        )
+        connection.execute(text("CREATE TABLE source_spans (id VARCHAR(32) NOT NULL PRIMARY KEY)"))
         connection.execute(
             text(
                 """
@@ -344,11 +343,7 @@ def test_migration_relaxes_not_null_and_keeps_every_row(tmp_path):
 
     # A null span is now accepted, which is the point.
     with legacy.begin() as connection:
-        connection.execute(
-            text(
-                "INSERT INTO proposal_evidence VALUES ('p_3', 'sv_1', NULL)"
-            )
-        )
+        connection.execute(text("INSERT INTO proposal_evidence VALUES ('p_3', 'sv_1', NULL)"))
     assert migrate_module.add_nullable_evidence_span() == []  # idempotent
     legacy.dispose()
 
@@ -361,9 +356,7 @@ def test_sync_route_pulls_the_sources_own_document(client, engine_stub):
     proof the door is actually open, and the honest count behind it.
     """
     source_id = _create_source(client)
-    response = client.post(
-        f"/api/v1/sources/{source_id}/sync-derived", headers=HEADERS
-    )
+    response = client.post(f"/api/v1/sources/{source_id}/sync-derived", headers=HEADERS)
     assert response.status_code == 200, response.text
     assert response.json()["created"] == 1
 
@@ -379,9 +372,7 @@ def test_sync_route_is_workspace_scoped(client, engine_stub):
         grant_workspace(db, ws, "someone-else", role="owner")
         db.commit()
     scoped_headers = {"X-Brain-Token": "someone-else"}
-    response = client.post(
-        f"/api/v1/sources/{source_id}/sync-derived", headers=scoped_headers
-    )
+    response = client.post(f"/api/v1/sources/{source_id}/sync-derived", headers=scoped_headers)
     assert response.status_code in (403, 404)
     assert client.get("/api/v1/proposals", headers=scoped_headers).json() == []
 

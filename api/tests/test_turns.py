@@ -122,7 +122,9 @@ def test_a_declined_approval_is_terminal():
         assert declined.status == "cancelled"
         assert declined.stop_reason == "approval_rejected"
         with pytest.raises(harness.TurnConflict):
-            harness.advance_turn(db, access, turn, tool="search_knowledge", summary="continue anyway")
+            harness.advance_turn(
+                db, access, turn, tool="search_knowledge", summary="continue anyway"
+            )
 
 
 def test_only_an_admin_resolves_the_gate():

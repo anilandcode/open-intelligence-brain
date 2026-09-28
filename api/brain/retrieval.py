@@ -41,7 +41,8 @@ def ensure_fts(db: Session) -> bool:
     Returns True if FTS5 is available and the table exists.
     """
     try:
-        db.execute(text(f"""
+        db.execute(
+            text(f"""
             CREATE VIRTUAL TABLE IF NOT EXISTS {FTS_TABLE} USING fts5(
                 knowledge_id UNINDEXED,
                 statement,
@@ -51,7 +52,8 @@ def ensure_fts(db: Session) -> bool:
                 content='',
                 tokenize='porter unicode61'
             )
-        """))
+        """)
+        )
         db.commit()
         return True
     except Exception as exc:
@@ -128,7 +130,7 @@ def search_fts(db: Session, query: str, limit: int = 20) -> list[str]:
     if not _fts_available(db):
         return []
     # FTS5 query syntax: escape special characters, join terms with AND
-    cleaned = re.sub(r'[^\w\s]', '', query.lower()).strip()
+    cleaned = re.sub(r"[^\w\s]", "", query.lower()).strip()
     if not cleaned:
         return []
     terms = cleaned.split()

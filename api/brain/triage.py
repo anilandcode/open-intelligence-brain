@@ -40,9 +40,7 @@ _MODE_KINDS: dict[str, frozenset[str]] = {
     "off": frozenset(),
     "mentions": frozenset({"mention", "direct_message"}),
     "contextual": frozenset({"mention", "direct_message", "passive_message"}),
-    "proactive": frozenset(
-        {"mention", "direct_message", "passive_message", "context_only"}
-    ),
+    "proactive": frozenset({"mention", "direct_message", "passive_message", "context_only"}),
 }
 
 _FENCE = re.compile(r"```[A-Za-z0-9_-]*\n?|```")
@@ -275,7 +273,9 @@ def decide_event(
         source = "fallback"
     else:
         action = parse.action
-        confidence = parse.confidence if parse.confidence is not None else (0.7 if addressed else 0.5)
+        confidence = (
+            parse.confidence if parse.confidence is not None else (0.7 if addressed else 0.5)
+        )
         source = "grammar"
         reason = parse.reason or f"The reply chose {parse.action.upper()}."
 

@@ -116,15 +116,11 @@ class MemoryEngine(Protocol):
 
     def available(self) -> EngineStatus: ...
 
-    def ingest(
-        self, content: str, container_tag: str, metadata: dict | None = None
-    ) -> str: ...
+    def ingest(self, content: str, container_tag: str, metadata: dict | None = None) -> str: ...
 
     def derived(self, document_id: str, limit: int = 50) -> list[DerivedFact]: ...
 
-    def review(
-        self, container_tag: str, memory_id: str, action: str
-    ) -> bool: ...
+    def review(self, container_tag: str, memory_id: str, action: str) -> bool: ...
 
     def forget(self, container_tag: str) -> None: ...
 
@@ -330,8 +326,7 @@ class SupermemoryEngine:
 
             self._probe_result = False
             log.warning(
-                "engine finalized a document with no memories, so no model "
-                "provider is configured"
+                "engine finalized a document with no memories, so no model provider is configured"
             )
             return self._probe_result
         finally:

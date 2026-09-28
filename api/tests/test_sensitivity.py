@@ -159,9 +159,7 @@ def test_a_member_cannot_approve_a_private_proposal(client):
 
         from brain.models import Proposal
 
-        proposal = db.scalar(
-            select(Proposal).where(Proposal.source_id == source_id)
-        )
+        proposal = db.scalar(select(Proposal).where(Proposal.source_id == source_id))
         assert proposal is not None
         proposal_id = proposal.id
 

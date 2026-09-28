@@ -68,6 +68,7 @@ def _read_scope(access: WorkspaceAccess = Depends(_resolve_access)) -> ReadScope
 
 # --- Interview endpoints ---
 
+
 @router.get("/interviews", response_model=list[InterviewSessionRead])
 def list_interviews(
     access: WorkspaceAccess = Depends(_resolve_access),
@@ -83,18 +84,27 @@ def list_interviews(
     )
     result = []
     for s in sessions:
-        questions = list(db.scalars(
-            select(InterviewQuestion).where(InterviewQuestion.session_id == s.id)
-        ).all())
-        result.append(InterviewSessionRead(
-            id=s.id, workspace_id=s.workspace_id, title=s.title,
-            topic=s.topic, person=s.person, audience=s.audience,
-            outcome=s.outcome, status=s.status, source_id=s.source_id,
-            created_at=s.created_at, completed_at=s.completed_at,
-            question_count=len(questions),
-            response_count=sum(1 for q in questions if q.response_text.strip()),
-            extracted_count=sum(1 for q in questions if q.extracted),
-        ))
+        questions = list(
+            db.scalars(select(InterviewQuestion).where(InterviewQuestion.session_id == s.id)).all()
+        )
+        result.append(
+            InterviewSessionRead(
+                id=s.id,
+                workspace_id=s.workspace_id,
+                title=s.title,
+                topic=s.topic,
+                person=s.person,
+                audience=s.audience,
+                outcome=s.outcome,
+                status=s.status,
+                source_id=s.source_id,
+                created_at=s.created_at,
+                completed_at=s.completed_at,
+                question_count=len(questions),
+                response_count=sum(1 for q in questions if q.response_text.strip()),
+                extracted_count=sum(1 for q in questions if q.extracted),
+            )
+        )
     return result
 
 
@@ -119,10 +129,17 @@ def create_interview(
     db.commit()
     db.refresh(session)
     return InterviewSessionRead(
-        id=session.id, workspace_id=session.workspace_id, title=session.title,
-        topic=session.topic, person=session.person, audience=session.audience,
-        outcome=session.outcome, status=session.status, source_id=session.source_id,
-        created_at=session.created_at, completed_at=session.completed_at,
+        id=session.id,
+        workspace_id=session.workspace_id,
+        title=session.title,
+        topic=session.topic,
+        person=session.person,
+        audience=session.audience,
+        outcome=session.outcome,
+        status=session.status,
+        source_id=session.source_id,
+        created_at=session.created_at,
+        completed_at=session.completed_at,
     )
 
 
@@ -144,10 +161,17 @@ def get_interview(
         ).all()
     )
     return InterviewSessionDetail(
-        id=session.id, workspace_id=session.workspace_id, title=session.title,
-        topic=session.topic, person=session.person, audience=session.audience,
-        outcome=session.outcome, status=session.status, source_id=session.source_id,
-        created_at=session.created_at, completed_at=session.completed_at,
+        id=session.id,
+        workspace_id=session.workspace_id,
+        title=session.title,
+        topic=session.topic,
+        person=session.person,
+        audience=session.audience,
+        outcome=session.outcome,
+        status=session.status,
+        source_id=session.source_id,
+        created_at=session.created_at,
+        completed_at=session.completed_at,
         question_count=len(questions),
         response_count=sum(1 for q in questions if q.response_text.strip()),
         extracted_count=sum(1 for q in questions if q.extracted),
@@ -155,7 +179,9 @@ def get_interview(
     )
 
 
-@router.post("/interviews/{session_id}/questions", response_model=InterviewQuestionRead, status_code=201)
+@router.post(
+    "/interviews/{session_id}/questions", response_model=InterviewQuestionRead, status_code=201
+)
 def add_question(
     session_id: str,
     payload: InterviewQuestionCreate,
@@ -170,9 +196,11 @@ def add_question(
         raise HTTPException(status_code=409, detail="Cannot add questions to a completed interview")
     max_ordinal = (
         db.scalar(
-            select(func.max(InterviewQuestion.ordinal))
-            .where(InterviewQuestion.session_id == session_id)
-        ) or 0
+            select(func.max(InterviewQuestion.ordinal)).where(
+                InterviewQuestion.session_id == session_id
+            )
+        )
+        or 0
     )
     question = InterviewQuestion(
         id=new_id("iq"),
@@ -186,7 +214,9 @@ def add_question(
     return InterviewQuestionRead.model_validate(question)
 
 
-@router.post("/interviews/{session_id}/questions/{question_id}/respond", response_model=InterviewQuestionRead)
+@router.post(
+    "/interviews/{session_id}/questions/{question_id}/respond", response_model=InterviewQuestionRead
+)
 def submit_response(
     session_id: str,
     question_id: str,
@@ -269,15 +299,28 @@ def complete_interview(
     for q in responded:
         q.extracted = True
 
-    audit(db, access.workspace_id, "interview.completed", "interview", session.id,
-          f"Completed with {len(responded)} responses")
+    audit(
+        db,
+        access.workspace_id,
+        "interview.completed",
+        "interview",
+        session.id,
+        f"Completed with {len(responded)} responses",
+    )
     db.commit()
     db.refresh(session)
     return InterviewSessionRead(
-        id=session.id, workspace_id=session.workspace_id, title=session.title,
-        topic=session.topic, person=session.person, audience=session.audience,
-        outcome=session.outcome, status=session.status, source_id=session.source_id,
-        created_at=session.created_at, completed_at=session.completed_at,
+        id=session.id,
+        workspace_id=session.workspace_id,
+        title=session.title,
+        topic=session.topic,
+        person=session.person,
+        audience=session.audience,
+        outcome=session.outcome,
+        status=session.status,
+        source_id=session.source_id,
+        created_at=session.created_at,
+        completed_at=session.completed_at,
         question_count=len(questions),
         response_count=len(responded),
         extracted_count=len(responded),
@@ -285,6 +328,7 @@ def complete_interview(
 
 
 # --- Draft endpoints ---
+
 
 @router.get("/drafts", response_model=list[DraftRead])
 def list_drafts(
@@ -301,20 +345,29 @@ def list_drafts(
     )
     result = []
     for d in drafts:
-        sections = list(db.scalars(
-            select(DraftSection).where(DraftSection.draft_id == d.id)
-        ).all())
+        sections = list(db.scalars(select(DraftSection).where(DraftSection.draft_id == d.id)).all())
         citations = 0
         for s in sections:
-            citations += db.scalar(
-                select(func.count(DraftCitation.id)).where(DraftCitation.section_id == s.id)
-            ) or 0
-        result.append(DraftRead(
-            id=d.id, workspace_id=d.workspace_id, title=d.title,
-            intent=d.intent, audience=d.audience, status=d.status,
-            created_at=d.created_at, updated_at=d.updated_at,
-            section_count=len(sections), citation_count=citations,
-        ))
+            citations += (
+                db.scalar(
+                    select(func.count(DraftCitation.id)).where(DraftCitation.section_id == s.id)
+                )
+                or 0
+            )
+        result.append(
+            DraftRead(
+                id=d.id,
+                workspace_id=d.workspace_id,
+                title=d.title,
+                intent=d.intent,
+                audience=d.audience,
+                status=d.status,
+                created_at=d.created_at,
+                updated_at=d.updated_at,
+                section_count=len(sections),
+                citation_count=citations,
+            )
+        )
     return result
 
 
@@ -337,9 +390,14 @@ def create_draft(
     db.commit()
     db.refresh(draft)
     return DraftRead(
-        id=draft.id, workspace_id=draft.workspace_id, title=draft.title,
-        intent=draft.intent, audience=draft.audience, status=draft.status,
-        created_at=draft.created_at, updated_at=draft.updated_at,
+        id=draft.id,
+        workspace_id=draft.workspace_id,
+        title=draft.title,
+        intent=draft.intent,
+        audience=draft.audience,
+        status=draft.status,
+        created_at=draft.created_at,
+        updated_at=draft.updated_at,
     )
 
 
@@ -363,30 +421,46 @@ def get_draft(
     section_reads = []
     total_citations = 0
     for s in sections:
-        citations = list(db.scalars(
-            select(DraftCitation).where(DraftCitation.section_id == s.id)
-        ).all())
+        citations = list(
+            db.scalars(select(DraftCitation).where(DraftCitation.section_id == s.id)).all()
+        )
         total_citations += len(citations)
         # Load knowledge items for each citation
         knowledge_items = []
         for c in citations:
             k = db.get(Knowledge, c.knowledge_id)
             if k:
-                knowledge_items.append({
-                    "id": k.id, "statement": k.statement, "type": k.type,
-                    "source_excerpt": k.source_excerpt,
-                })
-        section_reads.append(DraftSectionRead(
-            id=s.id, draft_id=s.draft_id, ordinal=s.ordinal,
-            title=s.title, content=s.content, created_at=s.created_at,
-            citations=[DraftCitationRead.model_validate(c) for c in citations],
-            knowledge_items=knowledge_items,
-        ))
+                knowledge_items.append(
+                    {
+                        "id": k.id,
+                        "statement": k.statement,
+                        "type": k.type,
+                        "source_excerpt": k.source_excerpt,
+                    }
+                )
+        section_reads.append(
+            DraftSectionRead(
+                id=s.id,
+                draft_id=s.draft_id,
+                ordinal=s.ordinal,
+                title=s.title,
+                content=s.content,
+                created_at=s.created_at,
+                citations=[DraftCitationRead.model_validate(c) for c in citations],
+                knowledge_items=knowledge_items,
+            )
+        )
     return DraftDetail(
-        id=draft.id, workspace_id=draft.workspace_id, title=draft.title,
-        intent=draft.intent, audience=draft.audience, status=draft.status,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-        section_count=len(sections), citation_count=total_citations,
+        id=draft.id,
+        workspace_id=draft.workspace_id,
+        title=draft.title,
+        intent=draft.intent,
+        audience=draft.audience,
+        status=draft.status,
+        created_at=draft.created_at,
+        updated_at=draft.updated_at,
+        section_count=len(sections),
+        citation_count=total_citations,
         sections=section_reads,
     )
 
@@ -403,10 +477,8 @@ def add_section(
     if draft is None or draft.workspace_id != access.workspace_id:
         raise HTTPException(status_code=404, detail="Draft not found")
     max_ordinal = (
-        db.scalar(
-            select(func.max(DraftSection.ordinal))
-            .where(DraftSection.draft_id == draft_id)
-        ) or 0
+        db.scalar(select(func.max(DraftSection.ordinal)).where(DraftSection.draft_id == draft_id))
+        or 0
     )
     section = DraftSection(
         id=new_id("dsec"),
@@ -434,8 +506,12 @@ def add_section(
     db.commit()
     db.refresh(section)
     return DraftSectionRead(
-        id=section.id, draft_id=section.draft_id, ordinal=section.ordinal,
-        title=section.title, content=section.content, created_at=section.created_at,
+        id=section.id,
+        draft_id=section.draft_id,
+        ordinal=section.ordinal,
+        title=section.title,
+        content=section.content,
+        created_at=section.created_at,
         citations=[DraftCitationRead.model_validate(c) for c in citations],
     )
 
@@ -464,7 +540,9 @@ def update_section(
     # Replace citations if provided
     if payload.knowledge_ids is not None:
         # Remove existing
-        for old in db.scalars(select(DraftCitation).where(DraftCitation.section_id == section_id)).all():
+        for old in db.scalars(
+            select(DraftCitation).where(DraftCitation.section_id == section_id)
+        ).all():
             db.delete(old)
         # Add new
         for kid in payload.knowledge_ids:
@@ -474,17 +552,21 @@ def update_section(
 
     db.commit()
     db.refresh(section)
-    citations = list(db.scalars(
-        select(DraftCitation).where(DraftCitation.section_id == section_id)
-    ).all())
+    citations = list(
+        db.scalars(select(DraftCitation).where(DraftCitation.section_id == section_id)).all()
+    )
     knowledge_items = []
     for c in citations:
         k = db.get(Knowledge, c.knowledge_id)
         if k:
             knowledge_items.append({"id": k.id, "statement": k.statement, "type": k.type})
     return DraftSectionRead(
-        id=section.id, draft_id=section.draft_id, ordinal=section.ordinal,
-        title=section.title, content=section.content, created_at=section.created_at,
+        id=section.id,
+        draft_id=section.draft_id,
+        ordinal=section.ordinal,
+        title=section.title,
+        content=section.content,
+        created_at=section.created_at,
         citations=[DraftCitationRead.model_validate(c) for c in citations],
         knowledge_items=knowledge_items,
     )
@@ -570,39 +652,63 @@ def assemble_draft(
         # Add citations
         for item in items:
             if item.type == type_name:
-                db.add(DraftCitation(id=new_id("dcit"), section_id=section.id, knowledge_id=item.id))
+                db.add(
+                    DraftCitation(id=new_id("dcit"), section_id=section.id, knowledge_id=item.id)
+                )
 
-    audit(db, access.workspace_id, "draft.assembled", "draft", draft.id,
-          f"Assembled {len(items)} atoms into {len(by_type)} sections")
+    audit(
+        db,
+        access.workspace_id,
+        "draft.assembled",
+        "draft",
+        draft.id,
+        f"Assembled {len(items)} atoms into {len(by_type)} sections",
+    )
     db.commit()
     db.refresh(draft)
 
     # Return full detail
-    sections = list(db.scalars(
-        select(DraftSection).where(DraftSection.draft_id == draft.id).order_by(DraftSection.ordinal)
-    ).all())
+    sections = list(
+        db.scalars(
+            select(DraftSection)
+            .where(DraftSection.draft_id == draft.id)
+            .order_by(DraftSection.ordinal)
+        ).all()
+    )
     section_reads = []
     total_citations = 0
     for s in sections:
-        citations = list(db.scalars(
-            select(DraftCitation).where(DraftCitation.section_id == s.id)
-        ).all())
+        citations = list(
+            db.scalars(select(DraftCitation).where(DraftCitation.section_id == s.id)).all()
+        )
         total_citations += len(citations)
         knowledge_items = []
         for c in citations:
             k = db.get(Knowledge, c.knowledge_id)
             if k:
                 knowledge_items.append({"id": k.id, "statement": k.statement, "type": k.type})
-        section_reads.append(DraftSectionRead(
-            id=s.id, draft_id=s.draft_id, ordinal=s.ordinal,
-            title=s.title, content=s.content, created_at=s.created_at,
-            citations=[DraftCitationRead.model_validate(c) for c in citations],
-            knowledge_items=knowledge_items,
-        ))
+        section_reads.append(
+            DraftSectionRead(
+                id=s.id,
+                draft_id=s.draft_id,
+                ordinal=s.ordinal,
+                title=s.title,
+                content=s.content,
+                created_at=s.created_at,
+                citations=[DraftCitationRead.model_validate(c) for c in citations],
+                knowledge_items=knowledge_items,
+            )
+        )
     return DraftDetail(
-        id=draft.id, workspace_id=draft.workspace_id, title=draft.title,
-        intent=draft.intent, audience=draft.audience, status=draft.status,
-        created_at=draft.created_at, updated_at=draft.updated_at,
-        section_count=len(sections), citation_count=total_citations,
+        id=draft.id,
+        workspace_id=draft.workspace_id,
+        title=draft.title,
+        intent=draft.intent,
+        audience=draft.audience,
+        status=draft.status,
+        created_at=draft.created_at,
+        updated_at=draft.updated_at,
+        section_count=len(sections),
+        citation_count=total_citations,
         sections=section_reads,
     )

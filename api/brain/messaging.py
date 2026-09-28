@@ -24,6 +24,7 @@ logger = logging.getLogger("brain.messaging")
 @dataclass
 class HermesConfig:
     """Configuration for Hermes messaging."""
+
     api_url: str = ""
     channel: str = "digital-brain"
     timeout: float = 10.0

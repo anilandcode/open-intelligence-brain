@@ -107,9 +107,7 @@ def turn_plan(turn: Turn) -> list[str]:
     return list(active_tools(turn.action))
 
 
-def _append_step(
-    db: Session, turn: Turn, *, tool: str, kind: str, summary: str
-) -> TurnStep:
+def _append_step(db: Session, turn: Turn, *, tool: str, kind: str, summary: str) -> TurnStep:
     step = TurnStep(
         id=new_id("tst"),
         turn_id=turn.id,
@@ -352,9 +350,7 @@ def handle_event(
             f"answer>={policy.answer_threshold:.2f} source={decision.source}"
         ),
     )
-    audit_access(
-        db, access, "event.triaged", f"{channel}: {decision.action} ({decision.source})"
-    )
+    audit_access(db, access, "event.triaged", f"{channel}: {decision.action} ({decision.source})")
     db.commit()
     db.refresh(event)
     db.refresh(turn)
@@ -433,9 +429,7 @@ def suspend_turn(
     turn.suspension = json.dumps(
         {"proposal_id": proposal_id, "question": question[:600]}, sort_keys=True
     )[:2000]
-    _append_step(
-        db, turn, tool="approve_proposal", kind="suspend", summary=question[:600]
-    )
+    _append_step(db, turn, tool="approve_proposal", kind="suspend", summary=question[:600])
     audit_access(db, access, "turn.suspended", f"{turn.id}: awaiting approval")
     db.commit()
     db.refresh(turn)
@@ -485,9 +479,7 @@ def steer_turn(db: Session, access: WorkspaceAccess, turn: Turn, *, note: str) -
     return turn
 
 
-def stop_turn(
-    db: Session, access: WorkspaceAccess, turn: Turn, *, reason: str = ""
-) -> Turn:
+def stop_turn(db: Session, access: WorkspaceAccess, turn: Turn, *, reason: str = "") -> Turn:
     """Cancel a turn. Idempotent, because cancellation races by nature.
 
     Calling this twice is not an error and does not add a second stop step, so a

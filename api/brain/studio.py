@@ -33,7 +33,9 @@ class InterviewSession(Base):
     person: Mapped[str] = mapped_column(String(160), default="")
     audience: Mapped[str] = mapped_column(String(160), default="")
     outcome: Mapped[str] = mapped_column(Text, default="")
-    status: Mapped[str] = mapped_column(String(30), default="drafting")  # drafting, active, completed
+    status: Mapped[str] = mapped_column(
+        String(30), default="drafting"
+    )  # drafting, active, completed
     source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -67,11 +69,15 @@ class Draft(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
     title: Mapped[str] = mapped_column(String(240))
-    intent: Mapped[str] = mapped_column(String(40), default="brief")  # brief, article, agent, questions
+    intent: Mapped[str] = mapped_column(
+        String(40), default="brief"
+    )  # brief, article, agent, questions
     audience: Mapped[str] = mapped_column(String(160), default="")
     status: Mapped[str] = mapped_column(String(30), default="drafting")  # drafting, published
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_now, onupdate=_now
+    )
 
     sections: Mapped[list["DraftSection"]] = relationship(
         back_populates="draft", order_by="DraftSection.ordinal"

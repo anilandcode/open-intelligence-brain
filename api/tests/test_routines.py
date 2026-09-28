@@ -12,34 +12,47 @@ from brain.usage import top_used, track_batch, track_usage, unused_knowledge, us
 def _seed(db: Session, workspace_id: str):
     """Seed minimal data for routine/usage tests."""
     source = Source(
-        id=new_id("src"), workspace_id=workspace_id,
-        title="Test", kind="note", sensitivity="private",
+        id=new_id("src"),
+        workspace_id=workspace_id,
+        title="Test",
+        kind="note",
+        sensitivity="private",
         content="Test content for routines.",
     )
     db.add(source)
     db.flush()
     version = SourceVersion(
-        id=new_id("srcv"), source_id=source.id, version=1,
-        content_hash="a" * 64, content="Test content for routines.",
+        id=new_id("srcv"),
+        source_id=source.id,
+        version=1,
+        content_hash="a" * 64,
+        content="Test content for routines.",
     )
     db.add(version)
     db.flush()
     proposal = Proposal(
-        id=new_id("prop"), workspace_id=workspace_id,
-        source_id=source.id, type="fact",
+        id=new_id("prop"),
+        workspace_id=workspace_id,
+        source_id=source.id,
+        type="fact",
         statement="Test proposal for routines.",
         source_excerpt="Test content for routines.",
     )
     db.add(proposal)
     db.flush()
-    db.add(ProposalEvidence(
-        proposal_id=proposal.id,
-        source_version_id=version.id,
-    ))
+    db.add(
+        ProposalEvidence(
+            proposal_id=proposal.id,
+            source_version_id=version.id,
+        )
+    )
     knowledge = Knowledge(
-        id=new_id("know"), workspace_id=workspace_id,
-        proposal_id=proposal.id, source_id=source.id,
-        type="fact", statement="Test knowledge for routines.",
+        id=new_id("know"),
+        workspace_id=workspace_id,
+        proposal_id=proposal.id,
+        source_id=source.id,
+        type="fact",
+        statement="Test knowledge for routines.",
         source_excerpt="Test content for routines.",
     )
     db.add(knowledge)
@@ -52,6 +65,7 @@ class TestRoutines:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             source, proposal, knowledge = _seed(db, ws.id)
             scope = ReadScope(ws.id, "owner")
@@ -91,6 +105,7 @@ class TestUsage:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
             event = track_usage(db, ws.id, knowledge.id, context="search", query="test query")
@@ -104,6 +119,7 @@ class TestUsage:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
             count = track_batch(db, ws.id, [knowledge.id, knowledge.id], context="answer")
@@ -115,6 +131,7 @@ class TestUsage:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
             track_usage(db, ws.id, knowledge.id, context="search")
@@ -130,6 +147,7 @@ class TestUsage:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
             track_usage(db, ws.id, knowledge.id, context="search")
@@ -145,6 +163,7 @@ class TestUsage:
         db = SessionLocal()
         try:
             from brain.access import ensure_default_workspace
+
             ws = ensure_default_workspace(db)
             _, _, knowledge = _seed(db, ws.id)
             unused = unused_knowledge(db, ReadScope(ws.id, "owner"))

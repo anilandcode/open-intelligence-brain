@@ -262,15 +262,19 @@ def list_workspaces(
     access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)
 ):
     """Every workspace the caller's token is granted. Never a global list."""
-    rows = db.execute(
-        select(Workspace)
-        .join(
-            WorkspaceGrant,
-            WorkspaceGrant.workspace_id == Workspace.id,
+    rows = (
+        db.execute(
+            select(Workspace)
+            .join(
+                WorkspaceGrant,
+                WorkspaceGrant.workspace_id == Workspace.id,
+            )
+            .where(WorkspaceGrant.principal == access.principal)
+            .order_by(Workspace.created_at)
         )
-        .where(WorkspaceGrant.principal == access.principal)
-        .order_by(Workspace.created_at)
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -296,9 +300,7 @@ def create_workspace(
     db.add(workspace)
     db.flush()
     grant_workspace(db, workspace, access.principal, role="owner")
-    audit_access(
-        db, access, "workspace.created", f"Created {workspace.name} ({workspace.slug})"
-    )
+    audit_access(db, access, "workspace.created", f"Created {workspace.name} ({workspace.slug})")
     db.commit()
     db.refresh(workspace)
     return workspace
@@ -333,11 +335,17 @@ def create_workspace_token(
     if payload.expires_in_hours is not None:
         expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
     grant = grant_workspace(
-        db, workspace, token_string,
-        role=payload.role, scope=payload.scope, expires_at=expires_at,
+        db,
+        workspace,
+        token_string,
+        role=payload.role,
+        scope=payload.scope,
+        expires_at=expires_at,
     )
     audit_access(
-        db, access, "token.created",
+        db,
+        access,
+        "token.created",
         f"Created {payload.role} token" + (f" scoped to {payload.scope}" if payload.scope else ""),
     )
     db.commit()
@@ -416,8 +424,9 @@ def get_overview(scope: ReadScope = Depends(read_scope), db: Session = Depends(g
 def list_sources(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
     rows = db.execute(
         scope.apply(
-            select(Source, func.count(Proposal.id))
-            .outerjoin(Proposal, Proposal.source_id == Source.id),
+            select(Source, func.count(Proposal.id)).outerjoin(
+                Proposal, Proposal.source_id == Source.id
+            ),
             Source,
         )
         .group_by(Source.id)
@@ -603,8 +612,7 @@ def list_proposals(
             .join(Source, Source.id == Proposal.source_id)
             .where(Proposal.status == proposal_status),
             Proposal,
-        )
-        .order_by(Proposal.created_at.desc())
+        ).order_by(Proposal.created_at.desc())
     ).all()
     return [proposal_view(proposal, title) for proposal, title in rows]
 
@@ -666,9 +674,9 @@ def list_knowledge(
         source_id: title
         for source_id, title in db.execute(
             scope.apply(
-                select(Source.id, Source.title).where(Source.id.in_(
-                    {item.source_id for item in items}
-                )),
+                select(Source.id, Source.title).where(
+                    Source.id.in_({item.source_id for item in items})
+                ),
                 Source,
             )
         ).all()
@@ -730,7 +738,8 @@ def chat(
     # Track which knowledge atoms were cited
     if result.citations:
         track_batch(
-            db, scope.workspace_id,
+            db,
+            scope.workspace_id,
             [c.knowledge_id for c in result.citations],
             context="answer",
             query=payload.question,
@@ -831,8 +840,7 @@ def turn_detail(db: Session, turn: TurnRow) -> TurnDetail:
     return detail.model_copy(
         update={
             "steps": [
-                TurnStepRead.model_validate(step)
-                for step in harness_turns.turn_steps(db, turn)
+                TurnStepRead.model_validate(step) for step in harness_turns.turn_steps(db, turn)
             ],
             "plan": harness_turns.turn_plan(turn),
             "active_tools": list(harness_turns.active_tools(turn.action)),
@@ -942,9 +950,7 @@ def resume_turn(
 ):
     turn = load_turn_or_404(db, access, turn_id)
     try:
-        harness_turns.resume_turn(
-            db, access, turn, approved=payload.approved, note=payload.note
-        )
+        harness_turns.resume_turn(db, access, turn, approved=payload.approved, note=payload.note)
     except harness_turns.TurnConflict as exc:
         raise turn_conflict(exc) from exc
     return turn_detail(db, turn)
@@ -998,6 +1004,7 @@ def put_proactivity(
 
 # --- Routines and Usage ---
 
+
 @app.get("/api/v1/routines/digest")
 def get_routine_digest(
     hours: int = 24,
@@ -1006,6 +1013,7 @@ def get_routine_digest(
 ):
     from .access import ReadScope
     from .routines import build_digest, format_digest
+
     scope = ReadScope(access.workspace_id, access.role)
     digest = build_digest(db, scope, since_hours=hours)
     return {
@@ -1064,6 +1072,7 @@ def run_jev_evaluation(
             detail="Only an owner or admin can run the evaluation",
         )
     from .evaluation import run_evaluation
+
     report = run_evaluation(jev_url=settings.jev_url or None)
     return report.to_dict()
 
@@ -1073,6 +1082,7 @@ def messaging_status(
     access: WorkspaceAccess = Depends(resolve_access),
 ):
     from .messaging import HermesMessenger
+
     messenger = HermesMessenger()
     return {
         "configured": messenger.config.configured,

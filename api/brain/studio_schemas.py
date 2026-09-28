@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # --- Interview sessions ---
 
+
 class InterviewSessionCreate(BaseModel):
     title: str = Field(min_length=3, max_length=240)
     topic: str = Field(default="", max_length=2_000)
@@ -56,6 +57,7 @@ class InterviewSessionDetail(InterviewSessionRead):
 
 
 # --- Drafts ---
+
 
 class DraftCreate(BaseModel):
     title: str = Field(min_length=3, max_length=240)
@@ -115,6 +117,7 @@ class DraftDetail(DraftRead):
 
 class DraftAssembleRequest(BaseModel):
     """Assemble a draft from approved knowledge atoms."""
+
     title: str = Field(min_length=3, max_length=240)
     intent: str = Field(default="brief", pattern="^(brief|article|agent|questions)$")
     audience: str = Field(default="", max_length=160)

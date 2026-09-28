@@ -21,7 +21,11 @@ QUESTION = "@brain what did we decide about enterprise pricing?"
 def test_only_the_three_actions_are_parsed():
     parsed = parse_triage("INVESTIGATE conf=0.9 why=needs a lookup")
     assert parsed is not None
-    assert (parsed.action, parsed.confidence, parsed.reason) == ("investigate", 0.9, "needs a lookup")
+    assert (parsed.action, parsed.confidence, parsed.reason) == (
+        "investigate",
+        0.9,
+        "needs a lookup",
+    )
     # A chatty reply is not a decision. It must not be read as agreement.
     assert parse_triage("I think you should probably look into this one.") is None
     assert parse_triage("") is None
@@ -149,7 +153,10 @@ def test_event_kinds_are_classified_from_the_channel_and_the_text():
     assert classify_event(text="Bot output", channel="#eng", is_bot=True) == "ignored"
     assert classify_event(text="   ", channel="#eng") == "ignored"
     assert classify_event(text="The deploy finished at noon.", channel="#eng") == "context_only"
-    assert classify_event(text="could you track the refund policy?", channel="#eng") == "passive_message"
+    assert (
+        classify_event(text="could you track the refund policy?", channel="#eng")
+        == "passive_message"
+    )
 
 
 def test_request_detection_is_shallow_on_purpose():

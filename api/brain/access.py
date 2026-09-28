@@ -200,9 +200,7 @@ def resolve_workspace(
     """
     if not token:
         raise AccessDenied("Invalid Brain token")
-    grants = list(
-        db.scalars(select(WorkspaceGrant).where(WorkspaceGrant.principal == token)).all()
-    )
+    grants = list(db.scalars(select(WorkspaceGrant).where(WorkspaceGrant.principal == token)).all())
     if not grants:
         raise AccessDenied("Invalid Brain token")
     if requested_slug:
@@ -211,9 +209,7 @@ def resolve_workspace(
         workspace = db.scalar(select(Workspace).where(Workspace.slug == requested_slug))
         if workspace is None:
             raise AccessDenied("Unknown workspace")
-        target = next(
-            (grant for grant in grants if grant.workspace_id == workspace.id), None
-        )
+        target = next((grant for grant in grants if grant.workspace_id == workspace.id), None)
         if target is None:
             raise AccessDenied("This Brain token has no access to that workspace")
     elif len(grants) == 1:
@@ -228,11 +224,17 @@ def resolve_workspace(
     # Check token expiration — SQLite stores naive datetimes, so compare
     # after stripping timezone info from both sides.
     if target.expires_at is not None:
-        expiry = target.expires_at.replace(tzinfo=None) if target.expires_at.tzinfo is None else target.expires_at
+        expiry = (
+            target.expires_at.replace(tzinfo=None)
+            if target.expires_at.tzinfo is None
+            else target.expires_at
+        )
         now = datetime.now(UTC).replace(tzinfo=None) if expiry.tzinfo is None else datetime.now(UTC)
         if expiry < now:
             raise AccessDenied("This Brain token has expired")
-    return WorkspaceAccess(workspace=workspace, principal=token, role=target.role, scope=target.scope)
+    return WorkspaceAccess(
+        workspace=workspace, principal=token, role=target.role, scope=target.scope
+    )
 
 
 def grant_workspace(
@@ -305,18 +307,9 @@ def workspace_counts(db: Session, scope: ReadScope) -> dict[str, int]:
     through the number alone would defeat the check.
     """
     return {
-        "sources": db.scalar(
-            scope.apply(select(func.count(Source.id)), Source)
-        )
-        or 0,
-        "proposals": db.scalar(
-            scope.apply(select(func.count(Proposal.id)), Proposal)
-        )
-        or 0,
-        "canonical": db.scalar(
-            scope.apply(select(func.count(Knowledge.id)), Knowledge)
-        )
-        or 0,
+        "sources": db.scalar(scope.apply(select(func.count(Source.id)), Source)) or 0,
+        "proposals": db.scalar(scope.apply(select(func.count(Proposal.id)), Proposal)) or 0,
+        "canonical": db.scalar(scope.apply(select(func.count(Knowledge.id)), Knowledge)) or 0,
         "pending_reviews": db.scalar(
             scope.apply(
                 select(func.count(Proposal.id)).where(Proposal.status == "proposed"),
