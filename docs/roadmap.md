@@ -37,7 +37,7 @@ Exit: a changed source cannot silently rewrite approved knowledge, and a fresh r
 
 Exit: one new insight is captured from an interview and reused in two different drafts with inspectable evidence.
 
-## M4 — portable agent context (in progress)
+## M4 — portable agent context (done)
 
 - [x] Workspaces, workspace grants, and workspace-scoped reads and writes.
 - [x] Workspace isolation with role-based access control (owner, admin, member).
@@ -49,7 +49,7 @@ Exit: one new insight is captured from an interview and reused in two different 
 - [x] MCP HTTP adapter (stdio + HTTP endpoints for remote agents).
 - [x] Read tools for search, knowledge, evidence, profile, and context packages.
 - [x] Hermes configuration and skill.
-- Codex and Claude Code smoke tests.
+- [x] Codex and Claude Code smoke tests.
 
 Exit: each tested client retrieves the same current revision and cannot access a disabled tool or unrelated workspace.
 
@@ -63,12 +63,12 @@ Exit: each tested client retrieves the same current revision and cannot access a
 
 Exit: disabling Jev leaves every core workflow working, and measured results justify any route promoted from shadow mode.
 
-## M6 — personal beta
+## M6 — personal beta (mostly done)
 
-- Opt-in routines with timezone and missed-run policy.
-- Hermes messaging pairing.
-- Manual outcome and reuse tracking.
-- Four-week personal usage study.
-- Release packaging, compatibility matrix, and hardening.
+- [x] Opt-in routines with timezone and missed-run policy.
+- [x] Manual outcome and reuse tracking.
+- [ ] Hermes messaging pairing.
+- [ ] Four-week personal usage study.
+- [ ] Release packaging, compatibility matrix, and hardening.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.

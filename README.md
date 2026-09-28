@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-- Version 0.7 adds a critic pass that reviews proposals for evidence gaps, vague language, and type mismatches — displayed as inline notes on approval cards.
+- Version 0.8 adds daily routine digests, usage tracking (which knowledge gets reused), and MCP smoke tests verifying all tools work for Codex, Claude Code, and Hermes.
 
 ## Screens
 
@@ -117,7 +117,9 @@ api/                  FastAPI domain, services, and tests
     worker.py         Background worker for durable turn processing
     decision.py       Decision provider interface (deterministic + Jev shadow)
     critic.py         Critic pass: evidence gap detection and quality signals
-  tests/              162 backend tests across 12 modules
+    routines.py       Daily routine digests and delivery
+    usage.py          Knowledge usage tracking and analytics
+  tests/              177 backend tests across 14 modules
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -170,6 +172,9 @@ Implemented:
 - Background worker for durable turn processing with lease-based claiming.
 - Decision provider interface with deterministic and Jev shadow adapters.
 - Hermes skill for one-command Brain connection via MCP.
+- Daily routine digests with pending proposals, stale knowledge, conflicts.
+- Usage tracking: which knowledge atoms get cited and reused.
+- MCP smoke tests verifying all 5 tools for Codex/Claude/Hermes.
 - Intelligence Studio: guided interview sessions and draft builder.
 - Interview responses auto-extract into proposals after completion.
 - Drafts assemble approved knowledge into briefs/articles/agent context with citations.
@@ -178,7 +183,7 @@ Implemented:
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
-- 162 backend tests and 5 frontend tests.
+- 177 backend tests and 5 frontend tests.
 
 Next:
 
@@ -186,7 +191,7 @@ Next:
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
 - Held-out evaluation before promoting Jev from shadow mode (M5 remaining item).
-- Daily routines, Hermes messaging, and usage tracking (M6 — personal beta).
+- Hermes messaging pairing (M6 remaining item).
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
 See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.

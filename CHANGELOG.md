@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — Daily routines, usage tracking, MCP smoke tests
+
+- Daily routine digest: pending proposals, stale knowledge, conflicts, recent activity.
+- Usage tracking: which knowledge atoms get cited and reused.
+- Auto-tracking citations from chat answers.
+- MCP smoke tests verifying all 5 tools for Codex/Claude/Hermes.
+- 177 backend tests + 5 frontend tests.
+
 ## 0.7.0 — Critic pass and payload-bound approval cards
 
 - Critic pass reviews proposals after extraction, flagging evidence gaps, vague language, and type mismatches.

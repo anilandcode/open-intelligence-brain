@@ -62,7 +62,7 @@ into the caller's.
 ## Current components
 
 - React/TypeScript web application with modular CSS architecture.
-- FastAPI API with 40+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, proactivity, and studio.
+- FastAPI API with 50+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, proactivity, studio, routines, and usage.
 - SQLAlchemy persistence with SQLite locally and PostgreSQL in Compose.
 - Deterministic extraction provider for offline reliability.
 - Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
@@ -74,6 +74,8 @@ into the caller's.
 - Background worker (`worker.py`) for durable turn processing with lease-based claiming.
 - Decision provider interface (`decision.py`) with deterministic and Jev shadow adapters.
 - Critic pass (`critic.py`) for evidence gap detection and quality signals on proposals.
+- Daily routines (`routines.py`) for scheduled digest delivery.
+- Usage tracking (`usage.py`) for knowledge citation and reuse analytics.
 - Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
