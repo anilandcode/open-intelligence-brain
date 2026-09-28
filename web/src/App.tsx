@@ -1201,10 +1201,6 @@ function AskView() {
   );
 }
 
-function PreviewNotice({ children }: { children: ReactNode }) {
-  return <div className="preview-notice"><CircleDot size={15} /><span>{children}</span></div>;
-}
-
 function StudioView({
   interviews, drafts, knowledge, onChanged, onNotice, onError,
 }: {
@@ -1221,7 +1217,7 @@ function StudioView({
     return <InterviewDetailView sessionId={selectedInterview} onBack={() => setSelectedInterview(null)} onChanged={onChanged} onNotice={onNotice} onError={onError} />;
   }
   if (selectedDraft) {
-    return <DraftDetailView draftId={selectedDraft} onBack={() => setSelectedDraft(null)} knowledge={knowledge} onChanged={onChanged} onNotice={onNotice} onError={onError} />;
+    return <DraftDetailView draftId={selectedDraft} onBack={() => setSelectedDraft(null)} onNotice={onNotice} onError={onError} />;
   }
 
   return (
@@ -1344,6 +1340,14 @@ function InterviewDetailView({ sessionId, onBack, onChanged, onNotice, onError }
     try { setSession(await api.interview(sessionId)); }
     catch (err) { onError(err instanceof Error ? err.message : "Failed to load interview"); }
   }
+  // Load-on-mount for a detail view keyed by `sessionId`: the fetch is the
+  // effect's purpose and setState lands in its async continuation, not
+  // synchronously in the effect body. Flagged by react-hooks 7's
+  // set-state-in-effect, which cannot see that the call is deferred behind
+  // `await`. Suppressing here is deliberate — restructuring a working view
+  // carries more risk than the cascading-render concern this pattern does not
+  // actually have.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [sessionId]);
 
   async function addQ() {
@@ -1476,13 +1480,20 @@ function AssembleDraftDialog({ knowledge, onClose, onCreated, onError }: { knowl
   );
 }
 
-function DraftDetailView({ draftId, onBack, knowledge, onChanged, onNotice, onError }: { draftId: string; onBack: () => void; knowledge: Knowledge[]; onChanged: () => Promise<void>; onNotice: (v: string) => void; onError: (v: string) => void }) {
+function DraftDetailView({ draftId, onBack, onNotice, onError }: { draftId: string; onBack: () => void; onNotice: (v: string) => void; onError: (v: string) => void }) {
   const [draft, setDraft] = useState<DraftDetail | null>(null);
 
   async function load() {
     try { setDraft(await api.draft(draftId)); }
     catch (err) { onError(err instanceof Error ? err.message : "Failed to load draft"); }
   }
+  // Load-on-mount for a detail view keyed by `draftId`: the fetch is the effect's
+  // purpose and setState lands in its async continuation, not synchronously in
+  // the effect body. Flagged by react-hooks 7's set-state-in-effect, which
+  // cannot see that the call is deferred behind `await`. Suppressing here is
+  // deliberate — restructuring a working view carries more risk than the
+  // cascading-render concern this pattern does not actually have.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void load(); }, [draftId]);
 
   async function downloadMarkdown() {
