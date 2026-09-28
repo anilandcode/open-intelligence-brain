@@ -171,6 +171,67 @@ export type ChatResult = {
   }>;
 };
 
+// --- Studio types ---
+
+export type InterviewSession = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  topic: string;
+  person: string;
+  audience: string;
+  outcome: string;
+  status: string;
+  source_id: string | null;
+  created_at: string;
+  completed_at: string | null;
+  question_count: number;
+  response_count: number;
+  extracted_count: number;
+};
+
+export type InterviewQuestion = {
+  id: string;
+  session_id: string;
+  ordinal: number;
+  question_text: string;
+  response_text: string;
+  extracted: boolean;
+  created_at: string;
+};
+
+export type InterviewSessionDetail = InterviewSession & {
+  questions: InterviewQuestion[];
+};
+
+export type Draft = {
+  id: string;
+  workspace_id: string;
+  title: string;
+  intent: string;
+  audience: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  section_count: number;
+  citation_count: number;
+};
+
+export type DraftSection = {
+  id: string;
+  draft_id: string;
+  ordinal: number;
+  title: string;
+  content: string;
+  created_at: string;
+  citations: Array<{ id: string; section_id: string; knowledge_id: string; created_at: string }>;
+  knowledge_items: Array<{ id: string; statement: string; type: string; source_excerpt?: string }>;
+};
+
+export type DraftDetail = Draft & {
+  sections: DraftSection[];
+};
+
 /** The server's own wording for a refusal, when it sent one. */
 async function refusedDetail(response: Response): Promise<string | undefined> {
   const payload = await response.json().catch(() => null);
@@ -237,4 +298,33 @@ export const api = {
   chat: (question: string) =>
     request<ChatResult>("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) }),
   exportUrl: `${API_URL}/api/v1/export`,
+
+  // --- Studio ---
+  interviews: () => request<InterviewSession[]>("/api/v1/studio/interviews"),
+  interview: (id: string) => request<InterviewSessionDetail>(`/api/v1/studio/interviews/${id}`),
+  createInterview: (payload: { title: string; topic?: string; person?: string; audience?: string; outcome?: string }) =>
+    request<InterviewSession>("/api/v1/studio/interviews", { method: "POST", body: JSON.stringify(payload) }),
+  addQuestion: (sessionId: string, questionText: string) =>
+    request<InterviewQuestion>(`/api/v1/studio/interviews/${sessionId}/questions`, {
+      method: "POST", body: JSON.stringify({ question_text: questionText }),
+    }),
+  submitResponse: (sessionId: string, questionId: string, responseText: string) =>
+    request<InterviewQuestion>(`/api/v1/studio/interviews/${sessionId}/questions/${questionId}/respond`, {
+      method: "POST", body: JSON.stringify({ response_text: responseText }),
+    }),
+  completeInterview: (sessionId: string) =>
+    request<InterviewSession>(`/api/v1/studio/interviews/${sessionId}/complete`, { method: "POST" }),
+
+  drafts: () => request<Draft[]>("/api/v1/studio/drafts"),
+  draft: (id: string) => request<DraftDetail>(`/api/v1/studio/drafts/${id}`),
+  createDraft: (payload: { title: string; intent?: string; audience?: string }) =>
+    request<Draft>("/api/v1/studio/drafts", { method: "POST", body: JSON.stringify(payload) }),
+  addSection: (draftId: string, payload: { title: string; content: string; knowledge_ids?: string[] }) =>
+    request<DraftSection>(`/api/v1/studio/drafts/${draftId}/sections`, {
+      method: "POST", body: JSON.stringify(payload),
+    }),
+  deleteSection: (draftId: string, sectionId: string) =>
+    request<void>(`/api/v1/studio/drafts/${draftId}/sections/${sectionId}`, { method: "DELETE" }),
+  assembleDraft: (payload: { title: string; intent?: string; audience?: string; knowledge_ids: string[]; include_excerpts?: boolean }) =>
+    request<DraftDetail>("/api/v1/studio/drafts/assemble", { method: "POST", body: JSON.stringify(payload) }),
 };

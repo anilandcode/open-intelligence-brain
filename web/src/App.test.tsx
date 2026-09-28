@@ -45,6 +45,8 @@ describe("App", () => {
       if (url.includes("/knowledge/know_1/revisions")) return mockJson([revision]);
       if (url.includes("/knowledge")) return mockJson([knowledge]);
       if (url.includes("/chat")) return mockJson({ answer: knowledge.statement, grounded: true, citations: [{ knowledge_id: knowledge.id, source_id: source.id, source_title: source.title, excerpt: knowledge.source_excerpt }] });
+      if (url.includes("/studio/interviews")) return mockJson([]);
+      if (url.includes("/studio/drafts")) return mockJson([]);
       return mockJson({});
     }));
   });
@@ -107,12 +109,14 @@ describe("App", () => {
     expect(window.sessionStorage.getItem(TOKEN_KEY)).toBe("test-token");
   });
 
-  it("labels future workflows as previews instead of pretending they are live", async () => {
+  it("navigates to the live Intelligence Studio", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByText("Recently approved");
-    await user.click(screen.getByRole("button", { name: "StudioSoon" }));
+    await user.click(screen.getByRole("button", { name: "Studio" }));
     expect(screen.getByRole("heading", { name: "Intelligence Studio" })).toBeInTheDocument();
-    expect(screen.getByText(/honest interface preview/i)).toBeInTheDocument();
+    // Studio now has live interview and draft tabs
+    expect(screen.getByText("Interviews")).toBeInTheDocument();
+    expect(screen.getByText("Drafts")).toBeInTheDocument();
   });
 });

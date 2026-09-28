@@ -26,6 +26,7 @@ from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
 from .migrate import add_engine_link_columns, add_grant_scope_and_expiry, add_nullable_evidence_span, add_workspace_columns
 from .mcp_http import router as mcp_http_router
+from .studio_api import router as studio_router
 from .models import (
     AuditEvent,
     Knowledge,
@@ -163,6 +164,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
+app.include_router(studio_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,

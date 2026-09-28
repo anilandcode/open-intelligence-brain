@@ -6,7 +6,8 @@ import {
   ShieldCheck, Sparkles, TriangleAlert, X,
 } from "lucide-react";
 import {
-  api, ChatResult, Integrity, Knowledge, KnowledgeRevision, Overview, Proposal, Source,
+  api, ChatResult, Draft, DraftDetail, Integrity, InterviewSession, InterviewSessionDetail,
+  Knowledge, KnowledgeRevision, Overview, Proposal, Source,
   clearToken, getToken, hasToken, setToken, Unauthorized,
 } from "./api";
 
@@ -19,7 +20,7 @@ const primaryNav: NavItem[] = [
   { id: "overview", label: "Overview", icon: Home },
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "brain", label: "Brain", icon: Brain },
-  { id: "studio", label: "Studio", icon: Mic2, future: true },
+  { id: "studio", label: "Studio", icon: Mic2 },
   { id: "activate", label: "Activate", icon: Sparkles },
 ];
 
@@ -74,7 +75,7 @@ const titleMap: Record<View, { title: string; description: string }> = {
   },
   studio: {
     title: "Intelligence Studio",
-    description: "A guided workspace for turning expert conversations into theses, stories, frameworks, and evidence.",
+    description: "Capture expert knowledge through guided interviews and assemble drafts from approved intelligence.",
   },
   activate: {
     title: "Activate intelligence",
@@ -352,6 +353,8 @@ export default function App() {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [knowledge, setKnowledge] = useState<Knowledge[]>([]);
   const [integrity, setIntegrity] = useState<Integrity | null>(null);
+  const [interviews, setInterviews] = useState<InterviewSession[]>([]);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -366,14 +369,16 @@ export default function App() {
   async function refresh() {
     try {
       setError("");
-      const [overviewData, sourceData, proposalData, knowledgeData, integrityData] = await Promise.all([
-        api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity(),
+      const [overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData] = await Promise.all([
+        api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity(), api.interviews(), api.drafts(),
       ]);
       setOverview(overviewData);
       setSources(sourceData);
       setProposals(proposalData);
       setKnowledge(knowledgeData);
       setIntegrity(integrityData);
+      setInterviews(interviewData);
+      setDrafts(draftData);
     } catch (requestError) {
       recordRequestError(requestError);
     } finally {
@@ -406,14 +411,16 @@ export default function App() {
     // load must not reach the API at all.
     if (tokenRequired) return;
     let active = true;
-    Promise.all([api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity()])
-      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData]) => {
+    Promise.all([api.overview(), api.sources(), api.proposals(), api.knowledge(), api.integrity(), api.interviews(), api.drafts()])
+      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData]) => {
         if (!active) return;
         setOverview(overviewData);
         setSources(sourceData);
         setProposals(proposalData);
         setKnowledge(knowledgeData);
         setIntegrity(integrityData);
+        setInterviews(interviewData);
+        setDrafts(draftData);
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -538,7 +545,7 @@ export default function App() {
               {view === "brain" && <BrainView initial={knowledge} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "sources" && <SourcesView sources={sources} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "ask" && <AskView />}
-              {view === "studio" && <StudioPreview onCapture={() => setShowCapture(true)} />}
+              {view === "studio" && <StudioView interviews={interviews} drafts={drafts} knowledge={knowledge} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "activate" && <ActivateView knowledge={knowledge} onNavigate={navigate} onNotice={setNotice} />}
               {view === "analytics" && <AnalyticsPreview overview={overview} knowledge={knowledge} integrity={integrity} />}
               {view === "audit" && overview && <AuditView overview={overview} integrity={integrity} />}
@@ -1179,21 +1186,329 @@ function PreviewNotice({ children }: { children: ReactNode }) {
   return <div className="preview-notice"><CircleDot size={15} /><span>{children}</span></div>;
 }
 
-function StudioPreview({ onCapture }: { onCapture: () => void }) {
+function StudioView({
+  interviews, drafts, knowledge, onChanged, onNotice, onError,
+}: {
+  interviews: InterviewSession[]; drafts: Draft[]; knowledge: Knowledge[];
+  onChanged: () => Promise<void>; onNotice: (v: string) => void; onError: (v: string) => void;
+}) {
+  const [tab, setTab] = useState<"interviews" | "drafts">("interviews");
+  const [showNewInterview, setShowNewInterview] = useState(false);
+  const [showAssemble, setShowAssemble] = useState(false);
+  const [selectedInterview, setSelectedInterview] = useState<string | null>(null);
+  const [selectedDraft, setSelectedDraft] = useState<string | null>(null);
+
+  if (selectedInterview) {
+    return <InterviewDetailView sessionId={selectedInterview} onBack={() => setSelectedInterview(null)} onChanged={onChanged} onNotice={onNotice} onError={onError} />;
+  }
+  if (selectedDraft) {
+    return <DraftDetailView draftId={selectedDraft} onBack={() => setSelectedDraft(null)} knowledge={knowledge} onChanged={onChanged} onNotice={onNotice} onError={onError} />;
+  }
+
   return (
-    <div className="future-layout">
-      <PreviewNotice>This is an honest interface preview. Guided interview APIs arrive in milestone M3; no session is being recorded yet.</PreviewNotice>
-      <section className="studio-preview panel-card">
-        <div className="preview-hero-icon"><Mic2 size={28} /></div>
-        <span className="section-kicker">Founder interview workflow</span>
-        <h2>Capture the thinking that has never been written down.</h2>
-        <p>The Studio will guide an expert through a focused conversation, surface useful follow-ups, and send every extracted idea into the same human review boundary.</p>
-        <ol className="workflow-steps">
-          <li className="active"><span>1</span><div><strong>Define the interview</strong><small>Person, topic, audience, and intended outcome</small></div></li>
-          <li><span>2</span><div><strong>Record and follow up</strong><small>Conversation with targeted questions and timestamps</small></div></li>
-          <li><span>3</span><div><strong>Review extracted intelligence</strong><small>Theses, stories, lessons, frameworks, and evidence</small></div></li>
-        </ol>
-        <button className="secondary-button" onClick={onCapture}><FileText size={17} /> Import an interview transcript now</button>
+    <div className="studio-layout">
+      <div className="studio-tabs" role="tablist">
+        <button role="tab" aria-selected={tab === "interviews"} className={tab === "interviews" ? "active" : ""} onClick={() => setTab("interviews")}>
+          <Mic2 size={16} /> Interviews <span>{interviews.length}</span>
+        </button>
+        <button role="tab" aria-selected={tab === "drafts"} className={tab === "drafts" ? "active" : ""} onClick={() => setTab("drafts")}>
+          <FileText size={16} /> Drafts <span>{drafts.length}</span>
+        </button>
+      </div>
+
+      {tab === "interviews" && (
+        <section className="panel-card">
+          <div className="card-heading">
+            <div><span className="section-kicker">Guided interviews</span><h2>Capture expert knowledge</h2><p className="section-sub">Walk someone through a structured conversation. Responses become source material for the review queue.</p></div>
+            <button className="primary-button btn--pill" onClick={() => setShowNewInterview(true)}><Plus size={17} /> New interview</button>
+          </div>
+          {interviews.length === 0 ? (
+            <EmptyState icon={<Mic2 />} title="No interviews yet">Create an interview to capture expert knowledge through a guided conversation.</EmptyState>
+          ) : (
+            <div className="studio-grid">
+              {interviews.map((s) => (
+                <article key={s.id} className="panel-card studio-card" onClick={() => setSelectedInterview(s.id)}>
+                  <header><span className={`status-chip status-chip--${s.status}`}>{s.status}</span><span>{s.question_count} questions</span></header>
+                  <h3>{s.title}</h3>
+                  {s.person && <p className="studio-meta">{s.person}{s.topic && ` · ${s.topic}`}</p>}
+                  <footer>
+                    <span>{s.response_count} responses</span>
+                    {s.extracted_count > 0 && <span>{s.extracted_count} extracted</span>}
+                    <time>{timeAgo(s.created_at)}</time>
+                  </footer>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === "drafts" && (
+        <section className="panel-card">
+          <div className="card-heading">
+            <div><span className="section-kicker">Draft builder</span><h2>Assemble intelligence into output</h2><p className="section-sub">Build articles, briefs, and agent context from approved knowledge atoms.</p></div>
+            <button className="primary-button btn--pill" onClick={() => setShowAssemble(true)}><Sparkles size={17} /> Assemble draft</button>
+          </div>
+          {drafts.length === 0 ? (
+            <EmptyState icon={<FileText />} title="No drafts yet">Assemble a draft from approved knowledge to create articles, briefs, or agent context.</EmptyState>
+          ) : (
+            <div className="studio-grid">
+              {drafts.map((d) => (
+                <article key={d.id} className="panel-card studio-card" onClick={() => setSelectedDraft(d.id)}>
+                  <header><span className="type-chip">{d.intent}</span><span>{d.section_count} sections</span></header>
+                  <h3>{d.title}</h3>
+                  {d.audience && <p className="studio-meta">For: {d.audience}</p>}
+                  <footer>
+                    <span>{d.citation_count} citations</span>
+                    <time>{timeAgo(d.updated_at)}</time>
+                  </footer>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {showNewInterview && <NewInterviewDialog onClose={() => setShowNewInterview(false)} onCreated={async () => { setShowNewInterview(false); await onChanged(); }} onError={onError} />}
+      {showAssemble && <AssembleDraftDialog knowledge={knowledge} onClose={() => setShowAssemble(false)} onCreated={async () => { setShowAssemble(false); await onChanged(); }} onError={onError} />}
+    </div>
+  );
+}
+
+function NewInterviewDialog({ onClose, onCreated, onError }: { onClose: () => void; onCreated: () => Promise<void>; onError: (v: string) => void }) {
+  const [saving, setSaving] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialogRef.current; if (!d) return;
+    if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "");
+    return () => { if (d.open && typeof d.close === "function") d.close(); };
+  }, []);
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setSaving(true);
+    const data = new FormData(e.currentTarget);
+    try {
+      await api.createInterview({
+        title: String(data.get("title")),
+        topic: String(data.get("topic") || ""),
+        person: String(data.get("person") || ""),
+        audience: String(data.get("audience") || ""),
+      });
+      await onCreated();
+    } catch (err) { onError(err instanceof Error ? err.message : "Failed to create interview"); setSaving(false); }
+  }
+
+  return (
+    <dialog ref={dialogRef} className="capture-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
+      <header><div><span className="eyebrow">New interview</span><h1>Start a guided conversation</h1></div><button className="ghost-icon" onClick={onClose}><X size={20} /></button></header>
+      <form onSubmit={submit}>
+        <div className="form-field"><label htmlFor="int-title">Title</label><input id="int-title" name="title" required minLength={3} maxLength={240} autoFocus placeholder="e.g. Founder interview — product vision" /></div>
+        <div className="form-field"><label htmlFor="int-topic">Topic</label><input id="int-topic" name="topic" maxLength={2000} placeholder="What area to explore" /></div>
+        <div className="form-row">
+          <div className="form-field"><label htmlFor="int-person">Person</label><input id="int-person" name="person" maxLength={160} placeholder="Who is being interviewed" /></div>
+          <div className="form-field"><label htmlFor="int-audience">Audience</label><input id="int-audience" name="audience" maxLength={160} placeholder="Who will read the output" /></div>
+        </div>
+        <footer><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={saving}>{saving ? "Creating…" : "Create interview"}</button></footer>
+      </form>
+    </dialog>
+  );
+}
+
+function InterviewDetailView({ sessionId, onBack, onChanged, onNotice, onError }: { sessionId: string; onBack: () => void; onChanged: () => Promise<void>; onNotice: (v: string) => void; onError: (v: string) => void }) {
+  const [session, setSession] = useState<InterviewSessionDetail | null>(null);
+  const [newQuestion, setNewQuestion] = useState("");
+  const [responding, setResponding] = useState<string | null>(null);
+  const [responseText, setResponseText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try { setSession(await api.interview(sessionId)); }
+    catch (err) { onError(err instanceof Error ? err.message : "Failed to load interview"); }
+  }
+  useEffect(() => { void load(); }, [sessionId]);
+
+  async function addQ() {
+    if (!newQuestion.trim() || !session) return;
+    setBusy(true);
+    try {
+      await api.addQuestion(session.id, newQuestion.trim());
+      setNewQuestion("");
+      await load();
+    } catch (err) { onError(err instanceof Error ? err.message : "Failed to add question"); }
+    finally { setBusy(false); }
+  }
+
+  async function submitR() {
+    if (!responseText.trim() || !responding || !session) return;
+    setBusy(true);
+    try {
+      await api.submitResponse(session.id, responding, responseText.trim());
+      setResponding(null); setResponseText("");
+      await load();
+    } catch (err) { onError(err instanceof Error ? err.message : "Failed to submit response"); }
+    finally { setBusy(false); }
+  }
+
+  async function complete() {
+    if (!session) return;
+    setBusy(true);
+    try {
+      await api.completeInterview(session.id);
+      onNotice("Interview completed. Proposals added to review queue.");
+      await onChanged();
+      onBack();
+    } catch (err) { onError(err instanceof Error ? err.message : "Failed to complete interview"); }
+    finally { setBusy(false); }
+  }
+
+  if (!session) return <div className="panel-card"><EmptyState icon={<Clock3 />} title="Loading…">Fetching interview details.</EmptyState></div>;
+
+  return (
+    <div className="studio-detail">
+      <button className="text-button" onClick={onBack}><ArrowRight size={15} style={{ transform: "rotate(180deg)" }} /> Back to interviews</button>
+      <section className="panel-card">
+        <div className="card-heading">
+          <div><span className={`status-chip status-chip--${session.status}`}>{session.status}</span><h2>{session.title}</h2>{session.person && <p className="studio-meta">{session.person}{session.topic && ` · ${session.topic}`}</p>}</div>
+        </div>
+        <div className="interview-questions">
+          {session.questions.map((q) => (
+            <div key={q.id} className="interview-q">
+              <div className="interview-q-label"><strong>Q{q.ordinal}:</strong> {q.question_text}</div>
+              {q.response_text ? (
+                <div className="interview-a"><strong>A:</strong> {q.response_text}{q.extracted && <span className="type-chip" style={{ marginLeft: 8 }}>extracted</span>}</div>
+              ) : (
+                <div className="interview-a interview-a--empty">
+                  {responding === q.id ? (
+                    <div className="respond-form">
+                      <textarea value={responseText} onChange={(e) => setResponseText(e.target.value)} rows={3} placeholder="Type the response…" autoFocus />
+                      <div><button className="primary-button" onClick={submitR} disabled={busy || !responseText.trim()}>Save response</button><button className="secondary-button" onClick={() => { setResponding(null); setResponseText(""); }}>Cancel</button></div>
+                    </div>
+                  ) : (
+                    <button className="secondary-button" onClick={() => setResponding(q.id)} disabled={session.status === "completed"}>Respond</button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {session.status !== "completed" && (
+          <div className="interview-add">
+            <input value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)} placeholder="Add a follow-up question…" onKeyDown={(e) => { if (e.key === "Enter") void addQ(); }} />
+            <button className="secondary-button" onClick={addQ} disabled={busy || !newQuestion.trim()}><Plus size={15} /> Add</button>
+          </div>
+        )}
+        {session.status !== "completed" && session.questions.some((q) => q.response_text.trim()) && (
+          <div className="interview-complete">
+            <button className="primary-button" onClick={complete} disabled={busy}><Check size={17} /> {busy ? "Completing…" : "Complete & extract proposals"}</button>
+            <p>All responses will become source material. Proposals enter the normal review queue.</p>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function AssembleDraftDialog({ knowledge, onClose, onCreated, onError }: { knowledge: Knowledge[]; onClose: () => void; onCreated: () => Promise<void>; onError: (v: string) => void }) {
+  const [selected, setSelected] = useState<string[]>(knowledge.filter((k) => !k.stale).map((k) => k.id));
+  const [title, setTitle] = useState("");
+  const [intent, setIntent] = useState("brief");
+  const [audience, setAudience] = useState("");
+  const [busy, setBusy] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = dialogRef.current; if (!d) return;
+    if (typeof d.showModal === "function") d.showModal(); else d.setAttribute("open", "");
+    return () => { if (d.open && typeof d.close === "function") d.close(); };
+  }, []);
+
+  function toggle(id: string) { setSelected((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); }
+
+  async function submit() {
+    if (!title.trim() || selected.length === 0) return;
+    setBusy(true);
+    try {
+      await api.assembleDraft({ title: title.trim(), intent, audience, knowledge_ids: selected, include_excerpts: true });
+      await onCreated();
+    } catch (err) { onError(err instanceof Error ? err.message : "Failed to assemble draft"); setBusy(false); }
+  }
+
+  const usable = knowledge.filter((k) => !k.stale);
+
+  return (
+    <dialog ref={dialogRef} className="capture-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
+      <header><div><span className="eyebrow">Assemble draft</span><h1>Build from approved knowledge</h1></div><button className="ghost-icon" onClick={onClose}><X size={20} /></button></header>
+      <div className="form-field"><label htmlFor="draft-title">Title</label><input id="draft-title" value={title} onChange={(e) => setTitle(e.target.value)} required minLength={3} maxLength={240} autoFocus placeholder="e.g. Q4 investor brief" /></div>
+      <div className="form-row">
+        <div className="form-field"><label htmlFor="draft-intent">Intent</label><select id="draft-intent" value={intent} onChange={(e) => setIntent(e.target.value)}><option value="brief">Brief</option><option value="article">Article</option><option value="agent">Agent context</option><option value="questions">Questions</option></select></div>
+        <div className="form-field"><label htmlFor="draft-audience">Audience</label><input id="draft-audience" value={audience} onChange={(e) => setAudience(e.target.value)} maxLength={160} placeholder="e.g. Enterprise leaders" /></div>
+      </div>
+      <div className="form-field"><label>Knowledge atoms ({selected.length} of {usable.length} selected)</label>
+        <ul className="evidence-list" style={{ maxHeight: 200, overflow: "auto" }}>
+          {usable.map((k) => (
+            <li key={k.id}><button type="button" className={selected.includes(k.id) ? "evidence-row" : "evidence-row is-off"} onClick={() => toggle(k.id)}>
+              <span className="evidence-box">{selected.includes(k.id) && <Check size={12} />}</span>
+              <span className="evidence-copy"><strong>{k.statement}</strong><small><span className="type-chip">{k.type}</span> v{k.version}</small></span>
+            </button></li>
+          ))}
+        </ul>
+      </div>
+      <footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" onClick={submit} disabled={busy || !title.trim() || selected.length === 0}>{busy ? "Assembling…" : `Assemble ${selected.length} atoms`}</button></footer>
+    </dialog>
+  );
+}
+
+function DraftDetailView({ draftId, onBack, knowledge, onChanged, onNotice, onError }: { draftId: string; onBack: () => void; knowledge: Knowledge[]; onChanged: () => Promise<void>; onNotice: (v: string) => void; onError: (v: string) => void }) {
+  const [draft, setDraft] = useState<DraftDetail | null>(null);
+
+  async function load() {
+    try { setDraft(await api.draft(draftId)); }
+    catch (err) { onError(err instanceof Error ? err.message : "Failed to load draft"); }
+  }
+  useEffect(() => { void load(); }, [draftId]);
+
+  async function downloadMarkdown() {
+    if (!draft) return;
+    const lines = [`# ${draft.title}`, `Audience: ${draft.audience || "not specified"}`, `Intent: ${draft.intent}`, ""];
+    for (const section of draft.sections) {
+      if (section.title) lines.push(`## ${section.title}`);
+      lines.push(section.content, "");
+      if (section.knowledge_items.length > 0) {
+        lines.push("**Sources:**");
+        for (const k of section.knowledge_items) {
+          lines.push(`- [${k.type}] ${k.statement}`);
+        }
+        lines.push("");
+      }
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `draft-${draft.title.toLowerCase().replace(/\s+/g, "-")}.md`; a.click();
+    URL.revokeObjectURL(url);
+    onNotice("Draft downloaded as markdown.");
+  }
+
+  if (!draft) return <div className="panel-card"><EmptyState icon={<Clock3 />} title="Loading…">Fetching draft.</EmptyState></div>;
+
+  return (
+    <div className="studio-detail">
+      <button className="text-button" onClick={onBack}><ArrowRight size={15} style={{ transform: "rotate(180deg)" }} /> Back to drafts</button>
+      <section className="panel-card">
+        <div className="card-heading">
+          <div><span className="type-chip">{draft.intent}</span><h2>{draft.title}</h2>{draft.audience && <p className="studio-meta">For: {draft.audience}</p>}</div>
+          <div><button className="secondary-button" onClick={downloadMarkdown}><Download size={16} /> Markdown</button></div>
+        </div>
+        {draft.sections.map((section) => (
+          <div key={section.id} className="draft-section">
+            {section.title && <h3>{section.title}</h3>}
+            <div className="draft-content">{section.content}</div>
+            {section.knowledge_items.length > 0 && (
+              <div className="draft-citations"><strong>Cited knowledge:</strong>
+                <ul>{section.knowledge_items.map((k) => <li key={k.id}><span className="type-chip">{k.type}</span> {k.statement}</li>)}</ul>
+              </div>
+            )}
+          </div>
+        ))}
+        {draft.sections.length === 0 && <EmptyState icon={<FileText />} title="Empty draft">This draft has no sections yet.</EmptyState>}
       </section>
     </div>
   );
