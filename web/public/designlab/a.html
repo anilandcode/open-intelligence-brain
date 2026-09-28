@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Open Brain — Direction A · Paper Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   DIRECTION A — "PAPER LEDGER"
+   Evolution of the current identity: warm paper canvas, dark rail,
+   serif display. Locked to one accent, AA contrast, 15px base.
+   ============================================================ */
+:root{
+  --paper:#F6F3EE; --panel:#FFFFFF; --panel-2:#FBF9F5;
+  --rail:#17140F; --rail-hi:#241F17; --rail-ink:#EDE7DC; --rail-dim:#9A9184;
+  --ink:#1B1712; --ink-2:#5C554A; --ink-3:#6F675A;
+  --rule:#E3DCD0; --rule-2:#EFEAE1;
+  --accent:#B4460F; --accent-ink:#8F3608; --accent-wash:#F7E6DC;
+  --ok:#2F6B4F; --ok-wash:#E4EFE7; --warn:#8A5A0B; --warn-wash:#F7ECD7;
+  --sans:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --serif:"Source Serif 4","Iowan Old Style",Georgia,serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --r:8px; --r-lg:10px; --t:120ms;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font:400 15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.skip{position:absolute;left:-9999px;top:8px;z-index:9;background:var(--panel);border:1px solid var(--rule);
+  padding:10px 14px;border-radius:var(--r)}
+.skip:focus{left:12px}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+/* ---- shell ---- */
+.shell{display:grid;grid-template-columns:246px minmax(0,1fr);min-height:100vh}
+.rail{background:var(--rail);color:var(--rail-ink);display:flex;flex-direction:column;
+  padding:20px 14px;gap:22px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:11px;padding:2px 8px}
+.brand .mark{width:32px;height:32px;border-radius:var(--r);background:var(--accent);
+  display:grid;place-items:center;color:#fff;flex:none}
+.brand b{display:block;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.brand small{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--rail-dim)}
+.railgroup{display:flex;flex-direction:column;gap:2px}
+.railgroup>span{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--rail-dim);
+  padding:0 10px 6px}
+.navitem{display:flex;align-items:center;gap:10px;height:40px;padding:0 10px;border-radius:var(--r);
+  color:var(--rail-ink);opacity:.82;font-size:14px;width:100%;text-align:left}
+.navitem:hover{background:var(--rail-hi);opacity:1}
+.navitem[aria-current]{background:var(--rail-hi);opacity:1;font-weight:600;box-shadow:inset 2px 0 0 var(--accent)}
+.navitem .n{margin-left:auto;font-size:11px;font-variant-numeric:tabular-nums;
+  background:var(--accent);color:#fff;padding:1px 7px;border-radius:99px;font-weight:600}
+.navitem .soon{font-size:9.5px;letter-spacing:.1em;border:1px solid rgba(255,255,255,.22);
+  color:var(--rail-dim);padding:1px 6px;border-radius:99px}
+.railtest{margin-top:auto;background:var(--rail-hi);border-radius:var(--r-lg);padding:14px;
+  display:flex;flex-direction:column;gap:10px}
+.railtest b{font-size:13px;font-weight:600}
+.railtest p{font-size:12px;color:var(--rail-dim);line-height:1.45}
+/* ---- page head ---- */
+.main{min-width:0}
+.topbar{position:sticky;top:0;z-index:5;background:rgba(246,243,238,.92);backdrop-filter:saturate(1.2) blur(6px);
+  border-bottom:1px solid var(--rule);display:flex;align-items:center;gap:14px;padding:12px 26px}
+.wsmark{width:26px;height:26px;border-radius:6px;background:var(--ok-wash);color:var(--ok);
+  display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+.crumb{font-size:13px;color:var(--ink-3)}
+.crumb b{color:var(--ink);font-weight:500}
+.search{margin-left:auto;display:flex;align-items:center;gap:9px;background:var(--panel);
+  border:1px solid var(--rule);border-radius:var(--r);height:40px;padding:0 12px;width:290px;color:var(--ink-3)}
+.search input{border:0;outline:0;font:inherit;color:var(--ink);background:none;width:100%}
+.search kbd{font:500 11px var(--sans);border:1px solid var(--rule);border-radius:4px;padding:2px 5px;color:var(--ink-3)}
+.btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 15px;border-radius:var(--r);
+  font-size:14px;font-weight:500;border:1px solid transparent}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-ink)}
+.btn-ghost{border-color:var(--rule);background:var(--panel);color:var(--ink)}
+.page{padding:22px 26px 40px;display:flex;flex-direction:column;gap:18px;max-width:1400px}
+.pagehead h1{font:600 26px/1.15 var(--serif);letter-spacing:-.015em}
+.pagehead p{color:var(--ink-2);font-size:13.5px;margin-top:5px}
+/* ---- hero ---- */
+.hero{background:var(--rail);color:#F4EFE6;border-radius:var(--r-lg);padding:26px 28px;
+  display:grid;grid-template-columns:minmax(0,1.35fr) minmax(220px,.65fr);gap:26px;align-items:center;
+  position:relative;overflow:hidden}
+.hero .status{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;font-weight:500;color:#CBDBD1;border:1px solid rgba(255,255,255,.16);
+  border-radius:99px;padding:5px 11px;margin-bottom:15px}
+.hero .status i{width:6px;height:6px;border-radius:50%;background:#6FBF8F;display:block}
+.hero h2{font:600 34px/1.13 var(--serif);letter-spacing:-.02em;max-width:19ch}
+.hero h2 em{font-style:italic;color:#F0A36B}
+.hero p{color:#C6BEB1;font-size:14px;margin-top:11px;max-width:52ch}
+.hero .acts{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}
+.btn-light{background:#F6F1E8;color:#17140F;height:42px;padding:0 17px;border-radius:var(--r);font-weight:600}
+.btn-darkghost{border:1px solid rgba(255,255,255,.24);color:#F4EFE6;height:42px;padding:0 16px;border-radius:var(--r)}
+/* hero right: the ledger, not ornament */
+.ledger{border-left:1px solid rgba(255,255,255,.14);padding-left:22px;display:flex;flex-direction:column;gap:13px}
+.ledger div{display:flex;align-items:baseline;gap:10px}
+.ledger b{font:600 22px/1 var(--mono);color:#F4EFE6;min-width:26px;text-align:right}
+.ledger span{font-size:12px;color:#B4AC9F;line-height:1.3}
+/* ---- metrics ---- */
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--panel);
+  border:1px solid var(--rule);border-radius:var(--r-lg);overflow:hidden}
+.metric{padding:15px 18px;border-right:1px solid var(--rule-2);display:flex;flex-direction:column;gap:3px}
+.metric:last-child{border-right:0}
+.metric small{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);font-weight:500}
+.metric b{font:600 27px/1.1 var(--sans);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.metric span{font-size:12.5px;color:var(--ink-2)}
+/* ---- panels ---- */
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r-lg)}
+.panel-h{display:flex;align-items:flex-start;gap:12px;padding:16px 18px 13px;border-bottom:1px solid var(--rule-2)}
+.kicker{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-ink);font-weight:600}
+.panel-h h2{font:600 17px/1.25 var(--serif);letter-spacing:-.01em;margin-top:4px}
+.panel-h .right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.linkish{font-size:13px;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px;
+  border-bottom:1px solid transparent;padding-bottom:1px}
+.linkish:hover{color:var(--accent-ink);border-color:var(--accent)}
+.live{font-size:11.5px;color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
+.live i{width:6px;height:6px;border-radius:50%;background:var(--ok)}
+/* ---- pipeline as a rule, not chevrons ---- */
+.pipeline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.step{padding:16px 18px;border-right:1px solid var(--rule-2);text-align:left;display:block;position:relative}
+.step:last-child{border-right:0}
+.step:hover{background:var(--panel-2)}
+.step .no{font:600 11px var(--mono);color:var(--ink-3);letter-spacing:.06em}
+.step strong{display:block;font-size:15px;font-weight:600;margin:9px 0 2px;letter-spacing:-.01em}
+.step em{display:block;font-style:normal;font-size:12.5px;color:var(--ink-2)}
+/* ---- work grid ---- */
+.work{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:stretch}
+.qrow{display:flex;gap:13px;align-items:flex-start;width:100%;text-align:left;
+  padding:13px 18px;border-bottom:1px solid var(--rule-2)}
+.qrow:last-child{border-bottom:0}
+.qrow:hover{background:var(--panel-2)}
+.qrow .idx{font:600 11px var(--mono);color:var(--ink-3);padding-top:2px;flex:none}
+.qrow .body{min-width:0;display:flex;flex-direction:column;gap:5px}
+.qrow .meta{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.qrow .meta .sep{opacity:.5}
+.qrow strong{font-size:14px;font-weight:500;line-height:1.4;letter-spacing:-.005em;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.qrow .go{color:var(--ink-3);padding-top:3px;flex:none}
+.qrow:hover .go{color:var(--accent-ink)}
+.pill{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:600;
+  border:1px solid var(--rule);border-radius:99px;padding:2px 7px;color:var(--ink-2);background:var(--panel-2)}
+.pill.belief{color:var(--accent-ink);border-color:#E9C9B8;background:var(--accent-wash)}
+.pill.decision{color:var(--ink);border-color:#D8D2C6;background:#F1EDE6}
+.pill.lesson{color:var(--ok);border-color:#C6DCCC;background:var(--ok-wash)}
+.pill.fact{color:#3B5B84;border-color:#CBD8E8;background:#EAF0F8}
+.krow{display:flex;gap:12px;align-items:flex-start;padding:13px 18px;border-bottom:1px solid var(--rule-2)}
+.krow:last-child{border-bottom:0}
+.glyph{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;flex:none;
+  border:1px solid var(--rule);color:var(--ink-2);background:var(--panel-2)}
+.glyph.belief{color:var(--accent-ink);background:var(--accent-wash);border-color:#E9C9B8}
+.glyph.lesson{color:var(--ok);background:var(--ok-wash);border-color:#C6DCCC}
+.glyph.fact{color:#3B5B84;background:#EAF0F8;border-color:#CBD8E8}
+.krow .body{min-width:0;display:flex;flex-direction:column;gap:4px}
+.krow small{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.krow h3{font-size:14px;font-weight:500;line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.mark{margin-left:auto;padding-top:2px;flex:none}
+.mark.ok{color:var(--ok)} .mark.warn{color:var(--warn)}
+@media (max-width:760px){
+  .shell{grid-template-columns:1fr}
+  .rail{position:static;height:auto;flex-direction:row;align-items:center;gap:10px;overflow-x:auto;padding:10px}
+  .railtest,.railgroup>span{display:none}
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .metric:nth-child(2){border-right:0}
+  .work,.hero{grid-template-columns:1fr}
+  .ledger{border-left:0;border-top:1px solid rgba(255,255,255,.14);padding:16px 0 0;
+    flex-direction:row;gap:22px;flex-wrap:wrap}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><defs>
+<symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h5l1.5 3h5L16 12h5"/><path d="M3 12 5.5 5h13L21 12v9H3z"/></symbol>
+<symbol id="i-brain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 3 3z"/><path d="M15 4a3 3 0 0 1 3 3 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-3 3z"/></symbol>
+<symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></symbol>
+<symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3l1.5 4L17 8.5 12.5 10 11 14l-1.5-4L5 8.5 9.5 7z"/><path d="M18 14l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9z"/></symbol>
+<symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/></symbol>
+<symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 7 4-14 3 7h4"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></symbol>
+<symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></symbol>
+<symbol id="i-checkc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.4l2.5 2.5 4.5-5"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/></symbol>
+<symbol id="i-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16"/><path d="M5 8h14"/><path d="M5 8l-3 6h6z"/><path d="M19 8l-3 6h6z"/></symbol>
+<symbol id="i-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10 20h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3z"/></symbol>
+<symbol id="i-gem" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4l9 16H3z"/><path d="M12 10v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-msg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"/><path d="M7 11l5 5 5-5"/><path d="M4 20h16"/></symbol>
+</defs></svg>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand">
+      <span class="mark"><svg width="19" height="19"><use href="#i-brain"/></svg></span>
+      <span><b>Open Brain</b><small>Intelligence OS</small></span>
+    </div>
+    <nav class="railgroup" aria-label="Workspace">
+      <span>Workspace</span>
+      <a class="navitem" href="#" aria-current="page"><svg width="18" height="18"><use href="#i-home"/></svg>Overview</a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-inbox"/></svg>Inbox<span class="n">4</span></a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-brain"/></svg>Brain</a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-mic"/></svg>Studio<span class="soon">Soon</span></a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-spark"/></svg>Activate<span class="soon">Soon</span></a>
+    </nav>
+    <nav class="railgroup" aria-label="System">
+      <span>System</span>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-archive"/></svg>Sources</a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-chart"/></svg>Analytics<span class="soon">Soon</span></a>
+      <a class="navitem" href="#"><svg width="18" height="18"><use href="#i-activity"/></svg>Audit</a>
+    </nav>
+    <div class="railtest">
+      <b>Local mode</b>
+      <p>Data stays on this machine. Historical tracking is off.</p>
+      <a class="navitem" href="#" style="height:34px;font-size:13px"><svg width="16" height="16"><use href="#i-dl"/></svg>Export workspace</a>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <span class="wsmark">P</span>
+      <span class="crumb">Workspace / <b>Personal Brain</b></span>
+      <span class="search"><svg width="16" height="16"><use href="#i-search"/></svg>
+        <input type="search" placeholder="Search intelligence" aria-label="Search intelligence" />
+        <kbd>⌘K</kbd></span>
+      <button class="btn btn-primary"><svg width="17" height="17"><use href="#i-plus"/></svg>Capture source</button>
+    </header>
+    <main class="page" id="main">
+      <div class="pagehead">
+        <h1>Good thinking should compound.</h1>
+        <p>Personal Brain · 3 sources captured · 9 proposals extracted · 5 statements approved</p>
+      </div>
+
+      <section class="hero" aria-label="Workspace status">
+        <div>
+          <span class="status"><i></i>Knowledge system healthy</span>
+          <h2>From raw expertise to <em>trusted intelligence.</em></h2>
+          <p>Capture what you know, approve what matters, and give every human or agent the same current source of truth.</p>
+          <div class="acts">
+            <button class="btn btn-light">Review next proposal<svg width="17" height="17"><use href="#i-arrow"/></svg></button>
+            <button class="btn btn-darkghost"><svg width="17" height="17"><use href="#i-msg"/></svg>Ask the Brain</button>
+          </div>
+        </div>
+        <div class="ledger">
+          <div><b class="num">3</b><span>sources captured, originals intact</span></div>
+          <div><b class="num">4</b><span>proposals awaiting a human call</span></div>
+          <div><b class="num">5</b><span>approved atoms ready to reuse</span></div>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Workspace summary">
+        <article class="metric"><small>Approved knowledge</small><b class="num">5</b><span>Ready to reuse</span></article>
+        <article class="metric"><small>Waiting for review</small><b class="num">4</b><span>Needs judgement</span></article>
+        <article class="metric"><small>Source material</small><b class="num">3</b><span>Immutable originals</span></article>
+        <article class="metric dot"><small>Integrity signals</small><b class="num">0</b><span>No issues found</span></article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-h">
+          <div><span class="kicker">Knowledge pipeline</span><h2>How the Brain gets smarter</h2></div>
+          <div class="right"><span class="live"><i></i>Live workspace</span></div>
+        </div>
+        <div class="pipeline">
+          <button class="step"><span class="no">01 · Capture</span><strong>3 sources</strong><em>Original material stays intact</em></button>
+          <button class="step"><span class="no">02 · Judge</span><strong>4 proposals</strong><em>Humans decide what is true</em></button>
+          <button class="step"><span class="no">03 · Compound</span><strong>5 canonical atoms</strong><em>Approved context gets reused</em></button>
+        </div>
+      </section>
+      <section class="work">
+        <div class="panel">
+          <div class="panel-h">
+            <div><span class="kicker">Needs judgement</span><h2>Review queue</h2></div>
+            <div class="right"><a class="linkish" href="#">Open inbox<svg width="15" height="15"><use href="#i-arrow"/></svg></a></div>
+          </div>
+          <button class="qrow">
+            <span class="idx">01</span>
+            <span class="body">
+              <span class="meta"><span class="pill lesson">Lesson</span><span class="sep">·</span>Founder interview — proprietary context</span>
+              <strong>Asking for more content is usually the wrong starting point.</strong>
+            </span>
+            <span class="go"><svg width="17" height="17"><use href="#i-chev"/></svg></span>
+          </button>
+          <button class="qrow">
+            <span class="idx">02</span>
+            <span class="body">
+              <span class="meta"><span class="pill belief">Belief</span><span class="sep">·</span>Founder interview — proprietary context</span>
+              <strong>The Brain should preserve evidence and disagreement rather than flatten every comment into a single truth.</strong>
+            </span>
+            <span class="go"><svg width="17" height="17"><use href="#i-chev"/></svg></span>
+          </button>
+          <button class="qrow">
+            <span class="idx">03</span>
+            <span class="body">
+              <span class="meta"><span class="pill lesson">Lesson</span><span class="sep">·</span>Personal workflow notes</span>
+              <strong>A useful weekly workflow captures one project lesson, reviews unresolved proposals, and reuses one approved idea in two different outputs.</strong>
+            </span>
+            <span class="go"><svg width="17" height="17"><use href="#i-chev"/></svg></span>
+          </button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-h">
+            <div><span class="kicker">Current canon</span><h2>Recently approved</h2></div>
+            <div class="right"><a class="linkish" href="#">View Brain<svg width="15" height="15"><use href="#i-arrow"/></svg></a></div>
+          </div>
+          <article class="krow">
+            <span class="glyph decision"><svg width="15" height="15"><use href="#i-scale"/></svg></span>
+            <div class="body"><small>Decision · v2 · Architecture decision — approval boundary</small>
+              <h3>Extracted statements remain proposals until a person approves the exact wording.</h3></div>
+            <span class="mark ok"><svg width="17" height="17"><use href="#i-checkc"/></svg></span>
+          </article>
+          <article class="krow">
+            <span class="glyph decision"><svg width="15" height="15"><use href="#i-scale"/></svg></span>
+            <div class="body"><small>Decision · v1 · Architecture decision — approval boundary</small>
+              <h3>Model confidence cannot grant authority because a valid data shape can still contain a wrong judgment.</h3></div>
+            <span class="mark ok"><svg width="17" height="17"><use href="#i-checkc"/></svg></span>
+          </article>
+          <article class="krow">
+            <span class="glyph fact"><svg width="15" height="15"><use href="#i-book"/></svg></span>
+            <div class="body"><small>Fact · v1 · Architecture decision — approval boundary</small>
+              <h3>Every canonical item must link back to its original source excerpt so a reviewer can inspect why the system believes it.</h3></div>
+            <span class="mark ok"><svg width="17" height="17"><use href="#i-checkc"/></svg></span>
+          </article>
+          <article class="krow">
+            <span class="glyph belief"><svg width="15" height="15"><use href="#i-gem"/></svg></span>
+            <div class="body"><small>Belief · v1 · Founder interview — proprietary context</small>
+              <h3>AI output becomes valuable when it is grounded in ideas the company has actually earned through experience.</h3></div>
+            <span class="mark ok"><svg width="17" height="17"><use href="#i-checkc"/></svg></span>
+          </article>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+</body>
+</html>

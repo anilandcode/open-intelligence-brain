@@ -1,0 +1,240 @@
+/* refine.css — interface layer v3. Imported AFTER v1 + system.css, so it wins
+   the cascade and each override keeps the measurement that justified it.
+
+   Method: the v2 pass inferred from references. This pass *measured the
+   rendered page* (Playwright, channel=chrome, 1440x900) and fixed what the
+   numbers showed. Before-numbers below are computed styles, not opinions:
+
+     rust-tinted elements on Overview ............ 42
+     KPI label baseline spread across the row ..... 43.2px  (428.9 -> 472.1)
+     pipeline stage notes clipped by ............. 14 / 23 / 93px
+     card-like boxes sharing one surface ......... 7 of 8 (white + shadow-sm + 1px)
+     distinct rendered font sizes ................ 9 (15,14,12,11,10,9,18,16,28)
+
+   Reference discipline is unchanged: identity stays warm paper / dark rail /
+   rust. What changes is how much of the page gets to be rust, how many type
+   steps exist, and which surfaces are allowed to look equal. */
+
+
+/* ---------------------------------------------------------- A. type scale
+   Nine rendered sizes, four of them within 2px of each other (9/10/11/12).
+   Adjacent steps that close read as noise, not hierarchy. Collapse to a five
+   step ramp — 28 / 18 / 15 / 13 / 11 — by moving the two tokens that produced
+   the near-duplicates. Every downstream consumer inherits the fix, so the
+   scale can no longer drift back.
+
+     --fs-micro 12px -> 11px   (was used at 12px 43x AND hand-overridden to
+                                11px in system.css; now one value)
+     --fs-small 14px -> 13px   (14px sat 1px under the 15px body, so "small"
+                                read as a rendering accident, not a step)
+     --fs-label 12px -> 11px   (labels join the micro step)                     */
+:root {
+  --fs-micro: 0.6875rem;
+  --fs-small: 0.8125rem;
+  --fs-label: 0.6875rem;
+}
+
+
+/* ------------------------------------------------- B. KPI baseline grid
+   Measured cause: `.metric-item > div:last-child { align-self: end }` bottom-
+   pinned each cell's text block inside the strip's fixed 132px row, so the two
+   ratio cells (bar + caption) pushed their labels DOWN and the two count cells
+   (no bar) sat 43.2px lower still. Four cells in one band, four different
+   baselines.
+
+   Fix: top-align the block and give the text stack an explicit four-track grid
+   — label / figure / meta / measure — so the bar row is reserved by the grid
+   rather than by whichever child happens to exist. Both the two ratio cells
+   and the two count cells then land on one baseline, top and bottom. The
+   dashed placeholder in the count cells fills the reserved track instead of
+   inventing a percentage. */
+.metric-item { align-items: start; }
+.metric-item > div,
+.metric-item > div:last-child {
+  display: grid;
+  grid-template-rows: auto auto auto 1.5rem;
+  gap: 0;
+  align-self: start;
+  align-content: start;
+  min-width: 0;
+}
+.metric-item > div > * { margin: 0; }
+.metric-label { line-height: 1.2; padding-bottom: 0.25rem; }
+.metric-value { line-height: 1.05; padding-bottom: 0.25rem; }
+.metric-foot { line-height: 1.35; }
+.metric-share { align-content: start; gap: 0.25rem; }
+.metric-item:not(:has(.metric-share)) > div::after { margin-top: 0; align-self: start; }
+
+/* The strip is ONE band with hairline dividers (views.css), not four cards, so
+   a per-cell hover lift made the band look broken. The divider colour carries
+   the hover instead. */
+.metric-item { transition: background-color 120ms ease; }
+.metric-item:hover { background: var(--surface-hover); transform: none; box-shadow: none; border-color: inherit; }
+
+
+/* --------------------------------------------------- C. surface hierarchy
+   Measured: 7 of the 8 card-like boxes were the same #fff + 1px + shadow-sm.
+   When everything is equally elevated nothing is — the work surfaces have to
+   outrank the summary that describes them.
+
+     tier 1  work surfaces (queue, canon, evidence)  white, hairline, shadow-sm
+     tier 2  summary band (KPI strip)                sunken, no shadow
+     tier 3  hero                                    white, raised once
+     tier 3  pipeline strip                          white, flat                      */
+.metric-strip { background: var(--surface-sunken); box-shadow: none; }
+.metric-strip .metric-item { border-inline-end-color: var(--line-strong); }
+.hero-card { box-shadow: var(--shadow-md); border-color: var(--line-strong); }
+.pipeline-card { box-shadow: none; }
+.pipeline-card:hover { border-color: var(--line-strong); }
+
+/* AA: --fg-faint resolved to #a3a79f = 2.20:1 on white, and it is the colour of
+   the queue's row indices and the canon's row markers — real text, not
+   decoration. Raised to 4.6:1 on card surfaces while staying a step below
+   --fg-muted, so it still reads as the quietest step in the ramp. */
+:root { --fg-faint: #73776d; }
+
+
+/* -------------------------------------------------- D. accent discipline
+   Measured: 42 rust-tinted elements on one screen, across nine unrelated roles
+   (avatar, every type chip, every link, the counter, the CTA, the rail edge…).
+   A colour applied to nine meanings communicates none. Rust is kept for three
+   roles only — the active rail row, the primary action of the current view,
+   and the attention counter — and the decorative uses move to the neutral ramp
+   that the reference console (Dropbox admin 24130: #FBFBFA/#121212, zero
+   saturated accents) actually uses. */
+
+/* Category chips are categories, not calls to action. Neutral fill + hairline;
+   the tone dot keeps type readable at a glance. */
+.type-chip,
+.type-chip:not(:has(svg)) {
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  color: var(--fg-secondary);
+  font-weight: 560;
+}
+.type-chip--soft { background: var(--pill-bg-active); border-color: var(--pill-border-active); color: var(--accent-dark); }
+
+/* Links read as ink with an underline affordance, not as buttons mis-signed in
+   the accent colour (three of them sat under a rust primary on Overview). */
+.text-button { color: var(--ink); text-decoration: none; font-weight: 560; }
+.text-button:hover { color: var(--accent-dark); text-decoration: underline; text-underline-offset: 2px; }
+.text-button svg { color: var(--muted); transition: transform 120ms ease, color 120ms ease; }
+.text-button:hover svg { color: var(--accent-dark); transform: translateX(2px); }
+
+/* Row action: quiet until the row is hovered, and the tone that carries it is
+   the row's own green, not the page accent. */
+.table-go { color: var(--fg-secondary); }
+.table-go:hover { color: var(--green); border-color: var(--green); }
+
+/* The workspace glyph is identity, not status. */
+.workspace-avatar { background: var(--surface-muted); color: var(--fg-secondary); }
+
+/* The rail counter is a genuine attention signal (proposals awaiting a human),
+   so it keeps the accent — as a tint rather than a solid block, which keeps
+   the count legible and stops the rail reading as two competing fills. */
+.nav-count { background: var(--accent-soft); color: var(--accent-dark); border: 1px solid var(--pill-border-active); font-size: 0.6875rem; font-weight: 640; }
+
+/* Measured defect: "Capture source" rendered as a solid rust button in the
+   fixed topbar, so it competed with the view's own primary action ("Approve to
+   Brain", "Review next proposal") on every screen — two filled CTAs, one
+   meaning. The reference puts utilities in the topbar and the primary action in
+   the content, so the topbar control drops to a bordered neutral. It stays
+   visible on every view and one filled button is now unmistakable. */
+.capture-button {
+  border: 1px solid var(--line-strong);
+  background: var(--surface-card);
+  color: var(--ink);
+}
+.capture-button:hover { background: var(--surface-hover); border-color: var(--line-pill); color: var(--ink); }
+
+
+/* ------------------------------------------------- E. pipeline stage rows
+   Measured clipping: the stage notes were cut by 14px / 23px / 93px — the
+   third stage showed 77px of a 170px string ("Approved context gets reused"
+   clipped to "Approved…"). Cause: three nowrap inline children in a flex row
+   inside a fixed 1fr track, so `em` absorbed every deficit.
+
+   Fix: two rows per stage — the label and figure share row one, the note owns
+   row two across the full track width and is allowed to wrap. Nothing is
+   clipped and the strip keeps its compact height. */
+.pipeline button > span:not(.pipeline-icon) {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: baseline;
+  column-gap: 0.375rem;
+  row-gap: 0.0625rem;
+  min-width: 0;
+}
+.pipeline button small,
+.pipeline button strong { white-space: nowrap; }
+.pipeline button em {
+  grid-column: 1 / -1;
+  overflow: visible;
+  color: var(--fg-muted);
+  font-size: var(--fs-micro);
+  text-overflow: clip;
+  white-space: normal;
+}
+
+
+/* ------------------------------------------------------ F. clipping polish
+   A <td> cannot ellipsise: `text-overflow` needs a block container, so the
+   review-queue statement was cut mid-word ("Because Aisha keeps raising the
+   renewal" -> hard stop, measured 128px over). A fade masks the cut so the
+   truncation reads as intentional and the title attribute still carries the
+   full text. The canon column wraps (it is not clamped), so it is excluded. */
+.overview-table:not(.overview-table--canon) .overview-table-statement {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+}
+
+
+/* ------------------------------------------------------------- G. the rail
+   Active row: the tint is raised so the state survives a glance (the previous
+   0.16 -> 0.05 gradient faded to nothing by the row's right edge). Group labels
+   drop to the micro step now that the type ramp has one. */
+.nav-group button.active {
+  background: linear-gradient(90deg, rgba(232, 93, 53, 0.22), rgba(232, 93, 53, 0.07));
+}
+.nav-group > .nav-label { font-size: var(--fs-micro); color: #9aa292; }
+
+/* Footer: four stacked chrome blocks (status box, full-width export button,
+   account row, version) competed for the bottom of the rail. Consolidated into
+   one status line + one account row (markup change in App.tsx) so the rail ends
+   with a single object instead of a stack of boxes. */
+.sidebar-footer { gap: 0.375rem; padding: 0.625rem 0.375rem 0.25rem; }
+.rail-status {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.375rem 0.5rem;
+  color: var(--sidebar-muted);
+  font-size: var(--fs-micro);
+}
+.rail-status strong { display: block; color: #d9ddd7; font-size: var(--fs-micro); font-weight: 560; }
+.rail-status small { display: block; color: var(--sidebar-muted); font-size: var(--fs-micro); }
+.rail-status svg { margin-inline-start: auto; color: #92d2ad; }
+.rail-action {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-inline-start: auto;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.rail-action:hover { background: var(--sidebar-soft); color: #fff; }
+.version-label { font-size: var(--fs-label); }
+
+/* Last two sub-micro steps (9px avatar initials, 10px kbd hints) folded into the
+   micro step, so the text ramp is five sizes: 28 / 18 / 15 / 13 / 11. */
+.nav-preview,
+.avatar--sm,
+.command-button kbd,
+.palette-field kbd,
+.palette-foot kbd { font-size: var(--fs-label); }

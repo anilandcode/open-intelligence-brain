@@ -1,0 +1,579 @@
+/* system.css — interface layer v2.
+
+   Grounded, not invented. Three sources:
+
+   1. supermemoryai/company-brain  (open-source "company brain" console)
+      — its token ARCHITECTURE, adopted wholesale: a semantic layer
+        (surface-base / surface-card / surface-hover / surface-border),
+        a foreground ramp (fg-primary … fg-faint), a pill set
+        (pill-bg / pill-bg-active / pill-border) and a chart ramp.
+      — its palette (oklch neutrals + #4ba0fa accent, DM Sans) is NOT
+        adopted: that is someone else's brand.
+   2. supermemoryai/supermemory  apps/web/app/globals.css
+      — the six-token minimal scheme (ink / text / muted / faint / accent
+        / line): evidence that a memory console reads fine with a very
+        small token set. Its near-black ink + one accent is not adopted.
+   3. Measured Mobbin references (uimirror library, web platform screens)
+      — cb: Retool 24155 admin dashboard, 24130 Dropbox admin, 31047 Retool
+        revenue, 24442 Ghost analytics, 27355 Skiff mail (toolbar-above-list),
+        18346 Jobber custom dashboard.
+      Adopted STRUCTURE only (row density, toolbar placement, KPI anatomy,
+      sticky table head, pill usage, right-aligned numerics).
+
+   Identity is unchanged: warm paper #f4f3ef, dark rail #20241f, rust #e85d35,
+   rounded display type. This file is imported AFTER the v1 sheets, so it both
+   wins the cascade and documents why each override exists. */
+
+:root {
+  /* Muted ramp, darkened for AA. Measured contrast of the v1 ramp on this
+     product's own surfaces: --muted #6d716c = 4.47 on paper and 4.27 on the
+     sunken surface (both under the 4.5 small-text floor), --muted-soft #8e938c
+     = 2.82, and the faint I first reached for (#a3a79f) = 2.20. These four
+     values clear 4.5 on the sunken surface, which is the darkest light
+     surface small text sits on. */
+  --muted: #666a62;
+  --muted-soft: #696d65;
+  --fg-muted: #666a62;
+  --fg-subtle: #696d65;
+  --fg-faint: #696d65;
+
+  /* ---- semantic surfaces (company-brain's layer names) ---- */
+  --surface-base: var(--canvas);
+  --surface-card: #ffffff;
+  --surface-raised: #fffdfa;
+  --surface-hover: #f8f8f4;
+  --surface-sunken: #eeeee9;
+  --surface-skeleton: #ececE6;
+  --surface-border: var(--line);
+  --surface-border-soft: var(--line-soft);
+
+  /* ---- foreground ramp ---- */
+  --fg-primary: var(--ink);
+  --fg-secondary: var(--ink-soft);
+  --fg-muted: var(--muted);
+  --fg-subtle: var(--muted-soft);
+  --fg-faint: #a3a79f;
+
+  /* ---- pills ---- */
+  --pill-bg: var(--surface-soft);
+  --pill-bg-active: var(--accent-soft);
+  --pill-border: var(--line);
+  --pill-border-active: #f2d5c9;
+  --pill-radius: var(--radius-pill);
+
+  /* ---- chart / tone ramp (five slots, same order as company-brain) ---- */
+  --chart-1: var(--accent);
+  --chart-2: var(--green);
+  --chart-3: var(--amber);
+  --chart-4: var(--accent-dark);
+  --chart-5: var(--line-strong);
+
+  /* ---- spacing scale (4px base) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 2.5rem;
+
+  /* ---- density + measure ---- */
+  --gutter: 1.5rem;
+  --content-max: 84rem;
+  --row-h: 2.75rem;          /* table body row (Retool measures 32px; 44px holds 15px text) */
+  --row-h-compact: 2.25rem;
+  --table-head-h: 2.375rem;
+  --kpi-figure: 1.875rem;
+  --panel-pad: 1rem;
+}
+
+/* ------------------------------------------------------------------ shell */
+
+/* A translucent topbar over a paper canvas reads as a floating widget and
+   muddies the hairline under it. Every reference console (Retool, Dropbox,
+   company-brain) uses an opaque bar; company-brain keeps one search field in
+   the header, never two. */
+.topbar {
+  background: var(--surface-card);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-bottom-color: var(--surface-border);
+}
+
+/* Nav group labels: uppercase micro labels (Retool, company-brain, Skiff
+   all read as labels, not sentences). */
+.nav-group > .nav-label {
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #98a094;
+}
+.sidebar > nav { gap: 1.125rem; }
+
+/* Active rail row: soft fill + a full-height accent edge, so the state reads
+   at a glance instead of as a 2px sliver. */
+.nav-group button { border-radius: 0.6rem; }
+.nav-group button.active {
+  background: linear-gradient(90deg, rgba(232, 93, 53, 0.16), rgba(232, 93, 53, 0.05));
+  color: #fff;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.nav-group button.active svg { color: var(--accent); }
+
+.content { padding: var(--space-5) var(--gutter) var(--space-8); }
+
+/* ------------------------------------------------------------------ header */
+
+/* Page header gains a control row: references put count/filter/sort controls
+   on a line under the title, above the content they act on (Skiff 27355,
+   Retool 31047). */
+.page-heading { margin-bottom: var(--space-4); gap: var(--space-3); }
+.page-heading h1 { font-size: 1.625rem; }
+.page-heading p { max-width: 52rem; color: var(--fg-muted); }
+.page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  max-width: var(--content-max);
+  margin: 0 auto var(--space-4);
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius);
+  background: var(--surface-card);
+}
+.page-toolbar-start,
+.page-toolbar-end { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; }
+.toolbar-count {
+  color: var(--fg-muted);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+.toolbar-count strong { color: var(--fg-primary); font-weight: 620; }
+
+/* ------------------------------------------------------------------- pills */
+
+.type-chip,
+.version-chip,
+.signal-pill,
+.status-pill {
+  display: inline-flex;
+  gap: 0.3125rem;
+  align-items: center;
+  min-height: 1.375rem;
+  padding: 0 0.4375rem;
+  border: 1px solid var(--pill-border);
+  border-radius: var(--pill-radius);
+  background: var(--pill-bg);
+  color: var(--fg-secondary);
+  font-size: 0.6875rem;
+  font-weight: 560;
+  line-height: 1;
+  white-space: nowrap;
+}
+.type-chip { background: var(--chart-1); border-color: transparent; color: #fff; font-weight: 600; }
+.type-chip--soft { background: var(--pill-bg-active); border-color: var(--pill-border-active); color: var(--accent-dark); }
+.version-chip { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+.signal-pill { background: var(--green-soft); border-color: #cde5d6; color: var(--green); }
+.signal-pill--attention { background: var(--amber-soft); border-color: #f0dcb8; color: var(--amber); }
+.signal-pill > span { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: currentColor; }
+
+/* --------------------------------------------------------------------- KPI */
+
+/* KPI anatomy from measured references (Retool 31047, Jobber 18346): icon
+   chip, uppercase label, dominant tabular figure, one meta line, thin
+   measured bar. Card, not cell — so each figure reads as its own object. */
+.metric-strip {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+.metric-item {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+.metric-item:last-child { border-inline-end: 1px solid var(--surface-border); }
+.metric-item:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.metric-label {
+  color: var(--fg-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+}
+.metric-value {
+  font-family: ui-rounded, "SF Pro Display", Inter, system-ui, sans-serif;
+  font-size: var(--kpi-figure);
+  font-weight: 620;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--fg-primary);
+}
+.metric-foot { color: var(--fg-muted); font-size: var(--fs-micro); }
+.metric-share { gap: var(--space-2); }
+.metric-share small { color: var(--fg-subtle); font-size: 0.6875rem; }
+.metric-icon {
+  display: grid;
+  place-items: center;
+  width: 2.125rem;
+  height: 2.125rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 0.6rem;
+  background: var(--surface-sunken);
+  color: var(--fg-secondary);
+}
+.metric-item > div:first-child { display: flex; gap: var(--space-3); align-items: flex-start; }
+
+/* Measured bars carry the tone, so the four cards are comparable without
+   inventing numbers. */
+.metric-share > span,
+.metric-item .metric-share > span {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-muted);
+}
+.metric-share > span > span { background: var(--metric-tone, var(--accent)); }
+
+/* ------------------------------------------------------------------- tables */
+
+/* Retool/Skiff density: uppercase micro head, sticky, hairline separators,
+   right-aligned numerics, hover fill, row count in the footer. */
+.overview-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+.overview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: var(--table-head-h);
+  padding: 0 0.75rem;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  color: var(--fg-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.overview-table tbody td {
+  height: var(--row-h);
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--surface-border-soft);
+  vertical-align: middle;
+}
+.overview-table tbody tr:last-child td { border-bottom: 0; }
+.overview-table tbody tr:hover { background: var(--surface-hover); }
+.overview-table .num { text-align: end; font-variant-numeric: tabular-nums; }
+.overview-table-scroll { max-height: 22rem; overflow: auto; }
+.overview-table-index { color: var(--fg-faint); font-size: 0.6875rem; letter-spacing: 0.04em; }
+.overview-table-statement { color: var(--fg-primary); font-weight: 520; line-height: 1.45; }
+.overview-table-age { color: var(--fg-muted); font-size: var(--fs-micro); white-space: nowrap; }
+.overview-table-source {
+  max-width: 12rem;
+  overflow: hidden;
+  color: var(--fg-secondary);
+  font-size: var(--fs-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.table-go {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--accent-dark);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+.overview-table tbody tr:hover .table-go,
+.overview-table tbody tr:focus-within .table-go { opacity: 1; background: var(--surface-card); border-color: var(--pill-border-active); }
+
+/* ------------------------------------------------------------------- panels */
+
+.panel-card,
+.timeline-card,
+.coverage-card {
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-sm);
+}
+.card-heading {
+  padding: var(--panel-pad) var(--panel-pad) var(--space-3);
+  border-bottom: 1px solid var(--surface-border-soft);
+}
+.card-heading h2 { font-size: 1rem; letter-spacing: -0.02em; }
+.section-kicker {
+  color: var(--fg-subtle);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+}
+.updated-label { color: var(--fg-muted); font-size: var(--fs-micro); }
+.updated-label > span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(47, 105, 75, 0.14);
+}
+
+/* ------------------------------------------------- density pass (measured)
+
+   At 1600x1000 the overview was 1,497px tall, so the two operational tables
+   (review queue, canon) sat entirely below the fold — a reviewer read the
+   page as "a status brochure, not an operational tool". These rules compress
+   the summary blocks so the work surfaces are on screen without scrolling.
+   Numbers are not removed, only re-proportioned: hero title 3rem -> 2.25rem,
+   hero/card padding 1.75rem -> 1.25rem, pipeline card -> one 76px strip. */
+
+.metric-item {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  min-height: 8.75rem;
+}
+.metric-item > div:first-child { align-items: center; }
+.metric-item > div:last-child { align-self: end; }
+.metric-value { font-size: 1.75rem; }
+
+.hero-card { padding: var(--space-4) var(--space-5); gap: var(--space-4); }
+.hero-copy { gap: var(--space-2); }
+.hero-title-figure { font-size: 2.25rem; }
+.hero-ratio { gap: var(--space-2); }
+.hero-copy > p { font-size: var(--fs-small); line-height: 1.5; }
+.hero-actions { margin-top: 0; }
+
+/* The pipeline restated 3/4/5 a third time. Keep the stage sequence, drop the
+   billboard treatment: one compact strip, figures inline. */
+.pipeline-card { padding: 0.75rem 0.875rem; }
+.pipeline-card .card-heading { border-bottom: 0; padding: 0 0 0.5rem; }
+.pipeline-card .card-heading h2 { font-size: 0.875rem; }
+.pipeline-card .section-sub { display: none; }
+.pipeline { gap: var(--space-2); }
+.pipeline button { padding: 0.5rem 0.625rem; gap: 0.5rem; }
+.pipeline-icon { width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; }
+.pipeline-arrow { width: 0.875rem; }
+
+/* Engine provenance, shown beside the existing health signal. The hosted engine
+   is the expected state, so it wears the green the product already uses for
+   "healthy"; local extraction is not an error, but it is not the configured
+   engine, so it reads as a quiet caution. The full reason is a `title`, so the
+   pill stays one line and the detail does not push the hero taller. */
+.hero-signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-bottom: 0.75rem;
+}
+.signal-pill--engine { cursor: help; }
+.engine-dot {
+  flex: 0 0 auto;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--green);
+}
+.engine-note--deterministic .engine-dot { background: var(--amber); }
+
+/* A reachable engine that extracts nothing. Deliberately distinct from
+   unavailable: the request path works and content is accepted, so the only
+   symptom a company sees is a proposal queue that stays empty. */
+.signal-pill--engine.engine-note--degraded {
+  border-color: var(--amber);
+  color: var(--amber-ink, #7a3d05);
+}
+.engine-note--degraded .engine-dot {
+  background: var(--red, #b42318);
+  animation: engine-pulse 2.4s ease-in-out infinite;
+}
+@keyframes engine-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .engine-note--degraded .engine-dot { animation: none; }
+}
+
+/* The two work panels are the operational surface: give them the height and
+   the row affordances, and let their tables scroll inside the card. */
+.work-grid { margin-top: 0; }
+.work-grid .panel-card { display: flex; flex-direction: column; }
+.work-grid .overview-table-scroll { max-height: 15.5rem; }
+
+/* Measured: rows rendered 74px because the statement wrapped to two lines —
+   twice the 44px a reference data table uses. One line, ellipsis, tooltip
+   carries the rest (full text stays available on the row's title attr and in
+   the Brain/Inbox views). */
+.overview-table-statement {
+  max-width: 30rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-table tbody td { padding-block: 0; }
+.overview-table--canon .overview-table-statement { max-width: 26rem; }
+
+/* Pipeline: one line per stage (label · figure · note) instead of three
+   stacked lines. Was 206px, which pushed the work panels down for a restated
+   3/4/5. Note `.pipeline-icon` is also a <span> — the text-cell rule must
+   exclude it or the icon chip loses its grid centring. */
+.pipeline button > span:not(.pipeline-icon) {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+}
+.pipeline button small,
+.pipeline button strong,
+.pipeline button em { display: inline; white-space: nowrap; }
+.pipeline button em { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pipeline { align-items: center; }
+
+/* ---------------------------------------------- review workspace (Inbox)
+
+   Measured before: `.editor-body` computed ONE column (982px), so the exact
+   evidence stacked under the editor instead of beside it — a reviewer has to
+   scroll to compare a claim with its source. And `.review-actions` sat at
+   y=989 in a 1000px viewport, i.e. Approve/Reject were below the fold: the
+   screen's only decision control was invisible. */
+
+.review-workspace { grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr); gap: var(--space-4); }
+.review-editor { display: flex; flex-direction: column; min-height: 0; }
+.review-editor > form { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.editor-body {
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 20rem);
+  align-items: start;
+  padding: var(--space-4);
+  gap: var(--space-4);
+}
+.evidence-panel { position: sticky; top: calc(var(--topbar-height) + var(--space-4)); }
+.review-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  border-top: 1px solid var(--surface-border);
+  background: var(--surface-card);
+  box-shadow: 0 -8px 18px -14px rgba(32, 36, 31, 0.5);
+}
+
+/* Queue rows: `small/strong/em` were all inline, so every row rendered the
+   type label fused to the sentence ("beliefThe system should…"). The grid
+   rule for this exact markup lived on a `.queue-list` class the Inbox never
+   applies. Row height was 146px; the reference list row (Skiff 27355) is a
+   ~72px two-line row. */
+.review-queue-list > button > span:not(.queue-number) { display: grid; gap: 0.2rem; min-width: 0; }
+.review-queue-list > button { padding: 0.625rem 0.75rem; border-radius: var(--radius-sm); }
+/* Number as a leading column, not a row above the item: the reference list row
+   leads with a marker and gives the text the full width (Skiff 27355). */
+.review-queue-list > button { grid-template-columns: 1.75rem minmax(0, 1fr); align-items: start; }
+.review-queue-list > button small {
+  color: var(--fg-subtle);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.review-queue-list > button strong {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--fs-small);
+  font-weight: 560;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.review-queue-list > button em {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--fs-micro);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* KPI equaliser: the two ratio cards carry a bar + caption and the two count
+   cards do not, so their bottom bands and baselines drifted. Reserve the same
+   space instead of inventing a denominator for a plain count. */
+.metric-item:not(:has(.metric-share)) .metric-foot { margin-bottom: 0; }
+.metric-item > div { display: grid; gap: 0.3rem; align-content: start; }
+
+/* Work first. Measured: hero 241 + metrics 172 + pipeline 172 = 585px of
+   summary before the queue, so only one row of the only actionable table was
+   above the fold at 1600x1000. The pipeline restates the same 3/4/5 a third
+   time, so it moves below the work surfaces (grid order, not markup order). */
+.overview-layout { grid-auto-rows: min-content; }
+.pipeline-card { order: 5; }
+.work-grid { order: 4; }
+.hero-card { order: 1; }
+.metric-strip { order: 2; }
+
+/* Equal stage widths: content-sized pills made the strip ragged and forced
+   "Original material stays intact" to truncate. */
+.pipeline button { flex: 1 1 0; min-width: 0; }
+
+/* `.pipeline` is a GRID, so the flex rule above never applied: auto-fit put
+   five equal 250px tracks in a 1332px card and every stage note ellipsised.
+   Name the tracks instead (stage / arrow / stage / arrow / stage), so each
+   stage gets ~430px and the note fits. */
+.pipeline {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  padding: 0.25rem 0;
+  gap: var(--space-2);
+}
+@media (max-width: 1080px) {
+  .pipeline { grid-template-columns: minmax(0, 1fr); }
+  .pipeline-arrow { display: none; }
+}
+
+/* Card 3/4 have no denominator, so they get a dashed neutral track rather than
+   a fabricated percentage — same height and bottom band as the two measured
+   bars, so all four cards share one baseline grid. */
+.metric-item:not(:has(.metric-share)) > div::after {
+  content: "";
+  height: 4px;
+  margin-top: 0.35rem;
+  border-radius: var(--radius-pill);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--surface-muted) 0 0.375rem,
+    transparent 0.375rem 0.75rem
+  );
+}
+
+/* Canon column: a nowrap cell clipped mid-word ("when i", "disag"). A table
+   cell cannot be a -webkit-box, so the clamp never applied — let it wrap. */
+.overview-table--canon .overview-table-statement {
+  max-width: 24rem;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  line-height: 1.45;
+}
+.overview-table--canon td { height: auto; padding-block: 0.5rem; }
+
+.pipeline-card { padding: 0.625rem 0.875rem; }
+.pipeline-card .card-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+
+

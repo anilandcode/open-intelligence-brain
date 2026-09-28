@@ -38,6 +38,7 @@ Exit: one new insight is captured from an interview and reused in two different 
 
 ## M4 — portable agent context
 
+- [x] Workspaces, workspace grants, and workspace-scoped reads and writes.
 - Scoped workspace principals and expiring tokens.
 - MCP stdio/HTTP adapter.
 - Read tools for search, knowledge, evidence, profile, and context packages.

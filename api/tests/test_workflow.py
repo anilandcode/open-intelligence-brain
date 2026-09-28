@@ -1,8 +1,10 @@
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from brain.access import ensure_default_workspace, grant_workspace
 from brain.database import Base, engine
 from brain.models import (
+    DEFAULT_WORKSPACE_ID,
     Knowledge,
     KnowledgeRevision,
     Proposal,
@@ -84,8 +86,9 @@ def test_proposal_cannot_be_approved_twice(client, headers):
 def test_export_is_portable_and_versioned(client, headers):
     response = client.get("/api/v1/export", headers=headers)
     assert response.status_code == 200
-    assert response.json()["schema_version"] == 2
+    assert response.json()["schema_version"] == 3
     assert response.json()["exported_from"] == "open-intelligence-brain"
+    assert response.json()["workspace"]["id"] == DEFAULT_WORKSPACE_ID
     assert "source_versions" in response.json()
     assert "knowledge_revisions" in response.json()
 
@@ -262,6 +265,12 @@ def test_backup_restores_same_canonical_result_into_empty_workspace(client, head
 
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    # Wiping the schema removed the workspace and its grant, so recreate the
+    # single-company starting state the application bootstraps on every boot.
+    with Session(engine) as db:
+        workspace = ensure_default_workspace(db)
+        grant_workspace(db, workspace, "test-token", role="owner")
+        db.commit()
 
     preview = client.post(
         "/api/v1/restore/preview",
@@ -311,9 +320,21 @@ def test_pre_m2_records_receive_provenance_without_wording_changes():
         db.commit()
         original = knowledge.statement
 
-        backfill_provenance(db)
+        backfill_provenance(db, DEFAULT_WORKSPACE_ID)
 
         assert db.scalar(select(func.count(SourceVersion.id))) == 1
         assert db.scalar(select(func.count(ProposalEvidence.proposal_id))) == 1
         assert db.scalar(select(func.count(KnowledgeRevision.id))) == 1
         assert db.get(Knowledge, knowledge.id).statement == original
+
+
+def test_unknown_api_path_is_404_not_spa_html(client):
+    """The SPA catch-all must not answer API typos with 200 HTML.
+
+    Serving index.html for an unknown /api/v1 path hides endpoint mistakes from
+    every client that trusts status codes; with the frontend mounted on the
+    same origin this becomes reachable in production, so it needs a real 404.
+    """
+    response = client.get("/api/v1/definitely-not-an-endpoint")
+    assert response.status_code == 404
+    assert "text/html" not in response.headers.get("content-type", "")

@@ -15,14 +15,64 @@ def now_utc() -> datetime:
     return datetime.now(UTC)
 
 
+# Single-workspace deployments address their data by this id, so a Brain that
+# was never configured for multiple companies keeps working unchanged.
+DEFAULT_WORKSPACE_ID = "ws_default"
+
+
+class Workspace(Base):
+    """A company's Brain. Every other record belongs to exactly one.
+
+    This is the multi-tenancy boundary: sources, proposals and canonical
+    knowledge are all scoped to a workspace, and no query may read a row
+    without naming the workspace it is allowed to see.
+    """
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class WorkspaceGrant(Base):
+    """One principal's access to one workspace.
+
+    A principal is currently an opaque token, not a person: the local demo has
+    no identity provider, so this records which shared secret reaches which
+    workspace and with which role. Roles are `owner`, `admin` or `member`.
+    Read scope inside a workspace is not granted here — it comes from the
+    record's own `sensitivity`.
+    """
+
+    __tablename__ = "workspace_grants"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "principal", name="uq_workspace_grant_principal"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    principal: Mapped[str] = mapped_column(String(120), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="member")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class Source(Base):
     __tablename__ = "sources"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
     title: Mapped[str] = mapped_column(String(240))
     kind: Mapped[str] = mapped_column(String(40), default="note")
     sensitivity: Mapped[str] = mapped_column(String(40), default="private")
     content: Mapped[str] = mapped_column(Text)
+    # The engine's own document id for this source's latest content. Facts are
+    # pulled per document, so the link has to be stored, not guessed: matching
+    # a derived claim to the wrong source would corrupt the provenance chain.
+    engine_document_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     proposals: Mapped[list["Proposal"]] = relationship(back_populates="source")
@@ -61,29 +111,49 @@ class Proposal(Base):
     __tablename__ = "proposals"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
     type: Mapped[str] = mapped_column(String(40))
     statement: Mapped[str] = mapped_column(Text)
     rationale: Mapped[str] = mapped_column(Text, default="")
     source_excerpt: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), default="proposed", index=True)
+    # Set only on engine-derived proposals: the review decision is echoed back
+    # to the engine by memory id so its ranking agrees with ours.
+    engine_memory_id: Mapped[str] = mapped_column(String(64), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")
 
 
 class ProposalEvidence(Base):
+    """The edge that makes a proposal checkable.
+
+    `source_span_id` is nullable because a derived proposal has no single
+    excerpt: the engine inferred a fact across memories rather than quoting one.
+    The version edge is still mandatory, so a proposal always points at the
+    exact immutable bytes it came from — evidence is required, a span is not.
+    """
+
     __tablename__ = "proposal_evidence"
+    __table_args__ = ()
 
     proposal_id: Mapped[str] = mapped_column(ForeignKey("proposals.id"), primary_key=True)
     source_version_id: Mapped[str] = mapped_column(ForeignKey("source_versions.id"), index=True)
-    source_span_id: Mapped[str] = mapped_column(ForeignKey("source_spans.id"), index=True)
+    source_span_id: Mapped[str | None] = mapped_column(
+        ForeignKey("source_spans.id"), nullable=True, index=True
+    )
 
 
 class Knowledge(Base):
     __tablename__ = "knowledge"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
     proposal_id: Mapped[str] = mapped_column(ForeignKey("proposals.id"), unique=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
     type: Mapped[str] = mapped_column(String(40), index=True)
@@ -118,6 +188,9 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
     action: Mapped[str] = mapped_column(String(80), index=True)
     resource_type: Mapped[str] = mapped_column(String(40))
     resource_id: Mapped[str] = mapped_column(String(32))

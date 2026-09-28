@@ -1,0 +1,21 @@
+# The build context is the repo, but the image only needs web/ and api/. Without
+# this, every build ships the 1.1 GB memory engine, node_modules and the
+# database to the daemon before a single layer is built.
+.git
+.gitignore
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+**/node_modules/
+web/dist/
+web/*.tsbuildinfo
+data/
+**/*.db
+.env
+.DS_Store
+coverage/
+playwright-report/
+docs/

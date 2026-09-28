@@ -1,5 +1,76 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const API_TOKEN = import.meta.env.VITE_API_TOKEN ?? "local-dev-token";
+// A hosted build is served by the API itself, so the origin that delivered this
+// page is the origin that answers the API. Only the dev server splits the two
+// across ports, which is why the fallback is per-mode rather than a constant.
+const API_URL =
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.DEV ? "http://localhost:8000" : window.location.origin);
+/* The access token is deliberately NOT a build input. Vite inlines every
+   `VITE_*` variable into the bundle at build time, so a `VITE_API_TOKEN` would
+   hand the owner token of this Brain to anyone who opens the page and reads the
+   JavaScript. The token arrives at runtime instead: pasted into the access
+   screen, or carried in the `#token=` fragment, which browsers keep out of the
+   request line and therefore out of server logs. */
+export const TOKEN_KEY = "brain.token";
+
+/** Raised when the API refuses the token this browser is holding. */
+export class Unauthorized extends Error {
+  constructor(message = "That token was refused.") {
+    super(message);
+    this.name = "Unauthorized";
+  }
+}
+
+// Storage can be unavailable (private mode, blocked storage), in which case the
+// token still works for the life of the page but is never persisted.
+let memoryToken = "";
+
+function storeToken(value: string): void {
+  try {
+    if (value) window.sessionStorage.setItem(TOKEN_KEY, value);
+    else window.sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // No storage: the in-memory copy above is all we have.
+  }
+}
+
+/** The token this browser is holding, if any. Never a compiled-in default. */
+export function getToken(): string {
+  try {
+    return window.sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
+  } catch {
+    return memoryToken;
+  }
+}
+
+export function hasToken(): boolean {
+  return getToken().length > 0;
+}
+
+export function setToken(value: string): void {
+  memoryToken = value.trim();
+  storeToken(memoryToken);
+}
+
+export function clearToken(): void {
+  memoryToken = "";
+  storeToken("");
+}
+
+// A link may hand the token over in the fragment: read it once, then strip it
+// from the address bar so it does not linger in history or get passed on.
+if (typeof window !== "undefined" && window.location.hash.startsWith("#token=")) {
+  setToken(decodeURIComponent(window.location.hash.slice("#token=".length)));
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
+/** Which extraction engine answered, and why not a better one. */
+export type Engine = {
+  name: string;
+  available: boolean;
+  detail: string;
+  container_tag: string;
+  degraded: boolean;
+};
 
 export type Overview = {
   sources: number;
@@ -7,6 +78,7 @@ export type Overview = {
   canonical: number;
   pending_reviews: number;
   recent_activity: Array<{ id: string; action: string; detail: string; created_at: string }>;
+  engine: Engine;
 };
 
 export type Source = {
@@ -99,15 +171,26 @@ export type ChatResult = {
   }>;
 };
 
+/** The server's own wording for a refusal, when it sent one. */
+async function refusedDetail(response: Response): Promise<string | undefined> {
+  const payload = await response.json().catch(() => null);
+  return typeof payload?.detail === "string" ? payload.detail : undefined;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-Brain-Token": API_TOKEN,
+      "X-Brain-Token": getToken(),
       ...options.headers,
     },
   });
+  // A refused token is a different thing from a failed request: it means the
+  // page should go back to asking for one instead of reporting a broken Brain.
+  if (response.status === 401) {
+    throw new Unauthorized(await refusedDetail(response));
+  }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(payload.detail ?? "The Brain could not complete that request.");
@@ -154,5 +237,4 @@ export const api = {
   chat: (question: string) =>
     request<ChatResult>("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) }),
   exportUrl: `${API_URL}/api/v1/export`,
-  exportToken: API_TOKEN,
 };

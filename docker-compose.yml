@@ -32,7 +32,9 @@ services:
     build: ./web
     environment:
       VITE_API_URL: http://localhost:8000
-      VITE_API_TOKEN: ${BRAIN_OWNER_TOKEN:-local-dev-token}
+      # No VITE_API_TOKEN: Vite inlines every VITE_* variable into the served
+      # JavaScript, so passing one here would publish the owner token to the
+      # browser. The dev page asks for a token at runtime, same as production.
     ports:
       - "5173:5173"
     depends_on:

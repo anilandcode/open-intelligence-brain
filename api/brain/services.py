@@ -1,11 +1,20 @@
+import logging
 import re
 from collections import Counter
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Protocol
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .access import ReadScope, workspace_counts
+from .engine import (
+    ContainerTagRejected,
+    container_tag_for,
+    engine_status,
+    get_engine,
+)
 from .models import (
     AuditEvent,
     Knowledge,
@@ -18,6 +27,14 @@ from .models import (
     new_id,
 )
 from .schemas import ChatResponse, Citation, SourceCreate
+
+log = logging.getLogger(__name__)
+
+
+class _HasWorkspace(Protocol):
+    """A root record that carries a workspace_id column of its own."""
+
+    workspace_id: str
 
 
 def content_hash(content: str) -> str:
@@ -37,10 +54,18 @@ def extract_spans(content: str) -> list[tuple[int, int, str]]:
     return spans
 
 
-def audit(db: Session, action: str, resource_type: str, resource_id: str, detail: str = ""):
+def audit(
+    db: Session,
+    workspace_id: str,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    detail: str = "",
+):
     db.add(
         AuditEvent(
             id=new_id("evt"),
+            workspace_id=workspace_id,
             action=action,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -118,6 +143,7 @@ def add_source_version(
             statement = re.sub(r"\s+", " ", text)
             proposal = Proposal(
                 id=new_id("prop"),
+                workspace_id=source.workspace_id,
                 source_id=source.id,
                 type=classify_statement(statement),
                 statement=statement,
@@ -138,6 +164,7 @@ def add_source_version(
             )
     audit(
         db,
+        source.workspace_id,
         "source.versioned",
         "source",
         source.id,
@@ -146,15 +173,183 @@ def add_source_version(
     return version
 
 
-def create_source_with_proposals(db: Session, payload: SourceCreate) -> Source:
-    source = Source(id=new_id("src"), **payload.model_dump())
+def create_source_with_proposals(
+    db: Session, payload: SourceCreate, workspace_id: str
+) -> Source:
+    source = Source(id=new_id("src"), workspace_id=workspace_id, **payload.model_dump())
     db.add(source)
     db.flush()
     add_source_version(db, source, payload.content, "Initial capture")
-    audit(db, "source.ingested", "source", source.id, f"Imported {source.title}")
+    audit(
+        db, workspace_id, "source.ingested", "source", source.id, f"Imported {source.title}"
+    )
     db.commit()
     db.refresh(source)
+    offer_to_engine(source)
     return source
+
+
+def offer_to_engine(source: Source) -> str:
+    """Hand captured content to the extraction engine, off the request path.
+
+    Called after the commit, so a slow or unreachable engine delays nothing
+    and can never roll back a capture that already succeeded. Returns the
+    engine's document id, stored on the source, because that id is the only
+    reliable link between the content we captured and the facts the engine
+    later derives from it — the container-level `/inferred` list has been
+    observed returning empty for documents that did produce inferences.
+
+    A workspace id that cannot be expressed as a container tag is logged and
+    skipped rather than raised: the content is already stored, and refusing the
+    capture over an engine naming problem would lose the customer's data to
+    make our indexing tidier. The capture is the system of record; the engine
+    copy is a convenience.
+    """
+    engine = get_engine()
+    if engine.name == "deterministic":
+        return ""
+    try:
+        tag = container_tag_for(source.workspace_id)
+    except ContainerTagRejected as exc:
+        log.warning("engine ingest skipped: %s", exc)
+        return ""
+    document_id = engine.ingest(
+        content=source.content,
+        container_tag=tag,
+        metadata={
+            "source_id": source.id,
+            "title": source.title,
+            "sensitivity": source.sensitivity,
+            "kind": source.kind,
+        },
+    )
+    if document_id:
+        source.engine_document_id = document_id
+        db = Session.object_session(source)
+        if db is not None:
+            db.commit()
+    return document_id
+
+
+def sync_derived_proposals(
+    db: Session, scope: ReadScope, source_id: str, limit: int = 50
+) -> int:
+    """Pull the engine's inferred facts for one source into the review queue.
+
+    The engine derives facts from patterns across memories rather than being
+    told them, so every row this writes is a proposal awaiting a human: it
+    cannot reach canonical knowledge without the approval endpoint, which is
+    the same status a locally extracted candidate gets.
+
+    Facts are read from the source's own engine document, by the id stored at
+    ingest. An unmatched source — captured before engine wiring, or one the
+    engine never accepted — returns 0 rather than borrowing another source's
+    facts; attaching a derived claim to the wrong source would corrupt the
+    provenance chain the product exists to protect.
+
+    Returns how many new proposals were created. An unreachable engine returns
+    0 and changes nothing.
+    """
+    engine = get_engine()
+    if engine.name == "deterministic":
+        return 0
+    source = db.get(Source, source_id)
+    if source is None or source.workspace_id != scope.workspace_id:
+        return 0
+    if not source.engine_document_id:
+        return 0
+    facts = engine.derived(source.engine_document_id, limit=limit)
+    if not facts:
+        return 0
+    facts = [f for f in facts if f.memory_id and f.text]
+    if not facts:
+        return 0
+
+    created = 0
+    for fact in facts:
+        # One engine fact, one proposal: re-syncing must not duplicate the queue.
+        already = db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.source_id == source_id,
+                Proposal.statement == fact.text[:5_000],
+            )
+        )
+        if already:
+            continue
+        proposal = Proposal(
+            id=new_id("prop"),
+            workspace_id=source.workspace_id,
+            source_id=source.id,
+            type=classify_statement(fact.text),
+            statement=fact.text[:5_000],
+            rationale=(
+                f"Derived by the {engine.name} engine from "
+                f"{fact.support_count} supporting memories. "
+                "Review wording and evidence before approval."
+            ),
+            # A derived fact is an inference across memories, so it has no
+            # single excerpt. Empty is honest — a fabricated quote would be the
+            # exact failure this product exists to prevent — and the evidence
+            # edge below pins the whole source version instead.
+            source_excerpt="",
+            # The engine's own id for this fact, so an approve/reject decision
+            # can be sent back and the retrieval index agrees with our state.
+            engine_memory_id=fact.memory_id,
+        )
+        db.add(proposal)
+        db.flush()
+        # Without this edge the approval gate refuses the proposal forever,
+        # because it requires immutable source evidence before it will create
+        # canonical knowledge. Evidence is mandatory; a span is not.
+        version_id = db.scalar(
+            select(func.max(SourceVersion.version)).where(
+                SourceVersion.source_id == source.id
+            )
+        )
+        latest = db.scalar(
+            select(SourceVersion.id).where(
+                SourceVersion.source_id == source.id,
+                SourceVersion.version == version_id,
+            )
+        )
+        if latest is not None:
+            db.add(
+                ProposalEvidence(
+                    proposal_id=proposal.id,
+                    source_version_id=latest,
+                    # No span: the derivation drew on the source as a whole.
+                    source_span_id=None,
+                )
+            )
+        created += 1
+    if created:
+        audit(
+            db,
+            source.workspace_id,
+            "proposals.derived",
+            "source",
+            source.id,
+            f"{created} engine-derived proposals awaiting review",
+        )
+        db.commit()
+    return created
+
+
+def record_review_with_engine(
+    proposal: Proposal, action: str, memory_id: str | None
+) -> bool:
+    """Tell the engine how a review resolved, so its ranking matches ours.
+
+    Our table decides; this only keeps the retrieval index in agreement. A
+    failure here is logged, not raised: a disagreeing index must not undo a
+    decision a human already made and we already stored.
+    """
+    if not memory_id:
+        return False
+    engine = get_engine()
+    if engine.name == "deterministic":
+        return False
+    return engine.review(container_tag_for(proposal.workspace_id), memory_id, action)
 
 
 def approve_proposal(
@@ -162,21 +357,29 @@ def approve_proposal(
 ) -> Knowledge:
     if proposal.status != "proposed":
         raise ValueError("Only proposed knowledge can be approved")
+    evidence = db.get(ProposalEvidence, proposal.id)
+    if evidence is None:
+        raise ValueError("Proposal has no immutable source evidence")
+    # A proposal must be checkable against the exact bytes it came from, so
+    # canonical wording is only ever created once a source version is pinned.
+    # Resolved before the row is written: raising afterwards would leave an
+    # approved proposal with no canonical item, which is worse than refusing.
+    version = db.get(SourceVersion, evidence.source_version_id)
+    if version is None:
+        raise ValueError("Proposal evidence points at a source version that is gone")
     canonical = Knowledge(
         id=new_id("know"),
+        workspace_id=proposal.workspace_id,
         proposal_id=proposal.id,
         source_id=proposal.source_id,
         type=proposal.type,
         statement=statement or proposal.statement,
         rationale=rationale if rationale is not None else proposal.rationale,
-        source_excerpt=proposal.source_excerpt,
+        source_excerpt=proposal.source_excerpt or version.content[:600],
     )
     proposal.status = "approved"
     db.add(canonical)
     db.flush()
-    evidence = db.get(ProposalEvidence, proposal.id)
-    if evidence is None:
-        raise ValueError("Proposal has no immutable source evidence")
     db.add(
         KnowledgeRevision(
             id=new_id("rev"),
@@ -191,7 +394,14 @@ def approve_proposal(
             change_note="Initial approval",
         )
     )
-    audit(db, "knowledge.approved", "knowledge", canonical.id, f"Approved {proposal.id}")
+    audit(
+        db,
+        canonical.workspace_id,
+        "knowledge.approved",
+        "knowledge",
+        canonical.id,
+        f"Approved {proposal.id}",
+    )
     db.commit()
     db.refresh(canonical)
     return canonical
@@ -229,15 +439,24 @@ def supersede_knowledge(
     item.statement = statement
     item.rationale = rationale
     item.version = revision
-    audit(db, "knowledge.superseded", "knowledge", item.id, f"Created revision {revision}")
+    audit(
+        db,
+        item.workspace_id,
+        "knowledge.superseded",
+        "knowledge",
+        item.id,
+        f"Created revision {revision}",
+    )
     db.commit()
     db.refresh(item)
     return item
 
 
-def backfill_provenance(db: Session) -> None:
+def backfill_provenance(db: Session, workspace_id: str) -> None:
     changed = False
-    for source in db.scalars(select(Source)).all():
+    for source in db.scalars(
+        select(Source).where(Source.workspace_id == workspace_id)
+    ).all():
         version = db.scalar(
             select(SourceVersion)
             .where(SourceVersion.source_id == source.id)
@@ -282,7 +501,9 @@ def backfill_provenance(db: Session) -> None:
                 )
             )
             changed = True
-    for item in db.scalars(select(Knowledge)).all():
+    for item in db.scalars(
+        select(Knowledge).where(Knowledge.workspace_id == workspace_id)
+    ).all():
         exists = db.scalar(
             select(KnowledgeRevision.id).where(KnowledgeRevision.knowledge_id == item.id)
         )
@@ -339,9 +560,14 @@ def _query_terms(query: str) -> list[str]:
     ]
 
 
-def search_knowledge(db: Session, query: str, limit: int = 20) -> list[Knowledge]:
+def search_knowledge(
+    db: Session, scope: ReadScope, query: str, limit: int = 20
+) -> list[Knowledge]:
     terms = _query_terms(query)
-    stmt = select(Knowledge).where(Knowledge.status == "canonical")
+    stmt = scope.apply(
+        select(Knowledge).where(Knowledge.status == "canonical"),
+        Knowledge,
+    )
     if terms:
         filters = []
         for term in terms:
@@ -431,10 +657,13 @@ def conflict_map(items: list[Knowledge]) -> dict[str, list[str]]:
     return conflicts
 
 
-def integrity_snapshot(db: Session) -> dict:
+def integrity_snapshot(db: Session, scope: ReadScope) -> dict:
     items = list(
         db.scalars(
-            select(Knowledge).where(Knowledge.status == "canonical").order_by(Knowledge.approved_at)
+            scope.apply(
+                select(Knowledge).where(Knowledge.status == "canonical"),
+                Knowledge,
+            ).order_by(Knowledge.approved_at)
         ).all()
     )
     conflicts = conflict_map(items)
@@ -466,8 +695,8 @@ def integrity_snapshot(db: Session) -> dict:
     }
 
 
-def answer_question(db: Session, question: str) -> ChatResponse:
-    matches = search_knowledge(db, question, limit=3)
+def answer_question(db: Session, scope: ReadScope, question: str) -> ChatResponse:
+    matches = search_knowledge(db, scope, question, limit=3)
     if not matches:
         return ChatResponse(
             answer="I could not find enough approved knowledge to answer that. Import a source or review the pending proposals first.",
@@ -475,8 +704,16 @@ def answer_question(db: Session, question: str) -> ChatResponse:
             grounded=False,
         )
     source_ids = {item.source_id for item in matches}
+    # Scoped by the same permission as the matches, so a citation can never
+    # name a source the caller was not allowed to read.
     sources = {
-        item.id: item for item in db.scalars(select(Source).where(Source.id.in_(source_ids))).all()
+        item.id: item
+        for item in db.scalars(
+            scope.apply(
+                select(Source).where(Source.id.in_(source_ids)),
+                Source,
+            )
+        ).all()
     }
     statements = " ".join(item.statement.rstrip(".") + "." for item in matches)
     citations = [
@@ -487,12 +724,16 @@ def answer_question(db: Session, question: str) -> ChatResponse:
             excerpt=item.source_excerpt,
         )
         for item in matches
+        if item.source_id in sources
     ]
     return ChatResponse(answer=statements, citations=citations, grounded=True)
 
 
-def seed_demo(db: Session) -> None:
-    if db.scalar(select(func.count(Source.id))) > 0:
+def seed_demo(db: Session, workspace_id: str) -> None:
+    existing = db.scalar(
+        select(func.count(Source.id)).where(Source.workspace_id == workspace_id)
+    )
+    if (existing or 0) > 0:
         return
     samples = [
         SourceCreate(
@@ -526,25 +767,32 @@ def seed_demo(db: Session) -> None:
         ),
     ]
     for payload in samples:
-        create_source_with_proposals(db, payload)
+        create_source_with_proposals(db, payload, workspace_id)
 
-    proposals = list(db.scalars(select(Proposal).order_by(Proposal.created_at).limit(5)).all())
+    proposals = list(
+        db.scalars(
+            select(Proposal)
+            .where(Proposal.workspace_id == workspace_id)
+            .order_by(Proposal.created_at)
+            .limit(5)
+        ).all()
+    )
     for proposal in proposals:
         approve_proposal(db, proposal, None, None)
 
 
-def overview(db: Session) -> dict:
+def overview(db: Session, scope: ReadScope) -> dict:
     events = list(
-        db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc()).limit(6)).all()
+        db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.workspace_id == scope.workspace_id)
+            .order_by(AuditEvent.created_at.desc())
+            .limit(6)
+        ).all()
     )
+    status = engine_status(scope.workspace_id)
     return {
-        "sources": db.scalar(select(func.count(Source.id))) or 0,
-        "proposals": db.scalar(select(func.count(Proposal.id))) or 0,
-        "canonical": db.scalar(select(func.count(Knowledge.id))) or 0,
-        "pending_reviews": db.scalar(
-            select(func.count(Proposal.id)).where(Proposal.status == "proposed")
-        )
-        or 0,
+        **workspace_counts(db, scope),
         "recent_activity": [
             {
                 "id": event.id,
@@ -554,44 +802,92 @@ def overview(db: Session) -> dict:
             }
             for event in events
         ],
+        "engine": {
+            "name": status.name,
+            "available": status.available,
+            "detail": status.detail,
+            "container_tag": status.container_tag,
+            "degraded": status.degraded,
+        },
     }
 
 
-def export_workspace_data(db: Session) -> dict:
-    sources = list(db.scalars(select(Source).order_by(Source.created_at)).all())
-    versions = list(
+def export_workspace_data(db: Session, workspace_id: str) -> dict:
+    # Root tables carry workspace_id and are filtered by it. Child tables do not:
+    # they are reached through the ids of roots that are already in scope, so a
+    # child can never be exported without its parent.
+    sources = sorted(
         db.scalars(
-            select(SourceVersion).order_by(SourceVersion.source_id, SourceVersion.version)
-        ).all()
+            select(Source).where(Source.workspace_id == workspace_id).order_by(Source.created_at)
+        ).all(),
+        key=lambda row: row.created_at,
     )
-    spans = list(
+    source_ids = {row.id for row in sources}
+    versions = sorted(
         db.scalars(
-            select(SourceSpan).order_by(SourceSpan.source_version_id, SourceSpan.start_offset)
-        ).all()
+            select(SourceVersion)
+            .where(SourceVersion.source_id.in_(source_ids))
+            .order_by(SourceVersion.source_id, SourceVersion.version)
+        ).all(),
+        key=lambda row: (row.source_id, row.version),
     )
-    proposals = list(db.scalars(select(Proposal).order_by(Proposal.created_at)).all())
-    evidence = list(
-        db.scalars(select(ProposalEvidence).order_by(ProposalEvidence.proposal_id)).all()
-    )
-    knowledge = list(db.scalars(select(Knowledge).order_by(Knowledge.approved_at)).all())
-    revisions = list(
+    version_ids = {row.id for row in versions}
+    spans = sorted(
         db.scalars(
-            select(KnowledgeRevision).order_by(
-                KnowledgeRevision.knowledge_id, KnowledgeRevision.revision
-            )
-        ).all()
+            select(SourceSpan).where(SourceSpan.source_version_id.in_(version_ids))
+        ).all(),
+        key=lambda row: (row.source_version_id, row.start_offset),
     )
-    events = list(db.scalars(select(AuditEvent).order_by(AuditEvent.created_at)).all())
+    proposals = sorted(
+        db.scalars(
+            select(Proposal)
+            .where(Proposal.workspace_id == workspace_id)
+            .order_by(Proposal.created_at)
+        ).all(),
+        key=lambda row: row.created_at,
+    )
+    proposal_ids = {row.id for row in proposals}
+    evidence = sorted(
+        db.scalars(
+            select(ProposalEvidence).where(ProposalEvidence.proposal_id.in_(proposal_ids))
+        ).all(),
+        key=lambda row: row.proposal_id,
+    )
+    knowledge = sorted(
+        db.scalars(
+            select(Knowledge)
+            .where(Knowledge.workspace_id == workspace_id)
+            .order_by(Knowledge.approved_at)
+        ).all(),
+        key=lambda row: row.approved_at,
+    )
+    knowledge_ids = {row.id for row in knowledge}
+    revisions = sorted(
+        db.scalars(
+            select(KnowledgeRevision).where(KnowledgeRevision.knowledge_id.in_(knowledge_ids))
+        ).all(),
+        key=lambda row: (row.knowledge_id, row.revision),
+    )
+    events = sorted(
+        db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.workspace_id == workspace_id)
+            .order_by(AuditEvent.created_at)
+        ).all(),
+        key=lambda row: row.created_at,
+    )
 
     def timestamp(value: datetime) -> str:
         return value.isoformat()
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "exported_from": "open-intelligence-brain",
+        "workspace": {"id": workspace_id},
         "sources": [
             {
                 "id": row.id,
+                "workspace_id": row.workspace_id,
                 "title": row.title,
                 "kind": row.kind,
                 "sensitivity": row.sensitivity,
@@ -691,7 +987,7 @@ def export_workspace_data(db: Session) -> dict:
     }
 
 
-def restore_preview(db: Session, backup: dict) -> dict:
+def restore_preview(db: Session, backup: dict, workspace_id: str) -> dict:
     required = {
         "sources",
         "source_versions",
@@ -704,13 +1000,29 @@ def restore_preview(db: Session, backup: dict) -> dict:
     }
     schema_version = backup.get("schema_version", 0)
     blockers = []
-    if schema_version != 2:
-        blockers.append("Only schema version 2 backups can be restored")
+    if schema_version != 3:
+        blockers.append("Only schema version 3 backups can be restored")
     missing = sorted(required - backup.keys())
     if missing:
         blockers.append(f"Missing collections: {', '.join(missing)}")
+    # A restore writes into the caller's workspace. A backup belonging to another
+    # workspace is refused rather than silently re-homed into this one.
+    backup_workspace = (backup.get("workspace") or {}).get("id")
+    if backup_workspace and backup_workspace != workspace_id:
+        blockers.append("This backup belongs to a different workspace")
+    foreign = {
+        "sources": sum(1 for row in backup.get("sources", []) if row.get("workspace_id", workspace_id) != workspace_id),
+        "knowledge": sum(1 for row in backup.get("knowledge", []) if row.get("workspace_id", workspace_id) != workspace_id),
+    }
+    leaked = {name: count for name, count in foreign.items() if count}
+    if leaked:
+        blockers.append(
+            "Backup rows belong to another workspace: "
+            + ", ".join(f"{name}={count}" for name, count in sorted(leaked.items()))
+        )
     empty_workspace = all(
-        (db.scalar(select(func.count(model.id))) or 0) == 0
+        (db.scalar(select(func.count(model.id)).where(model.workspace_id == workspace_id)) or 0)
+        == 0
         for model in (Source, Proposal, Knowledge, AuditEvent)
     )
     if not empty_workspace:
@@ -733,14 +1045,15 @@ def _parse_timestamp(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def restore_workspace(db: Session, backup: dict) -> dict:
-    preview = restore_preview(db, backup)
+def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
+    preview = restore_preview(db, backup, workspace_id)
     if not preview["valid"]:
         raise ValueError("; ".join(preview["blockers"]))
     for row in backup["sources"]:
         db.add(
             Source(
                 id=row["id"],
+                workspace_id=workspace_id,
                 title=row["title"],
                 kind=row["kind"],
                 sensitivity=row["sensitivity"],
@@ -769,7 +1082,12 @@ def restore_workspace(db: Session, backup: dict) -> dict:
     for row in backup["proposals"]:
         db.add(
             Proposal(
-                **{key: value for key, value in row.items() if key != "created_at"},
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("created_at", "workspace_id")
+                },
+                workspace_id=workspace_id,
                 created_at=_parse_timestamp(row["created_at"]),
             )
         )
@@ -780,7 +1098,12 @@ def restore_workspace(db: Session, backup: dict) -> dict:
     for row in backup["knowledge"]:
         db.add(
             Knowledge(
-                **{key: value for key, value in row.items() if key != "approved_at"},
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("approved_at", "workspace_id")
+                },
+                workspace_id=workspace_id,
                 approved_at=_parse_timestamp(row["approved_at"]),
             )
         )
@@ -796,7 +1119,12 @@ def restore_workspace(db: Session, backup: dict) -> dict:
     for row in backup["audit_events"]:
         db.add(
             AuditEvent(
-                **{key: value for key, value in row.items() if key != "created_at"},
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("created_at", "workspace_id")
+                },
+                workspace_id=workspace_id,
                 created_at=_parse_timestamp(row["created_at"]),
             )
         )

@@ -16,6 +16,10 @@ dependencies = [
   "python-multipart>=0.0.20,<1",
   "psycopg[binary]>=3.2,<4",
   "mcp>=2,<3",
+  # Imported by brain/engine.py at module import, so it is a runtime dependency.
+  # It sat in the dev extra until the first container build failed on it: a dev
+  # venv always had it, which is exactly why nobody noticed.
+  "httpx>=0.28,<1",
 ]
 
 [project.scripts]

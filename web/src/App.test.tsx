@@ -2,8 +2,23 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { TOKEN_KEY } from "./api";
 
-const overview = { sources: 1, proposals: 2, canonical: 1, pending_reviews: 1, recent_activity: [] };
+const overview = {
+  sources: 1,
+  proposals: 2,
+  canonical: 1,
+  pending_reviews: 1,
+  recent_activity: [],
+  // The Overview reads this to show which engine produced the proposals, so a
+  // fixture without it would crash the whole app rather than one pill.
+  engine: {
+    name: "deterministic",
+    available: true,
+    detail: "Local extraction, no inference",
+    container_tag: "",
+  },
+};
 const integrity = { stale_count: 0, conflict_count: 0, issues: [] };
 const source = { id: "src_1", title: "Interview", kind: "interview", sensitivity: "private", content: "A sufficiently long source note for this fixture.", created_at: new Date().toISOString(), proposal_count: 1, current_version: 1, content_hash: "a".repeat(64) };
 const proposal = { id: "prop_1", source_id: "src_1", source_title: "Interview", type: "belief", statement: "Approved context makes generated work more distinctive.", rationale: "Candidate extracted from source.", source_excerpt: "Approved context makes generated work more distinctive.", status: "proposed", created_at: new Date().toISOString() };
@@ -17,6 +32,10 @@ function mockJson(value: unknown) {
 describe("App", () => {
   beforeEach(() => {
     vi.stubGlobal("scrollTo", vi.fn());
+    // The bundle carries no token of its own, so the page meets every visitor —
+    // including this test — with the access gate. A presented token is what
+    // gets the workspace to render at all.
+    window.sessionStorage.setItem(TOKEN_KEY, "test-token");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/overview")) return mockJson(overview);
@@ -30,7 +49,10 @@ describe("App", () => {
     }));
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.sessionStorage.clear();
+  });
 
   it("loads the dashboard and navigates to approved knowledge", async () => {
     const user = userEvent.setup();
@@ -64,6 +86,25 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Brain" }));
     await user.click(screen.getByText(/1 revision · inspect or supersede/i));
     expect(await screen.findByText("Initial approval")).toBeInTheDocument();
+  });
+
+  it("shows the access gate — and sends nothing — when no token is presented", async () => {
+    window.sessionStorage.clear();
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Access token" })).toBeInTheDocument();
+    // The page must not disclose the workspace it is guarding, so nothing is
+    // requested and none of the workspace's own copy is on screen.
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "Good thinking should compound." })).toBeNull();
+    expect(screen.queryByText("Personal Brain")).toBeNull();
+
+    // A presented token is what lets the workspace load.
+    await user.type(screen.getByLabelText("Token"), "test-token");
+    await user.click(screen.getByRole("button", { name: "Open the Brain" }));
+    expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem(TOKEN_KEY)).toBe("test-token");
   });
 
   it("labels future workflows as previews instead of pretending they are live", async () => {

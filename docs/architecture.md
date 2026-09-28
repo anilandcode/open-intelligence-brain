@@ -16,6 +16,49 @@ flowchart LR
     H --> G
 ```
 
+## Workspaces
+
+A workspace is one company's Brain. It is the outermost boundary: every source,
+proposal and approved item belongs to exactly one, and no query may read a row
+without naming the workspace it is allowed to see.
+
+- `workspaces`: stable company identity, unique slug, display name.
+`workspace_grants`: which principal reaches which workspace, and with which
+role (`owner`, `admin`, `member`). A principal is currently an opaque token,
+not a person, because the local demo has no identity provider. That token is
+never part of the shipped interface: the browser bundle is built without one and
+the page asks for it at runtime, then sends it as `X-Brain-Token`. A token
+compiled into the JavaScript would be readable by anyone who loaded the page, so
+no `VITE_*` credential may exist.
+
+Inside a workspace, `sensitivity` on the source is the second half of read
+authority: `public` < `internal` < `private`, with a `member` ceiling of
+`internal` and an `owner`/`admin` ceiling of `private`. Knowledge and proposals
+carry no sensitivity column of their own and reach it through `source_id`, so a
+child row can never disagree with its parent about how private it is. An
+external retrieval engine's metadata filter narrows a query but does not
+authorise it, so this check is applied on our read path, after the engine
+answers.
+
+`workspace_id` is stored on the root tables only — `sources`, `proposals`,
+`knowledge`, `audit_events`. Child tables (`source_versions`, `source_spans`,
+`proposal_evidence`, `knowledge_revisions`) are reached through their parent, so
+a child can never disagree with its own parent about who owns it.
+
+Reading is scoped by two things, never by one:
+
+1. The workspace resolves the principal, so one company's token reads one
+   company's rows and nothing else.
+2. A record that exists in another workspace is reported as **404, not 403**,
+   because confirming its existence would leak it.
+
+Answers and search never fall back to another workspace: if the question has no
+match in the caller's own workspace, the Brain abstains.
+
+Exports are per workspace and carry the workspace id. A restore refuses a
+backup that belongs to a different workspace rather than silently re-homing it
+into the caller's.
+
 ## Current components
 
 - React/TypeScript web application.
@@ -37,9 +80,22 @@ flowchart LR
 9. Every canonical wording change creates a new knowledge revision.
 10. Optional providers must not become required for reading, review, or export.
 11. Agent tools cannot approve proposals or mutate canonical knowledge.
+12. Every source, proposal and approved item belongs to exactly one workspace.
+13. No read crosses a workspace boundary; another workspace's record is reported as not found, never as forbidden.
+14. Grounded answers and canonical search never fall back to another workspace: they abstain instead.
+15. A backup carries its workspace and cannot be restored into a different one.
+16. Adding a workspace column never drops or rewrites existing provenance-bearing data.
+17. No read returns a row above the caller's sensitivity ceiling. A record inside the caller's own workspace that they may not read is reported as not found, for the same reason as 13.
+18. Every collection query is narrowed by a `ReadScope` carrying the caller's role, not by a bare `workspace_id` string.
+19. Engine health is observed, not assumed. An engine that answers requests and accepts documents but derives nothing reports `degraded`, which is distinct from `unavailable`. Reachability is not usefulness: without this, a deployment with no model provider accepts every source, returns success, and produces an empty proposal queue with no signal that anything failed.
+20. The readiness probe writes only to a dedicated healthcheck container, never a company's, and its result is cached because it sits on the overview request path.
+21. The engine is an implementation, not a dependency. With nothing configured the product runs on deterministic local extraction and makes no network calls. A self-hosted engine needs no account or key from anyone, because it prints its own on first boot.
+22. Engine-derived facts enter only as proposals, and each carries evidence — a source version at minimum — so an inference is never approved against a citation that does not exist.
 
 ## Data model
 
+- `workspaces`: one company, the outermost scoping boundary.
+- `workspace_grants`: principal-to-workspace access and role.
 - `sources`: stable source identity, original text, type, sensitivity, timestamp.
 - `source_versions`: immutable content, SHA-256 hash, parser version, change note.
 - `source_spans`: exact offsets, immutable excerpt, span hash, optional speaker.
@@ -49,11 +105,21 @@ flowchart LR
 - `knowledge_revisions`: append-only canonical wording history and provenance.
 - `audit_events`: append-only domain event summary.
 
-The next schema milestone adds workspace grants before external agents receive any write tools.
+`migrate.add_workspace_columns` adds the workspace columns to an existing
+database. `Base.metadata.create_all` creates missing tables but never alters an
+existing one, so a deployment upgrading from a single-workspace schema needs the
+migration before it can query the new column. It is additive and idempotent: it
+never drops or rewrites a column, because `sources` and `knowledge` carry
+provenance.
 
 ## Retrieval
 
 The first release uses conservative keyword matching with simple token scoring. It returns an abstention when no approved item matches. This makes the trust workflow testable before introducing embeddings or rerankers.
+
+Every read is scoped twice — once by workspace, once by sensitivity — before it
+reaches a result, an answer, an agent tool, or the interface. See
+`supermemory-core-spec.md` for the retrieval engine this is being built
+towards.
 
 Planned hybrid retrieval:
 

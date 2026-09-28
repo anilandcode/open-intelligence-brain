@@ -1,0 +1,829 @@
+/* Views — the workspace layer that carries the app's 169 class names onto the
+   measured reference system: hairline cards, dense rows, tabular numerals,
+   one accent used for current/primary state only. */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Button vocabulary the views already use ---------- */
+.primary-button, .secondary-button, .light-button, .dark-ghost-button, .danger-button, .ghost-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  height: 2.125rem;
+  padding-inline: 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 560;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.primary-button { background: var(--accent); color: #fff; }
+.primary-button:hover { background: var(--accent-dark); }
+.secondary-button { border-color: var(--line-strong); color: var(--ink); }
+.secondary-button:hover { background: var(--surface-muted); }
+.light-button { border-color: var(--line-strong); background: var(--surface); color: var(--ink-soft); }
+.light-button:hover { background: var(--surface-soft); color: var(--ink); }
+.dark-ghost-button { background: transparent; color: var(--ink-soft); }
+.dark-ghost-button:hover { background: var(--surface-muted); color: var(--ink); }
+.danger-button { border-color: #f0c4bf; background: var(--surface); color: var(--danger); }
+.danger-button:hover { background: var(--danger-soft); }
+.text-button {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font-size: var(--fs-small);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.ghost-icon { width: 2.125rem; padding-inline: 0; border-color: var(--line); background: transparent; color: var(--muted); }
+.ghost-icon:hover { background: var(--surface-muted); color: var(--ink); }
+.primary-button:disabled, .secondary-button:disabled, .danger-button:disabled, button[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Chips + tone variants (variant names are built dynamically) ---------- */
+.status-chip, .type-chip, .version-chip, .warning-chip, .locked-chip, .signal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 1.375rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-muted);
+  color: var(--ink-soft);
+  font-size: var(--fs-micro);
+  font-weight: 560;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.status-chip::before, .signal-pill::before, .verified-dot::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+.type-chip { background: var(--blue-soft); color: var(--blue); }
+.version-chip { background: var(--surface-muted); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+/* Review queue + canon tables. Untill these existed the Overview rendered the
+   browser's default table: ragged columns, no row rules, an undersized action
+   link. Rows now read as a plannable list — aligned figures, hairline rows and
+   one quiet per-row action that only asserts itself on hover or keyboard focus. */
+.overview-table-scroll { overflow-x: auto; }
+.overview-table {
+  width: 100%;
+  min-width: 30rem;
+  border-collapse: collapse;
+  font-size: var(--fs-small);
+  font-variant-numeric: tabular-nums;
+}
+.overview-table th {
+  padding: 0.5rem 0.625rem;
+  border-block-end: 1px solid var(--line);
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  text-align: start;
+  white-space: nowrap;
+}
+.overview-table td {
+  padding: 0.625rem;
+  border-block-end: 1px solid var(--line-soft, var(--line));
+  vertical-align: middle;
+  line-height: 1.45;
+}
+.overview-table tbody tr:last-child td { border-block-end: 0; }
+.overview-table tbody tr { transition: background 120ms ease; }
+.overview-table tbody tr:hover { background: var(--surface-soft); }
+.overview-table .num { text-align: end; }
+.overview-table-index { color: var(--muted-soft); font-size: var(--fs-micro); letter-spacing: 0.02em; }
+.overview-table-statement { max-width: 34rem; color: var(--ink); font-weight: 500; }
+.overview-table-source {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+.overview-table-age { color: var(--muted); font-size: var(--fs-micro); white-space: nowrap; }
+.table-go {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--green);
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.overview-table tbody tr:hover .table-go,
+.overview-table tbody tr:focus-within .table-go { opacity: 1; background: var(--surface); border-color: var(--line-strong); }
+.table-go:hover { border-color: var(--green); }
+.table-go svg { transition: transform 120ms ease; }
+.table-go:hover svg { transform: translateX(2px); }
+.attention-icon { color: var(--amber); }
+.verified-icon { color: var(--green); }
+.locked-chip { background: var(--violet-soft); color: var(--violet); }
+.signal-pill { background: var(--green-soft); color: var(--green); }
+.verified-dot { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--green); font-size: var(--fs-micro); font-weight: 560; }
+.verified-icon { color: var(--green); }
+
+:is(.status-chip, .warning-chip, .tone, .pill)[class*="--green"], :is(.status-chip, .tone)[class*="--success"] { background: var(--green-soft); color: var(--green); }
+:is(.status-chip, .warning-chip, .tone)[class*="--amber"], :is(.status-chip, .tone)[class*="--warn"] { background: var(--amber-soft); color: var(--amber); }
+:is(.status-chip, .tone)[class*="--red"], :is(.status-chip, .tone)[class*="--danger"], :is(.status-chip, .tone)[class*="--blocked"] { background: var(--danger-soft); color: var(--danger); }
+:is(.status-chip, .tone)[class*="--blue"], :is(.status-chip, .tone)[class*="--info"] { background: var(--blue-soft); color: var(--blue); }
+:is(.status-chip, .tone)[class*="--violet"] { background: var(--violet-soft); color: var(--violet); }
+
+/* ---------- Overview ---------- */
+.overview-layout { display: grid; gap: 1rem; align-items: start; max-width: 84rem; margin: 0 auto; }
+.work-grid { display: grid; gap: 1rem; align-items: start; grid-template-columns: minmax(0, 1fr) minmax(19rem, 23rem); }
+.analytics-grid { display: grid; gap: 1rem; align-items: start; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+
+.hero-card {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 19rem);
+  align-items: center;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.hero-copy { display: grid; gap: 0.625rem; max-width: 40rem; }
+.section-kicker, .evidence-heading, .brain-list-heading { display: block; margin: 0.875rem 0 0.375rem; color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--tracking-label); }
+.hero-title { margin: 0; display: grid; gap: 0.125rem; }
+.hero-title-figure {
+  font-size: clamp(3rem, 6.2vw, 4.25rem);
+  font-weight: 600;
+  line-height: 0.92;
+  letter-spacing: -0.045em;
+  font-variant-numeric: tabular-nums;
+}
+.hero-title-unit {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.hero-title em {
+  margin-block-start: 0.375rem;
+  font-size: 1.0625rem;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+.hero-copy p { margin: 0; color: var(--ink-soft); font-size: var(--fs-body); line-height: 1.6; max-width: 34rem; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
+
+/* Approval ratio reads as the hero's second column: one big measured figure,
+   a meter, then the two facts the metric strip does not already carry. */
+.hero-ratio {
+  display: grid;
+  gap: 0.375rem;
+  align-content: start;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-inline-start: 1px solid var(--line);
+}
+.hero-ratio-value {
+  font-size: 2.5rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+.hero-ratio-value small { font-size: 1.125rem; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+.hero-ratio-label { color: var(--muted); font-size: var(--fs-micro); line-height: 1.45; }
+.hero-ratio-bar {
+  display: block;
+  height: 0.3125rem;
+  margin-block: 0.125rem 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+.hero-ratio-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--green); }
+.hero-facts { display: grid; gap: 0.3125rem; margin: 0; }
+.hero-facts > div { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.hero-facts dt { color: var(--muted); font-size: var(--fs-micro); }
+.hero-facts dd { margin: 0; font-size: var(--fs-small); font-weight: 600; font-variant-numeric: tabular-nums; }
+.hero-copy p { margin: 0; color: var(--ink-soft); font-size: var(--fs-body); line-height: 1.6; max-width: 34rem; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-top: 0.25rem; }
+
+/* Orbit markup was removed with the Overview rewrite: the hero's second column
+   is now the approval ratio, so these rules have no consumers. */
+
+.metric-strip {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(12.5rem, 1fr));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+/* KPI tile. The label/value/foot stack MUST be a grid: as block-level inline
+   content they all sat on ONE line, so the figures started at the label's
+   ragged right edge (measured x = 378 / 658 / 942 / 1241 across the strip). */
+.metric-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+  padding: 1rem;
+  border-inline-end: 1px solid var(--line);
+}
+.metric-item:last-child { border-inline-end: 0; }
+.metric-item > div { display: grid; gap: 0.375rem; min-width: 0; }
+.metric-label {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--tracking-micro);
+  text-transform: uppercase;
+  line-height: 1.3;
+}
+.metric-value { display: block; font-size: 1.875rem; font-weight: 500; letter-spacing: -0.025em; line-height: 1.05; }
+.metric-foot { display: flex; gap: 0.375rem; align-items: center; color: var(--muted); font-size: var(--fs-micro); line-height: 1.4; }
+.metric-share { display: grid; gap: 0.3125rem; }
+.metric-share small { color: var(--muted-soft); font-size: var(--fs-micro); font-variant-numeric: tabular-nums; }
+.metric-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+.metric-icon[class*="--blue"] { border-color: #cde5d6; background: var(--blue-soft); color: var(--blue); }
+.metric-icon[class*="--green"] { border-color: #cde5d6; background: var(--green-soft); color: var(--green); }
+.metric-icon[class*="--amber"] { border-color: #f0dcb8; background: var(--amber-soft); color: var(--amber); }
+/* --violet had no tile rule, so the integrity tile fell back to the neutral
+   surface while its neighbours rendered toned — it read as a missing icon. */
+.metric-icon[class*="--violet"] { border-color: #f2d5c9; background: var(--violet-soft); color: var(--violet); }
+
+.panel-card, .timeline-card, .coverage-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+.card-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8125rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+.card-heading h2, .card-heading h3 { margin: 0; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.006em; }
+.card-heading p { margin: 0.125rem 0 0; color: var(--muted); font-size: var(--fs-micro); }
+.panel-card > *:not(.card-heading), .timeline-card > *:not(.card-heading), .coverage-card > *:not(.card-heading) { padding-inline: 1rem; }
+.panel-card > *:last-child, .timeline-card > *:last-child, .coverage-card > *:last-child { padding-bottom: 1rem; }
+.section-kicker, .evidence-heading, .brain-list-heading {
+  display: block;
+  margin: 0.875rem 0 0.375rem;
+  color: var(--muted);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  letter-spacing: var(--tracking-label);
+}
+
+.pipeline {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  padding: 1rem;
+}
+.pipeline-card {
+  display: grid;
+  gap: 0.375rem;
+  padding: 0.8125rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+.pipeline-card strong { font-size: var(--fs-small); font-weight: 600; }
+.pipeline-card span { color: var(--muted); font-size: var(--fs-micro); line-height: 1.5; }
+.pipeline-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-soft);
+}
+.pipeline-icon[class*="--green"] { border-color: #cde5d6; background: var(--green-soft); color: var(--green); }
+.pipeline-icon[class*="--amber"] { border-color: #f0dcb8; background: var(--amber-soft); color: var(--amber); }
+.pipeline-arrow { display: grid; place-items: center; color: var(--line-strong); }
+/* Pipeline steps are <button> elements; without this they fell back to the UA
+   button face (#efefef + 2px outset) — the one piece of cold chrome left. */
+.pipeline button {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.75rem 0.85rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  text-align: start;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.pipeline button:hover { background: #f8f8f4; border-color: var(--line-strong); }
+.pipeline button small { display: block; color: var(--muted); font-size: var(--fs-micro); }
+.pipeline button em { font-style: normal; color: var(--muted); }
+.pipeline button span { display: grid; gap: 0.1rem; }
+
+.attention, .all-clear {
+  display: flex;
+  gap: 0.625rem;
+  align-items: flex-start;
+  padding: 0.8125rem 1rem;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+.attention:last-child, .all-clear:last-child { border-bottom: 0; }
+.attention { color: var(--ink); }
+.attention-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.all-clear span strong, .issue-list li span strong { display: block; color: var(--ink); }
+.all-clear { color: var(--muted); }
+.all-clear .attention-icon { background: var(--green-soft); color: var(--green); }
+
+.queue-preview, .recent-preview {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+.queue-preview > *, .recent-preview > * { min-width: 0; }
+
+/* The preview rows are bare <button>s: give them the same row idiom as the
+   review queue (.queue-index) instead of the UA button face. */
+.queue-list > button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.queue-list > button:last-child { border-bottom: 0; }
+.queue-list > button:hover { background: #f8f8f4; }
+.queue-list > button > span:not(.queue-index) { display: grid; gap: 0.15rem; min-width: 0; }
+.queue-list > button small { color: var(--muted); font-size: var(--fs-micro); }
+.queue-list > button strong { font-size: var(--fs-small); font-weight: 600; line-height: 1.4; }
+.queue-list > button svg { flex: 0 0 auto; color: var(--muted); }
+.queue-list .queue-index {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+  font-weight: 620;
+  letter-spacing: 0.04em;
+}
+
+.loading-board { display: grid; gap: 1rem; }
+/* Measured against the loaded view: the KPI tile paints 168px, the skeleton body
+   only 90px, so the strip reflowed under the reader on first load. box-sizing is
+   content-box here (this sheet has no global reset), so without it the tile would
+   land 200px — 2rem of padding over the real box. */
+.loading-board .metric-item { box-sizing: border-box; min-height: 10.5rem; }
+.loading-metric-body { display: grid; gap: 0.375rem; align-content: start; }
+.loading-panel-head { display: grid; gap: 0.5rem; margin-bottom: 1rem; }
+
+/* ---------- Brain ---------- */
+.brain-workspace {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem);
+  max-width: 84rem;
+  margin: 0 auto;
+}
+.brain-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.filter-tabs { display: inline-flex; gap: 0.125rem; padding: 0.1875rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-soft); }
+.filter-tabs button {
+  min-height: 1.625rem;
+  padding-inline: 0.625rem;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 560;
+  cursor: pointer;
+}
+.filter-tabs button[aria-pressed="true"], .filter-tabs button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+.knowledge-list, .compact-knowledge-list { display: flex; flex-direction: column; }
+.knowledge-list { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+.knowledge-card {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
+  text-align: start;
+  font: inherit;
+}
+.knowledge-list > .knowledge-card:last-child { border-bottom: 0; }
+.compact-knowledge-list .knowledge-card { border-bottom: 1px solid var(--line-soft); }
+.knowledge-card:hover { background: #f8f8f4; }
+.knowledge-card[aria-current="true"], .knowledge-card--active {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.knowledge-card-main { display: grid; gap: 0.3125rem; min-width: 0; }
+.knowledge-card-main h2, .knowledge-card h2 { margin: 0; font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.006em; }
+.knowledge-card-main p, .knowledge-card p { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
+.knowledge-card-icon, .knowledge-type-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+}
+.knowledge-card-head { display: flex; gap: 0.625rem; align-items: flex-start; }
+.knowledge-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--fs-micro);
+}
+.updated-label { color: var(--muted); font-size: var(--fs-micro); white-space: nowrap; }
+.library-summary {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  font-size: var(--fs-small);
+  color: var(--ink-soft);
+}
+.version-disclosure, .history-disclosure { border-top: 1px solid var(--line); }
+.version-disclosure > summary, .history-disclosure > summary {
+  padding: 0.625rem 1rem;
+  color: var(--ink-soft);
+  font-size: var(--fs-small);
+  font-weight: 560;
+  cursor: pointer;
+}
+.version-disclosure[open] > summary, .history-disclosure[open] > summary { border-bottom: 1px solid var(--line); }
+
+/* ---------- Sources ---------- */
+.source-workspace {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(19rem, 24rem);
+  max-width: 84rem;
+  margin: 0 auto;
+}
+.source-grid { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); }
+/* Kind chips + sort live in one bar above the grid (the chips row alone read as
+   an unlabelled control strip and gave no way to re-order 3+ sources). */
+.source-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.source-toolbar .filter-tabs { flex-wrap: wrap; }
+.source-card {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.source-card:hover { border-color: var(--line-strong); }
+.source-card h2 { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+.source-card p { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
+.source-icon {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--ink-soft);
+}
+.source-meta { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; color: var(--muted); font-size: var(--fs-micro); }
+.source-reference { color: var(--muted); font-size: var(--fs-micro); overflow-wrap: anywhere; }
+.source-integrity { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; padding-top: 0.5rem; border-top: 1px solid var(--line-soft); }
+.integrity-card { display: grid; gap: 0.5rem; padding: 0.875rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.integrity-metrics { display: grid; gap: 0.5rem; }
+.integrity-metrics > div { display: flex; gap: 0.75rem; align-items: baseline; justify-content: space-between; font-size: var(--fs-small); }
+.integrity-metrics dt, .integrity-metrics span:first-child { color: var(--muted); font-size: var(--fs-micro); letter-spacing: var(--tracking-label); }
+.integrity-metrics strong { font-variant-numeric: tabular-nums; }
+
+/* Tonal icon variants used by the metric strip and the pipeline steps. */
+.metric-icon--blue { background: var(--blue-soft); color: var(--blue); }
+.metric-icon--green { background: var(--green-soft); color: var(--green); }
+.metric-icon--amber { background: var(--amber-soft); color: var(--amber); }
+.pipeline-icon--green { background: var(--green-soft); color: var(--green); }
+.pipeline-icon--amber { background: var(--amber-soft); color: var(--amber); }
+
+/* Tone comes from the bright reference hues; the text keeps the darker AA-safe shade. */
+.metric-item--green {--metric-tone: var(--green-bright);}
+.metric-item--amber {--metric-tone: var(--amber);}
+.metric-item--blue {--metric-tone: var(--blue);}
+.metric-item--violet {--metric-tone: var(--violet);}
+.metric-item > div > span {display: inline-flex; align-items: center; gap: 0.375rem;}
+.metric-item .status-dot {width: 0.4375rem; height: 0.4375rem; background: var(--metric-tone, var(--muted-soft));}
+.stage-note {display: block; color: var(--muted); font-size: var(--fs-label); font-weight: 400;}
+.coverage-card .table {margin-bottom: 1rem;}
+.coverage-card .bar {display: block; width: 100%;}
+
+/* ---------- Activate: context-pack composer + dark pack panel ---------- */
+.activate-layout {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 24rem);
+  max-width: 84rem;
+  margin: 0 auto;
+}
+@media (max-width: 1180px) { .activate-layout { grid-template-columns: minmax(0, 1fr); } }
+
+.composer-card > .composer-head {
+  display: grid;
+  gap: 0.3125rem;
+  padding: 1.125rem 1rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--accent-soft) 0%, rgba(255, 255, 255, 0) 78%);
+}
+.composer-head .section-kicker { margin: 0; color: var(--accent-dark); }
+.composer-head h2 { margin: 0; max-width: 34rem; font-size: 1.25rem; line-height: 1.25; letter-spacing: -0.03em; }
+.composer-sub { margin: 0; max-width: 46rem; color: var(--muted); font-size: var(--fs-small); line-height: 1.55; }
+
+.intent-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  padding-block: 1rem 0.25rem;
+}
+.intent-card {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 2.25rem 0.75rem 0.875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+.intent-card strong { font-size: var(--fs-small); font-weight: 600; }
+.intent-card small { color: var(--muted); font-size: var(--fs-micro); line-height: 1.45; }
+.intent-card:hover { border-color: var(--muted-soft); transform: translateY(-1px); }
+.intent-card.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.intent-card.is-on strong { color: var(--accent-dark); }
+.intent-card.is-on small { color: var(--ink-soft); }
+.intent-mark {
+  position: absolute;
+  inset-block-start: 0.8125rem;
+  inset-inline-end: 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: #fff;
+}
+.intent-card.is-on .intent-mark { border-color: var(--accent); background: var(--accent); }
+
+.composer-fields {
+  display: grid;
+  gap: 0.875rem 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  padding-block: 0.5rem 1rem;
+}
+.composer-fields .form-field > label { color: var(--muted); font-size: var(--fs-label); font-weight: 500; }
+.field-help { color: var(--muted); font-size: var(--fs-micro); line-height: 1.45; }
+
+.policy-row {
+  display: inline-flex;
+  gap: 0.1875rem;
+  padding: 0.1875rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-soft);
+  justify-self: start;
+}
+.policy-chip {
+  padding: 0.3125rem 0.75rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 560;
+  cursor: pointer;
+}
+.policy-chip.is-on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+.evidence-block { display: grid; gap: 0.625rem; padding-block: 0.875rem 1rem; border-top: 1px solid var(--line-soft); }
+.evidence-toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem 0.875rem; align-items: center; justify-content: space-between; }
+.evidence-toolbar .search-field { flex: 1 1 16rem; }
+.evidence-count { color: var(--muted); font-size: var(--fs-micro); }
+.evidence-count strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.evidence-list { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+.evidence-row {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1fr);
+  gap: 0.625rem;
+  align-items: start;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+}
+.evidence-row:hover { border-color: var(--line-strong); background: var(--surface-soft); }
+.evidence-row.is-off { opacity: 0.5; border-style: dashed; }
+.evidence-box {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  margin-block-start: 0.1875rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface);
+  color: #fff;
+}
+.evidence-row:not(.is-off) .evidence-box { border-color: var(--accent); background: var(--accent); }
+.evidence-copy { display: grid; gap: 0.1875rem; min-width: 0; }
+.evidence-copy strong { font-size: var(--fs-small); font-weight: 500; line-height: 1.45; }
+.evidence-copy small { display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center; color: var(--muted); font-size: var(--fs-micro); }
+.evidence-empty { color: var(--muted); font-size: var(--fs-small); }
+
+.activate-rail { display: grid; gap: 1rem; position: sticky; top: 1rem; }
+.pack-panel.panel-card {
+  border-color: var(--sidebar-line);
+  background: var(--sidebar);
+  color: var(--sidebar-text);
+  box-shadow: var(--shadow-md);
+}
+.context-pack-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--sidebar-line);
+  color: #fff;
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.context-pack-header > span:first-child { display: inline-flex; gap: 0.5rem; align-items: center; }
+.pack-chip {
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--fs-micro);
+  font-weight: 560;
+}
+.pack-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-block: 0.875rem 0.75rem;
+}
+.pack-stats > div { display: grid; gap: 0.125rem; }
+.pack-stats strong { color: #fff; font-size: 1.25rem; font-weight: 620; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.pack-stats span { color: var(--sidebar-muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: var(--tracking-micro); }
+.pack-panel .context-lines {
+  margin: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--sidebar-line);
+  border-radius: var(--radius-sm);
+  background: #171a16;
+  color: var(--sidebar-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.65;
+  max-height: 21rem;
+  overflow: auto;
+}
+.pack-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; padding-block: 0.875rem 0.125rem; }
+.pack-panel .secondary-button {
+  border-color: var(--sidebar-line);
+  background: transparent;
+  color: var(--sidebar-text);
+}
+.pack-panel .secondary-button:hover { background: var(--sidebar-soft); }
+.pack-note {
+  display: flex;
+  gap: 0.4375rem;
+  align-items: flex-start;
+  margin: 0;
+  color: var(--sidebar-muted);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+}
+.pack-note svg { flex: 0 0 auto; margin-block-start: 0.125rem; color: var(--accent); }
+
+.composer-card > .activate-empty {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+  max-width: 44rem;
+  padding: 2rem 1rem;
+}
+.activate-empty h3 { margin: 0; font-size: var(--fs-section); font-weight: 600; }
+.activate-empty p { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: 1.6; }

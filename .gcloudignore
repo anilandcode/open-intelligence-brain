@@ -1,0 +1,21 @@
+# Keeps the upload small. The 1.1 GB memory engine, the built frontend and the
+# database are all things gcloud would otherwise ship to Cloud Build, and none
+# of them belong in the build context: the image builds the frontend itself.
+.gcloudignore
+.git
+.gitignore
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+node_modules/
+**/node_modules/
+web/dist/
+coverage/
+playwright-report/
+data/
+**/*.db
+.env
+.DS_Store
+docs/

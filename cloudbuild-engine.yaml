@@ -1,0 +1,26 @@
+# Cloud Build config for the self-hosted engine image.
+#
+# Separate from cloudbuild.yaml because it is a different kind of build: no
+# frontend, no build args, no token, and it downloads a 312 MB engine binary
+# inside the build rather than uploading one. Cloud Build runs on linux/amd64,
+# which is the platform Cloud Run will run the image as, so the fetch inside the
+# build resolves the correct asset on its own.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - VERSION=${_SM_VERSION}
+      - -f
+      - engine/Dockerfile
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}
+substitutions:
+  _SM_VERSION: "0.0.8"
+  _IMAGE: ""
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 1800s
