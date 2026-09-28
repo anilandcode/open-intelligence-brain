@@ -14,6 +14,8 @@ The workbench follows the product research's central distinction: the Brain is n
 | Sources | What original material supports the Brain? | Live |
 | Analytics | Which intelligence creates outcomes? | Health metrics live; outcome attribution preview |
 | Audit | Why does the system believe this? | Live |
+| Turns | What is the Brain doing right now? | Live (event intake, triage, turn management) |
+| Proactivity | How chatty should each channel be? | Live (per-channel policy) |
 
 The standalone Ask view is opened from Overview or Brain. It deliberately searches only canonical knowledge and shows cited evidence or abstains.
 

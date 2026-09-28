@@ -36,11 +36,16 @@ Exit: a changed source cannot silently rewrite approved knowledge, and a fresh r
 
 Exit: one new insight is captured from an interview and reused in two different drafts with inspectable evidence.
 
-## M4 — portable agent context
+## M4 — portable agent context (in progress)
 
 - [x] Workspaces, workspace grants, and workspace-scoped reads and writes.
+- [x] Workspace isolation with role-based access control (owner, admin, member).
+- [x] Sensitivity scoping (public, internal, private) enforced on every read.
+- [x] Engine abstraction with deterministic local and optional hosted provider.
+- [x] Harness layer: event intake, deterministic triage, turn orchestration.
+- [x] Single-image Cloud Run deployment.
 - Scoped workspace principals and expiring tokens.
-- MCP stdio/HTTP adapter.
+- MCP stdio/HTTP adapter (stdio implemented, HTTP pending).
 - Read tools for search, knowledge, evidence, profile, and context packages.
 - Hermes configuration and skill.
 - Codex and Claude Code smoke tests.

@@ -61,11 +61,17 @@ into the caller's.
 
 ## Current components
 
-- React/TypeScript web application.
-- FastAPI API and domain services.
+- React/TypeScript web application with modular CSS architecture.
+- FastAPI API with 30+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, and proactivity.
 - SQLAlchemy persistence with SQLite locally and PostgreSQL in Compose.
 - Deterministic extraction provider for offline reliability.
+- Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
+- Harness layer: event intake (`harness.py`), deterministic triage with policy enforcement (`triage.py`), and turn orchestration with budgets, steering, suspension, and cooperative cancellation (`turns.py`).
+- Workspace isolation (`access.py`) with role-based access control and sensitivity scoping on every read.
+- Database migration support (`migrate.py`) for workspace and engine-link columns.
 - Read-only stdio MCP server for compatible local agents.
+- Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
+- Self-hosted LLM proxy (`engine/`) for optional engine deployment.
 
 ## Invariants
 

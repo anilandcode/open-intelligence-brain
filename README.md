@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-Version 0.3 is a functional vertical slice, not a static mockup. It supports source capture, immutable source versions and exact spans, human review, append-only knowledge revisions, integrity warnings, canonical search, source-grounded answers, tested backup/restore, an audit trail, a research-aligned intelligence workspace, and a read-only MCP server for coding agents.
+Version 0.4 adds an engine abstraction, a harness layer (event intake, triage, and turn orchestration), workspace isolation with role-based access and sensitivity scoping, and a single-image Cloud Run deployment. The core trust model — nothing becomes canonical without human approval — is unchanged.
 
 ## Screens
 
@@ -45,6 +45,10 @@ docker compose up --build
 ```
 
 This starts PostgreSQL, the API at `http://localhost:8000`, and the workbench at `http://localhost:5173`.
+
+### Cloud Run (free tier)
+
+See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md). The `Dockerfile` builds a single image serving both the API and the frontend from one origin. Cloud Build configs and a deploy script are included. A live deployment exists at `digital-brain-7wyy76ncea-uc.a.run.app`.
 
 ## Verify
 
@@ -84,13 +88,49 @@ curl -X POST http://localhost:8000/api/v1/sources \
 
 Then review proposals at `/api/v1/proposals`, approve one through `/api/v1/proposals/{id}/approve`, and ask a grounded question at `/api/v1/chat`.
 
+### Event intake and turns
+
+Events arrive at `POST /api/v1/events`, are triaged deterministically, and become turns — rows with a budget, a plan, and a gate. Turns can be stepped, steered, suspended, resumed, and stopped. See [docs/harness.md](docs/harness.md) for the full route surface and invariants.
+
 ## Repository map
 
 ```text
-api/                  FastAPI domain and tests
+api/                  FastAPI domain, services, and tests
+  brain/
+    access.py         Workspace resolution, roles, sensitivity scoping
+    config.py         Settings from environment
+    database.py       SQLAlchemy session and engine
+    engine.py         Engine abstraction (deterministic + Supermemory)
+    harness.py        Event intake, triage, and turn tables
+    main.py           API routes and lifespan
+    mcp_server.py     Read-only stdio MCP server
+    migrate.py        Additive schema migrations
+    models.py         SQLAlchemy models (sources, proposals, knowledge, workspaces)
+    schemas.py        Pydantic request/response schemas
+    services.py       Domain logic (extraction, approval, search, backup)
+    triage.py         Deterministic triage with policy enforcement
+    turns.py          Turn orchestration (step, steer, suspend, resume, stop)
+  tests/              113 backend tests across 9 modules
 web/                  React + TypeScript workbench
-docs/                 Architecture, security, roadmap
+  src/
+    App.tsx           Main application with all views
+    api.ts            API client
+    tokens.css        Design tokens
+    primitives.css    Base components
+    shell.css         App shell and navigation
+    system.css        System-level styles
+    views.css         View-specific styles
+    flows.css         Workflow and flow styles
+    refine.css        Refinement and detail styles
+  public/
+    favicon.svg       App favicon
+engine/               Self-hosted LLM proxy (Dockerfile + entrypoint + proxy)
+scripts/              Deploy scripts (Cloud Run, engine, fetch)
+docs/                 Architecture, security, roadmap, interface, deploy, harness
 docker-compose.yml    PostgreSQL + API + frontend development stack
+Dockerfile            Single-image build for Cloud Run
+cloudbuild.yaml       Cloud Build config (API + frontend)
+cloudbuild-engine.yaml  Cloud Build config (engine proxy)
 AGENTS.md             Guardrails for coding agents
 ```
 
@@ -111,15 +151,22 @@ Implemented:
 - Research-aligned application shell with judgement-first review and honest future-state previews.
 - Schema-v2 JSON backup, dry-run preview, empty-workspace restore, and deletion previews.
 - Read-only MCP access for Hermes, Codex, Claude Code, and compatible hosts.
-- Backend and frontend tests.
+- Workspace isolation with role-based access control and sensitivity scoping.
+- Engine abstraction with deterministic local and optional hosted Supermemory provider.
+- Harness layer: event intake, deterministic triage, turn orchestration with budgets and gates.
+- Per-channel proactivity policy.
+- Single-image Cloud Run deployment with Cloud Build.
+- Self-hosted LLM proxy for engine deployment.
+- 113 backend tests and 5 frontend tests.
 
 Next:
 
-- Local embeddings and hybrid retrieval.
-- Guided interview sessions and drafting workflows.
-- Client-specific MCP registration examples and compatibility CI.
-- Durable background tasks and optional Jev decision adapter.
+- PostgreSQL full-text search and local embeddings with index-version tracking.
+- Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
+- Guided interview sessions and drafting workflows (M3 — Intelligence Studio).
+- Scoped workspace principals, expiring tokens, and MCP HTTP adapter (M4).
+- Durable background tasks and optional Jev decision adapter (M5).
 
 See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
 See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.

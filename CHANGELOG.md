@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.0 — Engine, harness, workspaces, and Cloud Run deployment
+
+- Added engine abstraction with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional) implementations.
+- Added harness layer: event intake, deterministic triage, and turn orchestration with budgets, steering, suspension, and cooperative cancellation.
+- Added workspace isolation with role-based access control (`owner`, `admin`, `member`) and sensitivity scoping (`public`, `internal`, `private`).
+- Added proactivity policy per channel (`off`, `mentions`, `contextual`, `proactive`).
+- Added database migration support for workspace and engine-link columns.
+- Added single-image Dockerfile combining API and frontend for Cloud Run.
+- Added Cloud Build configs and deploy scripts for Cloud Run free tier.
+- Added self-hosted LLM proxy (`engine/`) with Dockerfile and entrypoint.
+- Added 7 new backend test modules covering engine, engine bridge, sensitivity, triage, turns, turns API, and workspaces (113 tests total).
+- Added harness, deploy, free-hosting-plan, and supermemory-core-spec documentation.
+- Expanded frontend with engine status, triage queue, turn management, and workspace views.
+- Added modular CSS architecture (tokens, primitives, shell, system, views, flows, refine).
+
 ## 0.3.0 — Intelligence workspace interface
 
 - Rebuilt the React workbench around the research-defined Inbox, Brain, Studio, Activate, Analytics, and Audit model.
@@ -16,7 +31,7 @@
 - Added proposal-to-span evidence edges.
 - Added append-only knowledge revisions and explicit supersession.
 - Added stale-source and deterministic possible-conflict integrity reporting.
-- Added schema-v2 backup, dry-run restore preview, empty-workspace restore, and deletion previews.
+- Added schema-v2 backup, empty-workspace restore, and deletion previews.
 - Added provenance and revision controls to the workbench.
 - Added read-only MCP integrity inspection and stale/revision metadata.
 
