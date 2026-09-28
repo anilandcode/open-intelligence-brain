@@ -1009,6 +1009,30 @@ def get_usage_unused(
     return unused_knowledge(db, access.workspace_id, limit=limit)
 
 
+@app.get("/api/v1/evaluation")
+def run_jev_evaluation(
+    jev_url: str | None = None,
+    access: WorkspaceAccess = Depends(resolve_access),
+):
+    from .evaluation import run_evaluation
+    report = run_evaluation(jev_url=jev_url)
+    return report.to_dict()
+
+
+@app.get("/api/v1/messaging/status")
+def messaging_status(
+    access: WorkspaceAccess = Depends(resolve_access),
+):
+    from .messaging import HermesMessenger
+    messenger = HermesMessenger()
+    return {
+        "configured": messenger.config.configured,
+        "api_url": messenger.config.api_url or None,
+        "channel": messenger.config.channel,
+        "reachable": messenger.test_connection(),
+    }
+
+
 frontend = Path(__file__).resolve().parents[2] / "web" / "dist"
 if frontend.exists():
 
