@@ -698,7 +698,17 @@ def chat(
     scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    return answer_question(db, scope, payload.question)
+    result = answer_question(db, scope, payload.question)
+    # Track which knowledge atoms were cited
+    if result.citations:
+        from .usage import track_batch
+        track_batch(
+            db, scope.workspace_id,
+            [c.knowledge_id for c in result.citations],
+            context="answer",
+            query=payload.question,
+        )
+    return result
 
 
 @app.get("/api/v1/export")
@@ -942,6 +952,61 @@ def put_proactivity(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+# --- Routines and Usage ---
+
+@app.get("/api/v1/routines/digest")
+def get_routine_digest(
+    hours: int = 24,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    from .routines import build_digest, format_digest
+    from .access import ReadScope
+    scope = ReadScope(access.workspace_id, access.role)
+    digest = build_digest(db, scope, since_hours=hours)
+    return {
+        "pending_proposals": digest.pending_proposals,
+        "stale_knowledge": digest.stale_knowledge,
+        "conflict_count": digest.conflict_count,
+        "recent_approvals": digest.recent_approvals,
+        "recent_sources": digest.recent_sources,
+        "top_proposals": digest.top_proposals,
+        "warnings": digest.warnings,
+        "summary": digest.summary,
+        "formatted": format_digest(digest),
+    }
+
+
+@app.get("/api/v1/usage")
+def get_usage_summary(
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    from .usage import usage_summary
+    return usage_summary(db, access.workspace_id)
+
+
+@app.get("/api/v1/usage/top")
+def get_usage_top(
+    limit: int = 10,
+    days: int = 30,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    from .usage import top_used
+    return top_used(db, access.workspace_id, limit=limit, since_days=days)
+
+
+@app.get("/api/v1/usage/unused")
+def get_usage_unused(
+    limit: int = 10,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    from .usage import unused_knowledge
+    return unused_knowledge(db, access.workspace_id, limit=limit)
 
 
 frontend = Path(__file__).resolve().parents[2] / "web" / "dist"
