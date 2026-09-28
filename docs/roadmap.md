@@ -19,8 +19,9 @@
 - [x] Knowledge revisions, supersession, and historical queries.
 - [x] Deterministic stale-source and possible-conflict signals.
 - [x] Schema-v2 backup, empty-workspace restore, and deletion previews.
-- [ ] PostgreSQL full-text search and local embeddings with index-version tracking.
-- [ ] Evaluation-backed conflict detection and review policy.
+- [x] SQLite FTS5 full-text search with BM25 ranking.
+- [x] Improved conflict detection with same-topic/same-type matching.
+- [ ] Local embeddings with index-version tracking.
 - [ ] Encrypted backup packaging and reviewed deletion execution.
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
@@ -44,8 +45,8 @@ Exit: one new insight is captured from an interview and reused in two different 
 - [x] Engine abstraction with deterministic local and optional hosted provider.
 - [x] Harness layer: event intake, deterministic triage, turn orchestration.
 - [x] Single-image Cloud Run deployment.
-- Scoped workspace principals and expiring tokens.
-- MCP stdio/HTTP adapter (stdio implemented, HTTP pending).
+- [x] Scoped workspace principals and expiring tokens.
+- [x] MCP HTTP adapter (stdio + HTTP endpoints for remote agents).
 - Read tools for search, knowledge, evidence, profile, and context packages.
 - Hermes configuration and skill.
 - Codex and Claude Code smoke tests.

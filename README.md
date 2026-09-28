@@ -157,7 +157,12 @@ Implemented:
 - Per-channel proactivity policy.
 - Single-image Cloud Run deployment with Cloud Build.
 - Self-hosted LLM proxy for engine deployment.
-- 113 backend tests and 5 frontend tests.
+- SQLite FTS5 full-text search with BM25 ranking over canonical knowledge.
+- Scoped workspace grants and expiring tokens with create/list/revoke API.
+- MCP HTTP adapter for remote agents (tool listing, call, SSE).
+- Richer proposal types: framework, evidence, story, question.
+- Improved conflict detection with same-topic/same-type matching.
+- 134 backend tests and 5 frontend tests.
 
 Next:
 

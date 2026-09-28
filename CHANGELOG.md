@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1 — FTS5 search, expiring tokens, MCP HTTP, richer types
+
+- Added SQLite FTS5 full-text search with BM25 ranking, synced after approval/supersession.
+- Added scoped grants and expiring tokens with create/list/revoke API.
+- Added MCP HTTP adapter with tool listing, call, and SSE endpoints.
+- Added framework, evidence, story, and question proposal types.
+- Improved conflict detection with same-topic/same-type matching.
+- Added 21 new tests (134 backend total, 5 frontend).
+
 ## 0.4.0 — Engine, harness, workspaces, and Cloud Run deployment
 
 - Added engine abstraction with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional) implementations.

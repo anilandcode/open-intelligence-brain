@@ -67,8 +67,10 @@ into the caller's.
 - Deterministic extraction provider for offline reliability.
 - Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
 - Harness layer: event intake (`harness.py`), deterministic triage with policy enforcement (`triage.py`), and turn orchestration with budgets, steering, suspension, and cooperative cancellation (`turns.py`).
-- Workspace isolation (`access.py`) with role-based access control and sensitivity scoping on every read.
-- Database migration support (`migrate.py`) for workspace and engine-link columns.
+- Workspace isolation (`access.py`) with role-based access control, sensitivity scoping, and expiring/scoped tokens.
+- Full-text search (`retrieval.py`) using SQLite FTS5 with BM25 ranking, synced after approval and supersession.
+- MCP HTTP adapter (`mcp_http.py`) exposing read-only tools over HTTP for remote agents.
+- Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
 - Self-hosted LLM proxy (`engine/`) for optional engine deployment.
