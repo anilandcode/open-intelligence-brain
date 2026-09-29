@@ -195,11 +195,11 @@ gcloud run deploy "$SERVICE" \
   --platform managed \
   --allow-unauthenticated \
   --port 8080 \
-  --memory 2Gi \
-  --cpu 2 \
+  --memory 4Gi \
+  --cpu 1 \
   --max-instances 1 \
   --min-instances 0 \
-  --concurrency 20 \
+  --concurrency 1 \
   --timeout 300 \
   --env-vars-file "$ENV_FILE_YAML" \
   --set-secrets "$SECRET_BINDS" \

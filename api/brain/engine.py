@@ -42,10 +42,17 @@ REVIEW_ACTIONS = {"approve", "decline", "undo"}
 # The engine will accept a document long before it has run a model over it, so
 # the readiness probe has to wait long enough to see extraction actually
 # happen. These bound a slow check rather than a request; it is cached, and
-# live extraction is far quicker than the full window.
+# warm extraction is far quicker than the full window.
+#
+# Hosted cold starts need the long budget: local embeddings load from the baked
+# cache, then the memory agent runs multi-step tool calls against the provider.
+# Live Cloud Run observation: status flipped to "done" with empty memories at
+# ~15s while the agent was still running, and memories appeared only ~80s later.
+# Breaking early on "done"+empty therefore false-degraded a working engine.
 PROBE_POLL_SECONDS = 3
-PROBE_POLLS = 5
+PROBE_POLLS = 40  # ~120s wall clock (tests patch sleep to a no-op)
 PROBE_TTL_SECONDS = 300.0
+PROBE_FAIL_TTL_SECONDS = 45.0  # retry sooner after a cold-start miss
 
 # The engine validates container tags on every request against
 # `^[a-zA-Z0-9_:-]+$` and a 100-character ceiling. A tag it rejects is not an
@@ -249,7 +256,9 @@ class SupermemoryEngine:
         answer is cached because it cannot change quickly and the probe sits on
         the overview request path.
         """
-        if time.monotonic() < self._probe_checked_at + PROBE_TTL_SECONDS:
+        if time.monotonic() < self._probe_checked_at + (
+            PROBE_TTL_SECONDS if self._probe_result else PROBE_FAIL_TTL_SECONDS
+        ):
             return self._probe_result
 
         self._probe_checked_at = time.monotonic()
@@ -319,9 +328,11 @@ class SupermemoryEngine:
                     # extraction works.
                     self._probe_result = True
                     return self._probe_result
-                if body.get("status") in ("done", "failed"):
-                    # Finalized with zero memories. The server's own log for
-                    # this shape reads "0 memories (memory generation failed)".
+                # "failed" is terminal. "done" with empty memories is not: the
+                # live engine has been observed marking done while the memory
+                # agent is still running multi-step tool calls. Keep polling
+                # until the budget expires; only then treat empty as degraded.
+                if body.get("status") == "failed":
                     break
 
             self._probe_result = False

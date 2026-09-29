@@ -419,11 +419,22 @@ def test_auth_failure_is_not_availability(stub_server):
     assert engine.available().available is False
 
 
-def test_empty_tag_404_still_counts_as_reachable(stub_server):
+def test_empty_tag_404_still_counts_as_reachable(stub_server, monkeypatch):
     """404 means the engine answered: the tag simply has no queue yet."""
-    StubState.responses = {"/v3/container-tags/org_ws/inferred": (404, {})}
+    StubState.responses = {
+        "/v3/container-tags/healthcheck/inferred": (404, {}),
+        # available() still runs the extraction probe after a 404; keep it
+        # instant so this case does not sit on the full PROBE_POLLS window.
+        "/v3/documents": (200, {"id": "d1", "status": "queued"}),
+        "/v3/documents/d1": (
+            200,
+            {"status": "done", "memories": [{"id": "m1", "memory": "x", "isInference": True}]},
+        ),
+    }
+    _no_sleep(monkeypatch)
     engine = SupermemoryEngine(f"http://127.0.0.1:{stub_server.server_port}", "k", timeout=2.0)
     assert engine.available().available is True
+    assert engine.available().degraded is False
 
 
 # --- the review queue contract -------------------------------------------

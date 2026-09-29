@@ -80,10 +80,13 @@ curl -s -H "X-Brain-Token: $TOKEN" "$URL/api/v1/overview" | head -c 200  # data
   project access, and a Brain holding anything real deserves an owner token that
   is not shared with a demo.
 - **The memory engine is in the image.** Boot order is proxy → engine → app.
-  `SUPERMEMORY_EMBEDDING_RAM_LIMIT=0.25gb` keeps RSS inside the free ceiling;
-  deploy uses **2 GiB / 2 vCPU** because 1 GiB OOMs at boot. The provider edge
-  that 403s the engine's `python-httpx` User-Agent is handled by
-  `engine/llm_proxy.py` (UA override + key held off the engine process).
+  `SUPERMEMORY_EMBEDDING_RAM_LIMIT=0.25gb` keeps the embedding budget small;
+  deploy uses **4 GiB / 1 vCPU / concurrency 1 / min-instances 0** because a
+  2 GiB instance OOMs once the baked local model is resident (~1.2 GB baseline
+  + extraction peak). Idle is $0 (scale-to-zero). Cloud Run free tier is
+  ~360k GB-seconds/month ≈ **~25 hours of a 4 GiB instance** — enough for
+  demos if you stay at min-instances 0; avoid always-on. A $10 monthly credit
+  covers light overage, not a warm instance left up all month.
 - **Embedding weights are baked, not downloaded at runtime.** The engine's local
   model is `Xenova/bge-base-en-v1.5` (~110 MB quantized ONNX). On Cloud Run,
   `/tmp` is an empty tmpfs every cold start, and Hugging Face often 429s Google
@@ -93,7 +96,8 @@ curl -s -H "X-Brain-Token: $TOKEN" "$URL/api/v1/overview" | head -c 200  # data
   `engine/entrypoint.sh` copies them into `SUPERMEMORY_DATA_DIR/models` before
   the engine starts.
 - **One instance, no coordination.** `--max-instances 1` is deliberate: turns are
-  database rows with no lease, so more than one writer is untested.
+  database rows with no lease, so more than one writer is untested. Concurrency
+  is 1 so free-tier memory peaks stay predictable.
 
 ## If the engine has to be hosted too
 
