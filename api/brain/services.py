@@ -611,7 +611,8 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
     if not query.strip():
         return list(db.scalars(base.order_by(Knowledge.approved_at.desc()).limit(limit)).all())
 
-    # Try FTS5 first
+    # Try the dialect's ranked index first (FTS5/BM25 on SQLite, tsvector +
+    # ts_rank_cd on PostgreSQL).
     fts_ids = search_fts(db, query, limit=limit)
     if fts_ids:
         # Preserve FTS ranking order; filter by scope
@@ -629,7 +630,15 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
         # Re-order to match FTS ranking
         id_order = {kid: i for i, kid in enumerate(fts_ids)}
         items.sort(key=lambda item: id_order.get(item.id, 999))
-        return items[:limit]
+        # Fall through to ILIKE when the ranked ids resolve to nothing. They
+        # can: an id may point at a superseded or out-of-scope row, or — as
+        # happened when the index was declared contentless — the ids came back
+        # NULL and matched no row at all. Returning [] here would report
+        # "no knowledge" for a query the ILIKE fallback answers, and because
+        # abstention is this product's safety signal, a false abstention is
+        # worse than an unranked result.
+        if items:
+            return items[:limit]
 
     # ILIKE fallback
     terms = _query_terms(query)

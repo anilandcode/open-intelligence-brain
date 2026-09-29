@@ -1,5 +1,96 @@
 # Changelog
 
+## 1.0.2 — Retrieval persistence and PostgreSQL correctness
+
+A PostgreSQL readiness pass found that the default SQLite deployment had been
+silently losing its own approved knowledge on every restart since M2. The bug is
+fixed on both dialects, PostgreSQL is now genuinely supported rather than
+nominally, and the restart is a permanent release gate.
+
+### Critical — search broke after the first restart
+
+- **Ranked search returned nothing once the index was rebuilt (critical, on the
+  default database).** `knowledge_fts` was declared `content=''` — a *contentless*
+  FTS5 table, which stores no column values. `SELECT knowledge_id` therefore
+  returned `NULL` for every row, `search_fts` handed back `[None, None, …]`, and
+  that truthy list made `search_knowledge` take the ranked branch, match
+  `id IN (NULL)` against nothing, and return `[]` — never reaching the ILIKE
+  fallback that would have found the row. Because `rebuild_fts()` runs in
+  `lifespan`, the trigger was the *second* boot: capture and approve normally,
+  restart, and the Brain could no longer find any of its own canonical knowledge
+  while every question abstained. Proven end-to-end before and after the fix
+  (`grounded=False, citations=0` → `grounded=True, citations=1`).
+
+  Fixed with three independent guards, because any one alone still leaves a path
+  into a silent false abstention: the table is declared with content stored,
+  `NULL` ids are filtered out of the ranked list, and ranked ids that resolve to
+  zero workspace-visible rows fall through to ILIKE. An existing deployment still
+  carrying the old index **self-heals on the next boot**, and stays correct even
+  before it does.
+
+- **A test-design failure let it ship.** Unit tests never boot the lifespan, so
+  the index stayed empty and a broken index looked identical to a fresh one; and
+  `test_retrieval.py` asserted only `len(results) >= 1`, which `[None]` satisfies.
+  That assertion now checks the returned identity, and
+  `api/tests/test_restart_gate.py` runs the whole lifecycle — create → approve →
+  close app → **start it again** → search → grounded answer → citation still
+  carries its exact excerpt — as two separate application lifespans in
+  subprocesses against one persistent database, on both dialects.
+
+### Index versioning
+
+- `SEARCH_INDEX_VERSION = 2` is persisted in `search_index_state` and compared on
+  boot. A deployment whose stored version is behind (or absent) is rebuilt rather
+  than trusted, which turns "old index schema silently misbehaves" into "old
+  schema detected → rebuild → version recorded". The version is written only
+  *after* the rebuild has actually indexed rows.
+
+### PostgreSQL support
+
+PostgreSQL is a first-class database now, not a config value that degraded:
+
+- **Ranked search existed only as SQLite FTS5.** PostgreSQL has no virtual
+  tables, so `_ensure_sqlite_fts5` raised; the exception was swallowed without a
+  rollback, which **aborted the entire transaction** and made unrelated routes
+  500 — `POST /api/v1/chat` failed while GETs kept working, which made a
+  search-index problem look like a chat-handler problem. Every failure path now
+  rolls back, and PostgreSQL gets its own `to_tsvector` + `ts_rank_cd` path over
+  an expression GIN index. Verified in use at scale, not just present: at 5,000
+  rows the plan shows `Bitmap Index Scan on knowledge_tsv_idx`, 10/10 needles
+  found, ~0.8 ms.
+- **Term semantics differed between dialects.** `plainto_tsquery` ANDs its terms
+  while FTS5 and the ILIKE fallback OR them, so a multi-word question could
+  answer on SQLite and *abstain* on PostgreSQL. Since abstention is this
+  product's safety signal, over-abstention is a correctness bug rather than a
+  ranking nit; terms are now OR'd on both.
+- **`/api/v1/usage` and `/usage/top` 500'd.** `top_used` relied on SQLite's
+  `GROUP BY` extension, selecting columns it did not group by; PostgreSQL raises
+  `GroupingError`. The functionally dependent columns are now grouped
+  explicitly, which cannot change which rows return.
+- **Migrations are dialect-aware and safe.** Relaxing `proposal_evidence`'s
+  NOT NULL used a table rebuild on both dialects; PostgreSQL now takes the native
+  `ALTER COLUMN … DROP NOT NULL`, with no rebuild and no data movement. Idempotent
+  across repeated boots, FKs intact.
+- **The same rebuild dropped a foreign key on both dialects.** Its DDL re-declared
+  only two of three keys, silently losing
+  `proposal_evidence.proposal_id → proposals.id` on any legacy upgrade — an
+  integrity hole in the audit trail, invisible until something tried to insert an
+  orphan. The rebuild now preserves all three, and `test_migration_fks.py` asserts
+  the *exact* targets rather than a count, so a future migration that keeps three
+  keys but points one at the wrong table still fails.
+
+### CI
+
+- A dedicated `postgres-parity` job runs the whole suite against a real
+  PostgreSQL 16 service, with `BRAIN_REQUIRE_POSTGRES_TESTS=1` so a missing or
+  misconfigured service **fails the job instead of reporting "14 skipped, green"**.
+  Two guard steps assert the service is reachable and that the suite's engine
+  dialect really is PostgreSQL, because `conftest` previously hardcoded
+  `BRAIN_DATABASE_URL` to SQLite — a step named "full suite against PostgreSQL"
+  would have quietly re-run SQLite.
+- Full suites: **255 passed on SQLite**, **273 passed on PostgreSQL**, zero
+  failures and zero errors, plus 5 frontend tests.
+
 ## 1.0.1 — Security hardening
 
 Audited every boundary with live probes against a running server; all eleven

@@ -106,9 +106,11 @@ api/                  FastAPI domain, services, and tests
     main.py           API routes and lifespan
     mcp_server.py     Read-only stdio MCP server
     migrate.py        Additive schema migrations
-    models.py         SQLAlchemy models (sources, proposals, knowledge, workspaces)
-    schemas.py        Pydantic request/response schemas
-    services.py       Domain logic (extraction, approval, search, backup)
+    models.py          SQLAlchemy models (sources, proposals, knowledge, workspaces)
+    schemas.py         Pydantic request/response schemas
+    services.py        Domain logic (extraction, approval, search, backup)
+    retrieval.py       Dialect-aware ranked search (FTS5 / tsvector GIN) + index versioning
+    mcp_http.py        MCP HTTP transport (binds the caller's ReadScope into tools)
     studio.py         Interview session and draft data models
     studio_api.py     Intelligence Studio API (interviews, drafts, sections)
     studio_schemas.py Pydantic schemas for Studio
@@ -120,8 +122,8 @@ api/                  FastAPI domain, services, and tests
     routines.py       Daily routine digests and delivery
     usage.py          Knowledge usage tracking and analytics
     evaluation.py     Held-out evaluation for Jev promotion decisions
-    messaging.py      Hermes messaging pairing for digest delivery
-  tests/              221 backend tests across 17 modules
+    messaging.py       Hermes messaging pairing for digest delivery
+  tests/              255 backend tests across 21 modules (273 against PostgreSQL)
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -150,7 +152,7 @@ AGENTS.md             Guardrails for coding agents
 
 Implemented:
 
-- SQLite for zero-config local development and PostgreSQL through Compose.
+- SQLite for zero-config local development and PostgreSQL through Compose. Both dialects run the same suite on every push (SQLite locally, PostgreSQL 16 in a CI service job).
 - Persisted sources, proposals, canonical knowledge, and audit events.
 - SHA-256-addressed immutable source versions, exact offsets, span hashes, and parser metadata.
 - Append-only knowledge revision history and explicit supersession.
@@ -183,17 +185,18 @@ Implemented:
 - Intelligence Studio: guided interview sessions and draft builder.
 - Interview responses auto-extract into proposals after completion.
 - Drafts assemble approved knowledge into briefs/articles/agent context with citations.
-- SQLite FTS5 full-text search with BM25 ranking over canonical knowledge.
+- Dialect-aware ranked search over canonical knowledge: SQLite FTS5/BM25 and PostgreSQL `tsvector` + `ts_rank_cd` over an expression GIN index, OR-term query semantics on both so the same question abstains or answers the same way either way. A versioned index (`SEARCH_INDEX_VERSION`) rebuilds itself when the schema it was built with is stale.
 - Scoped workspace grants and expiring tokens with create/list/revoke API.
 - MCP HTTP adapter for remote agents (tool listing, call, SSE).
 - Richer proposal types: framework, evidence, story, question.
 - Improved conflict detection with same-topic/same-type matching.
 - Security hardening (v1.0.1): static-file containment, MCP scope binding, export/usage sensitivity ceiling, token previews, SSRF-free evaluation config, admin-gated restore — each pinned by a regression test.
-- 221 backend tests and 5 frontend tests.
+- Retrieval persistence and PostgreSQL correctness (v1.0.2): search broke after the first restart on SQLite (contentless FTS5 returned NULL ids and shadowed the fallback) — fixed, plus PostgreSQL ranked search, transaction rollback safety, standard `GROUP BY`, FK-preserving migrations — each pinned, and a restart release gate on both dialects.
+- 255 backend tests (273 against PostgreSQL) and 5 frontend tests.
 
 Next:
 
-- PostgreSQL full-text search and local embeddings with index-version tracking.
+- Local embeddings and a fused full-text + vector retrieval path (PostgreSQL full-text and index-version tracking landed in v1.0.2).
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
 - Four-week personal usage study.

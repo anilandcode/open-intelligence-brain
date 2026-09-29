@@ -21,7 +21,10 @@
 - [x] Schema-v2 backup, empty-workspace restore, and deletion previews.
 - [x] SQLite FTS5 full-text search with BM25 ranking.
 - [x] Improved conflict detection with same-topic/same-type matching.
-- [ ] Local embeddings with index-version tracking.
+- [x] Dialect parity (v1.0.2): PostgreSQL `tsvector`/`ts_rank_cd` ranked search over a GIN index, OR-term query semantics matching SQLite/ILIKE recall, standard `GROUP BY`, rollback-safe capability probing, native `DROP NOT NULL` migrations that preserve every foreign key.
+- [x] Search-index versioning (`SEARCH_INDEX_VERSION` persisted in `search_index_state`, stale/absent versions rebuilt at boot).
+- [x] Restart release gate on both dialects (`test_restart_gate.py`): create → approve → close → restart → search → grounded → citation survives.
+- [ ] Local embeddings and a fused full-text + vector candidate path.
 - [ ] Encrypted backup packaging and reviewed deletion execution.
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.

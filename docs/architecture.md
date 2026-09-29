@@ -68,7 +68,7 @@ into the caller's.
 - Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
 - Harness layer: event intake (`harness.py`), deterministic triage with policy enforcement (`triage.py`), and turn orchestration with budgets, steering, suspension, and cooperative cancellation (`turns.py`).
 - Workspace isolation (`access.py`) with role-based access control, sensitivity scoping, and expiring/scoped tokens.
-- Full-text search (`retrieval.py`) using SQLite FTS5 with BM25 ranking, synced after approval and supersession.
+- Full-text search (`retrieval.py`): dialect-aware ranked search behind one interface — SQLite FTS5/BM25 over the `knowledge_fts` virtual table and PostgreSQL `to_tsvector`/`ts_rank_cd` over an expression GIN index (`knowledge_tsv_idx`). Terms are OR'd on both dialects so recall and abstention decisions match. ILIKE is the last-resort fallback so a read never hard-fails. The index carries `SEARCH_INDEX_VERSION`, persisted in `search_index_state`; a stale or unversioned index is rebuilt at boot instead of trusted. Synced after approval and supersession (SQLite only — the GIN index is engine-maintained).
 - MCP HTTP adapter (`mcp_http.py`) exposing read-only tools over HTTP for remote agents. Every tool implementation takes an explicit `ReadScope` (`*_scoped` functions in `mcp_server.py`); the HTTP transport passes the resolved caller's scope, the stdio server passes the local owner scope.
 - Intelligence Studio (`studio.py`, `studio_api.py`) with guided interview sessions and draft builder.
 - Background worker (`worker.py`) for durable turn processing with lease-based claiming.
@@ -136,6 +136,8 @@ provenance.
 ## Retrieval
 
 The first release uses conservative keyword matching with simple token scoring. It returns an abstention when no approved item matches. This makes the trust workflow testable before introducing embeddings or rerankers.
+
+Ranked search has two engine implementations behind one contract, selected by dialect: SQLite FTS5 (BM25) and PostgreSQL `tsvector` (ts_rank_cd). Both are regression-tested against the same corpus and questions on every push (`test_dialect_parity.py`, `test_restart_gate.py`), asserting equivalent recall, abstention decisions, sensitivity behaviour, and citation provenance. Ranking order need not be byte-identical — the two engines use different ranking models — but safety behaviour must be. The restart gate runs the full capture → approve → restart → search → grounded answer → citation lifecycle across two real application lifespans, because the ranked index is only built in `lifespan` and a broken one is indistinguishable from an empty one in any single-boot test.
 
 Every read is scoped twice — once by workspace, once by sensitivity — before it
 reaches a result, an answer, an agent tool, or the interface. See

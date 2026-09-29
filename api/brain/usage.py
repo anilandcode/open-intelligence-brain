@@ -99,7 +99,12 @@ def top_used(
             UsageEvent.workspace_id == scope.workspace_id,
             UsageEvent.created_at >= since,
         )
-        .group_by(UsageEvent.knowledge_id)
+        # Group by every non-aggregated selected column. SQLite tolerates
+        # grouping on the id alone and picking columns along for the ride;
+        # PostgreSQL rejects it with GroupingError. Both columns are
+        # functionally dependent on knowledge_id, so adding them cannot change
+        # which rows are returned — it only makes the query standard SQL.
+        .group_by(UsageEvent.knowledge_id, Knowledge.statement, Knowledge.type)
         .order_by(func.count(UsageEvent.id).desc())
         .limit(limit)
     )

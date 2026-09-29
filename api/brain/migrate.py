@@ -67,9 +67,16 @@ def add_nullable_evidence_span() -> list[str]:
     proposal permanently unapprovable, because a derived fact has no single
     excerpt to point at.
 
-    SQLite cannot drop a NOT NULL in place, so the table is rebuilt from its own
-    rows. The rebuild copies every column and preserves the primary key, so the
-    relationship a row encodes does not change.
+    PostgreSQL supports `ALTER COLUMN ... DROP NOT NULL` natively, so it takes
+    that one-statement path: the table, its rows, its primary key and all three
+    of its foreign keys are left exactly as they are.
+
+    SQLite cannot drop a NOT NULL in place, so there the table is rebuilt from
+    its own rows. The rebuild must re-declare every foreign key the model
+    carries — `proposal_id -> proposals.id` included. An earlier version copied
+    only two of the three, so a legacy SQLite database silently lost the
+    constraint that keeps an evidence edge pointing at a real proposal. Verify
+    the rebuilt table's FK count against the model when touching this DDL.
     """
     with engine.begin() as connection:
         inspector = inspect(connection)
@@ -85,6 +92,14 @@ def add_nullable_evidence_span() -> list[str]:
         )
         if column is None or column.get("nullable", True):
             return []
+
+        if engine.dialect.name.startswith("postgres"):
+            # Native, metadata-only change: no row is read or rewritten.
+            connection.execute(
+                text("ALTER TABLE proposal_evidence ALTER COLUMN source_span_id DROP NOT NULL")
+            )
+            return ["proposal_evidence.source_span_id"]
+
         # Rebuild, because SQLite has no ALTER COLUMN ... DROP NOT NULL.
         connection.execute(
             text(
@@ -94,6 +109,7 @@ def add_nullable_evidence_span() -> list[str]:
                     source_version_id VARCHAR(32) NOT NULL,
                     source_span_id VARCHAR(32),
                     PRIMARY KEY (proposal_id),
+                    FOREIGN KEY(proposal_id) REFERENCES proposals (id),
                     FOREIGN KEY(source_version_id) REFERENCES source_versions (id),
                     FOREIGN KEY(source_span_id) REFERENCES source_spans (id)
                 )

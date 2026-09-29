@@ -29,6 +29,13 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 - The owner token is a long-lived static bearer credential.
 - SQLite/Postgres access control is application-level only; there is no row-level security in the database.
 
+Proven fixed in v1.0.2 (search persistence, not auth, but it is a safety property):
+a contentless FTS5 index made `search_knowledge` return empty on every restart,
+so the Brain abstained on its own approved knowledge. Three independent guards
+now prevent a silent false abstention (content-storing FTS5 DDL, NULL-id
+filtering, ILIKE fall-through when ranked ids resolve to nothing), with a
+restart release gate on both dialects.
+
 ## Before remote deployment
 
 - Replace the long-lived owner token with standard identity and short-lived scoped sessions.

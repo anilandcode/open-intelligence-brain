@@ -45,7 +45,7 @@ from .models import (
     WorkspaceGrant,
     new_id,
 )
-from .retrieval import ensure_fts, rebuild_fts
+from .retrieval import SEARCH_INDEX_VERSION, dialect_name, ensure_fts, rebuild_fts
 from .schemas import (
     ApprovalRequest,
     ChatRequest,
@@ -139,13 +139,22 @@ async def lifespan(_: FastAPI):
     granted = add_grant_scope_and_expiry()
     if granted:
         logging.getLogger(__name__).info("Added grant columns: %s", ", ".join(granted))
-    # Build the FTS5 index for full-text search over canonical knowledge.
+    # Build the ranked full-text index for canonical knowledge. The backend
+    # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
+    # PostgreSQL. `ensure_fts` picks; we only log which one answered.
     with SessionLocal() as db:
         if ensure_fts(db):
             count = rebuild_fts(db)
-            logging.getLogger(__name__).info("FTS5 index built: %d canonical items", count)
+            logging.getLogger(__name__).info(
+                "Full-text index v%d ready (%s): %d canonical items",
+                SEARCH_INDEX_VERSION,
+                dialect_name(db),
+                count,
+            )
         else:
-            logging.getLogger(__name__).info("FTS5 not available, using ILIKE fallback")
+            logging.getLogger(__name__).info(
+                "No ranked full-text index on %s; using ILIKE fallback", dialect_name(db)
+            )
     # Every deployment starts with a real workspace and a grant for the configured
     # token, so a single-company Brain works with no extra setup.
     with SessionLocal() as db:
@@ -172,7 +181,7 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="1.0.1",
+    version="1.0.2",
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
