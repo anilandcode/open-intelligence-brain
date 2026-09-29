@@ -259,3 +259,30 @@ class AuditEvent(Base):
     resource_id: Mapped[str] = mapped_column(String(32))
     detail: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class UserSession(Base):
+    """One human sign-in. The credential it hands back is never stored.
+
+    Only `token_hash` is kept, so a database leak or an export yields no usable
+    session: the raw secret exists solely in the login response and the
+    caller's own storage. Lookup is by hash, so there is no comparison step to
+    get wrong.
+
+    A session proves WHO is asking. It never grants reach on its own — that
+    still comes from `workspace_members`, resolved per request, so revoking a
+    membership or deactivating the person takes effect immediately without
+    touching any open session.
+    """
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    # SHA-256 hex of the session secret. Indexed and unique so a lookup is a
+    # single indexed read and a replayed secret cannot collide.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Best-effort provenance for the sign-in itself, never an authz input.
+    user_agent: Mapped[str] = mapped_column(String(240), default="")

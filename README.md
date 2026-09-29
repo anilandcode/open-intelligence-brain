@@ -108,6 +108,8 @@ api/                  FastAPI domain, services, and tests
     migrate.py        Additive schema migrations
     models.py          SQLAlchemy models (sources, proposals, knowledge, workspaces, users)
     identity.py        Identity provider boundary: users, workspace_members, verified assertions
+    sessions.py        Human sessions: hashed secrets, per-request reach, immediate revocation
+    auth_api.py        Sign-in routes: login, logout, me
     schemas.py         Pydantic request/response schemas
     services.py        Domain logic (extraction, approval, search, backup)
     retrieval.py       Dialect-aware ranked search (FTS5 / tsvector GIN) + index versioning

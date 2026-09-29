@@ -5,8 +5,10 @@
 - [x] `users` + `workspace_members` and the identity provider boundary
       (`identity.py`): identity is a verified provider assertion, never a
       request field. Human and machine credentials are separate classes.
-- [ ] Human login and session handling, keeping `X-Brain-Token` working for
-      agents. Identity never comes from model output.
+- [x] Human login and session handling (`sessions.py`, `auth_api.py`):
+      `X-Brain-Session` for people, `X-Brain-Token` unchanged for agents.
+      Session secrets stored hashed only. Identity never comes from model
+      output.
 - [ ] Audit events attributed to a human identity, not just a token.
 - [ ] Persistent PostgreSQL as the hosted default, with the restart release gate
       exercised against it.

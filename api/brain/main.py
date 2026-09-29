@@ -22,6 +22,7 @@ from .access import (
     resolve_workspace,
     token_preview,
 )
+from .auth_api import router as auth_router
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
@@ -181,32 +182,56 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="1.0.2",
+    version="1.1.0",
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
 app.include_router(studio_router)
+app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "PUT"],
-    allow_headers=["Content-Type", "X-Brain-Token", "X-Brain-Workspace"],
+    allow_headers=["Content-Type", "X-Brain-Token", "X-Brain-Workspace", "X-Brain-Session"],
 )
 
 
 def resolve_access(
     x_brain_token: str = Header(default=""),
+    x_brain_session: str = Header(default=""),
     x_brain_workspace: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> WorkspaceAccess:
     """Authenticate the caller and pin every request to one workspace.
 
-    This replaces the old single `require_owner` check. A token that is not
-    granted the named workspace gets 403 and reads nothing; a record that exists
-    in another workspace is reported as 404 so its existence is not confirmed.
+    Two credential classes, deliberately in two different headers:
+
+    - `X-Brain-Token`   a machine credential from `workspace_grants`
+    - `X-Brain-Session` a human session from `user_sessions`
+
+    Neither is accepted where the other is expected, so an audit row can always
+    say which class acted. Sending both is refused rather than silently picking
+    one — a request whose actor is ambiguous is exactly what the separation
+    exists to prevent.
+
+    This replaces the old single `require_owner` check. A credential that is
+    not granted the named workspace gets 403 and reads nothing; a record that
+    exists in another workspace is reported as 404 so its existence is not
+    confirmed.
     """
+    if x_brain_token and x_brain_session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Send exactly one credential"
+        )
+    if x_brain_session:
+        from .sessions import resolve_session_access
+
+        try:
+            return resolve_session_access(db, x_brain_session, x_brain_workspace)
+        except AccessDenied as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
     try:
         return resolve_workspace(db, x_brain_token, x_brain_workspace)
     except AccessDenied as exc:

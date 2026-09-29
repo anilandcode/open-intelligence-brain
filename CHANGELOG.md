@@ -46,7 +46,32 @@ whole machine-token surface behaves as before — invariant 10 holds. A typo in
 the provider name raises rather than silently disabling login, because an
 operator error must be visible and fail closed.
 
-Full suites: **291 passed on SQLite** (36 new), **309 passed on PostgreSQL**.
+### Login and sessions
+
+- `POST /api/v1/auth/login` exchanges a **provider credential** for a session;
+  `POST /api/v1/auth/logout` ends it; `GET /api/v1/auth/me` reports who is
+  signed in and what they belong to.
+- **The session secret is never stored.** Only its SHA-256 hash is written to
+  `user_sessions`, so an export, a backup, or a leaked dump yields no usable
+  session. The raw value appears exactly once, in the login response.
+- **Sessions and machine tokens travel in different headers** —
+  `X-Brain-Session` vs `X-Brain-Token` — and resolve through different tables.
+  Neither is accepted where the other belongs, and sending *both* is refused
+  rather than silently picking one: a request whose actor is ambiguous is
+  exactly what the separation exists to prevent.
+- **Login grants identity, not reach.** A sign-in creates a `User` and a
+  session but reaches no workspace until `workspace_members` says so. Inviting
+  someone and accepting their sign-in are different acts by different people.
+- **Revocation is immediate without a session walk.** Reach is resolved per
+  request, so dropping a membership or deactivating a person takes effect on
+  the next call even though their session rows still exist.
+- Login failures are one indistinguishable 401 for an unknown person, a wrong
+  credential, and a deployment with no provider configured — the route cannot
+  be used to enumerate people or fingerprint which providers are enabled.
+- Logout is idempotent and answers 204 even for an unknown secret, so it is not
+  a validity probe.
+
+Full suites: **319 passed on SQLite** (28 new), **337 passed on PostgreSQL**.
 
 ## 1.0.2 — Retrieval persistence and PostgreSQL correctness
 

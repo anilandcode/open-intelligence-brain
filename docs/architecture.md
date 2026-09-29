@@ -110,6 +110,9 @@ into the caller's.
 23. Identity is an assertion from an identity provider, verified at the boundary before it becomes a row. Nothing in a request body, a query parameter, or model output can name a user or grant them access.
 24. A human credential and a machine credential are not interchangeable. `users`/`workspace_members` describe people; `workspace_grants` describes opaque tokens. Neither may be substituted for the other, and an audit event says which class acted (`actor_kind`/`actor_id`).
 25. Identity is optional. With no provider configured every read, review, and export works exactly as before on machine credentials alone (invariant 10).
+26. A session secret is never stored — only its hash. A database read, an export, or a backup must not yield a usable credential.
+27. Login grants identity, not reach. A session reaches a workspace only through `workspace_members`, resolved per request, so revoking a membership or deactivating a person takes effect immediately without touching an open session.
+28. A request carries exactly one credential class. A session and a machine token travel in different headers and are never interchangeable; a request bearing both is refused rather than resolved by preference.
 
 ## Data model
 
@@ -118,6 +121,9 @@ into the caller's.
   `(provider, provider_subject)` pair. Email is display metadata, never a key.
 - `workspace_members`: a person's access to one workspace and the role they
   hold there — the human counterpart to a machine grant.
+- `user_sessions`: one human sign-in. Stores only a SHA-256 hash of the session
+  secret; the raw value exists solely in the login response. Proves WHO is
+  asking and never grants reach on its own.
 - `workspace_grants`: principal-to-workspace access and role. This is a MACHINE
   credential (an opaque token), deliberately not the same table as
   `workspace_members`.
