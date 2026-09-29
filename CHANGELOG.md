@@ -106,6 +106,18 @@ Full suites: **332 passed on SQLite** (13 new), **350 passed on PostgreSQL**.
   the script warns.
 - Live restart proof on Neon 18: capture → approve → new process → search hits +
   grounded chat with citations.
+- Secret Manager IAM grants for the runtime SA now **fail the deploy** instead of
+  logging a soft note — a green build with a failed revision was the first live
+  ship failure mode.
+
+### Hosted engine embeddings
+
+- Bake `Xenova/bge-base-en-v1.5` quantized ONNX into the image at build time
+  (`scripts/fetch-embedding-model.sh` → `/opt/engine/models`).
+- `engine/entrypoint.sh` seeds `SUPERMEMORY_DATA_DIR/models` from that cache on
+  every cold start. Cloud Run's `/tmp` is empty tmpfs; Hugging Face 429 on Google
+  egress was the cause of live `degraded: true` / "no model provider" with a
+  valid `PROXY_API_KEY`.
 
 ## 1.0.2 — Retrieval persistence and PostgreSQL correctness
 

@@ -25,11 +25,11 @@
 # was written against the engine's default 1.0 GB embedding budget. Measured
 # with SUPERMEMORY_EMBEDDING_RAM_LIMIT=0.25gb, the engine settles at ~57-70 MB
 # RSS idle with a measured 237 MB peak during prewarm, and materialises a 172 MB
-# runtime (rivet + pglite wasm extracted from the binary — no model download, so
-# boot needs no egress) into its data dir. Engine ~410 MB plus uvicorn ~120 MB
-# fits inside the 1 GiB instance the free tier gives us. That 172 MB is a tmpfs
-# cost: /tmp is the only writable path on Cloud Run and it counts against the
-# container's memory, which is why the instance is 1 GiB and not 512 MiB.
+# runtime (rivet + pglite wasm) into its data dir. The local embedding weights
+# (~110 MB quantized ONNX) are baked into the image under /opt/engine/models and
+# copied into the data dir on boot — /tmp is an empty tmpfs on Cloud Run, and
+# Hugging Face 429s Google egress on cold-start download. Engine + model +
+# uvicorn fit inside the 2 GiB instance we deploy (1 GiB OOMs at boot).
 #
 # Boot order is proxy → engine → app, so Cloud Run never marks the instance ready
 # while the engine behind it is still cold. Expect ~40s for the first request
@@ -107,10 +107,20 @@ COPY --from=engine /out/supermemory-server /usr/local/bin/supermemory-server
 COPY engine/llm_proxy.py engine/entrypoint.sh /opt/engine/
 RUN chmod +x /opt/engine/entrypoint.sh
 
+# Local embedding weights. The engine defaults to Xenova/bge-base-en-v1.5 and
+# downloads it into SUPERMEMORY_DATA_DIR/models on first use. Cloud Run mounts
+# an empty tmpfs on /tmp every cold start, so a baked copy under /tmp would be
+# hidden; HF also 429s Google egress. Bake outside /tmp and let entrypoint
+# seed the data dir before the engine starts.
+COPY scripts/fetch-embedding-model.sh /tmp/fetch-embedding-model.sh
+RUN bash /tmp/fetch-embedding-model.sh /opt/engine/models \
+ && rm /tmp/fetch-embedding-model.sh
+
 # The engine listens on loopback only. Cloud Run routes nothing but $PORT, so
 # this is defence in depth rather than the only thing keeping it private.
 ENV SUPERMEMORY_ENGINE_PORT=6767 \
     SUPERMEMORY_DATA_DIR=/tmp/.supermemory \
+    SUPERMEMORY_MODELS_CACHE=/opt/engine/models \
     SUPERMEMORY_DISABLE_TELEMETRY=true \
     SUPERMEMORY_NO_UPDATE_CHECK=true \
     SUPERMEMORY_NO_STARTUP_ANIMATION=true \

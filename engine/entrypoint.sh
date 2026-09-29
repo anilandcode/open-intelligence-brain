@@ -69,6 +69,25 @@ export SUPERMEMORY_PORT="${ENGINE_PORT}"
 export SUPERMEMORY_DATA_DIR="${DATA_DIR}"
 mkdir -p "${DATA_DIR}"
 
+# Seed local embedding weights into the writable data dir. Cloud Run's /tmp is
+# an empty tmpfs every cold start, so the image cannot rely on files baked under
+# SUPERMEMORY_DATA_DIR surviving. The image keeps a copy under
+# SUPERMEMORY_MODELS_CACHE (default /opt/engine/models); we copy once per boot
+# when the cache is missing so the engine never hits Hugging Face at runtime
+# (HF 429 on Google egress was the hosted "degraded / no model provider" cause).
+MODELS_CACHE="${SUPERMEMORY_MODELS_CACHE:-/opt/engine/models}"
+MODELS_DEST="${DATA_DIR}/models"
+if [ -d "${MODELS_CACHE}" ] && [ ! -f "${MODELS_DEST}/Xenova/bge-base-en-v1.5/onnx/model_quantized.onnx" ]; then
+  mkdir -p "${MODELS_DEST}"
+  # cp -a preserves structure; fail soft so a missing cache does not block boot
+  # of an app-only image, but log loudly — extraction still needs these weights.
+  if cp -a "${MODELS_CACHE}/." "${MODELS_DEST}/"; then
+    echo "entrypoint: seeded embedding models from ${MODELS_CACHE} -> ${MODELS_DEST}"
+  else
+    echo "entrypoint: warning: could not seed embedding models from ${MODELS_CACHE}" >&2
+  fi
+fi
+
 # The engine prints its own API key on every boot. It is only reachable on
 # loopback, but a container's stdout is a log that outlives the instance, so the
 # key is redacted on its way out instead of being archived in Cloud Logging.

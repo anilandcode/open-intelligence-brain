@@ -79,18 +79,26 @@ curl -s -H "X-Brain-Token: $TOKEN" "$URL/api/v1/overview" | head -c 200  # data
   hosted demo — Cloud Run environment variables are readable by anyone with
   project access, and a Brain holding anything real deserves an owner token that
   is not shared with a demo.
-- **The memory engine is not in the image.** The plan's step 2 experiment settled the
-  memory question — at `SUPERMEMORY_EMBEDDING_RAM_LIMIT=0.25gb` the engine
-  measured 246 MB RSS, inside the free 1 GB. Without it the API extracts
-  deterministically and reports `degraded: true`, which the interface shows.
-  What blocks a hosted engine is the provider edge, not memory: it answers the
-  engine's own HTTP client with a 403, so an engine in front of it needs a
-  User-Agent-overriding proxy first.
+- **The memory engine is in the image.** Boot order is proxy → engine → app.
+  `SUPERMEMORY_EMBEDDING_RAM_LIMIT=0.25gb` keeps RSS inside the free ceiling;
+  deploy uses **2 GiB / 2 vCPU** because 1 GiB OOMs at boot. The provider edge
+  that 403s the engine's `python-httpx` User-Agent is handled by
+  `engine/llm_proxy.py` (UA override + key held off the engine process).
+- **Embedding weights are baked, not downloaded at runtime.** The engine's local
+  model is `Xenova/bge-base-en-v1.5` (~110 MB quantized ONNX). On Cloud Run,
+  `/tmp` is an empty tmpfs every cold start, and Hugging Face often 429s Google
+  egress — a first document then finishes with zero memories and the API reports
+  `degraded` even when `PROXY_API_KEY` is correct. `scripts/fetch-embedding-model.sh`
+  downloads the weights at image build time into `/opt/engine/models`;
+  `engine/entrypoint.sh` copies them into `SUPERMEMORY_DATA_DIR/models` before
+  the engine starts.
 - **One instance, no coordination.** `--max-instances 1` is deliberate: turns are
   database rows with no lease, so more than one writer is untested.
 
 ## If the engine has to be hosted too
 
-That is the plan's option C, and the step 2 experiment has been run: the engine
-fits in 246 MB with a reduced embedding budget, so the memory ceiling is not what
-is in the way. The provider edge is (see above).
+It already is, in the merged image. Remaining hosted work is operational: keep
+the provider key and Neon URL in Secret Manager, grant the runtime SA
+`secretmanager.secretAccessor` (the deploy script fails hard if that grant
+fails), and verify `engine.degraded === false` on `/api/v1/overview` after a
+cold start — not just `/health/ready`.
