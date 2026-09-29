@@ -95,6 +95,18 @@ something happened.
 
 Full suites: **332 passed on SQLite** (13 new), **350 passed on PostgreSQL**.
 
+### Hosted Postgres (Neon)
+
+- Neon free project `digital-brain` is the hosted database. Connection URL lives
+  only in `~/.digital-brain/neon-database-url` (mode 600) and, at deploy time, in
+  Secret Manager (`brain-database-url`) — never in git, never in plain Cloud Run
+  env vars.
+- `scripts/deploy-cloud-run.sh` auto-loads that file and mounts it as
+  `BRAIN_DATABASE_URL`. Without it, the image keeps ephemeral `/tmp` SQLite and
+  the script warns.
+- Live restart proof on Neon 18: capture → approve → new process → search hits +
+  grounded chat with citations.
+
 ## 1.0.2 — Retrieval persistence and PostgreSQL correctness
 
 A PostgreSQL readiness pass found that the default SQLite deployment had been

@@ -135,10 +135,40 @@ say "6/6 deploying to Cloud Run"
 # set here: the entrypoint exports both from the engine it just started, and a
 # copy in the service environment could only ever disagree with the engine that
 # is actually running.
-# BRAIN_DATABASE_URL is left to the image default (a /tmp SQLite file) unless one
-# is supplied. That is deliberate: it makes an ephemeral demo work with no extra
-# accounts, and it makes the persistence decision explicit when someone wants
-# data that outlives a cold start.
+# Hosted default is Neon Postgres. Order of resolution:
+#   1. BRAIN_DATABASE_URL in the environment (explicit override)
+#   2. $HOME/.digital-brain/neon-database-url (written by neonctl setup)
+#   3. image default sqlite:////tmp/brain.db (ephemeral only — cold start wipes it)
+# The URL is a live credential, so it goes into Secret Manager like the provider
+# key — never a plain service env var (those are readable in the console and in
+# `gcloud run services describe`).
+DB_SECRET="${DB_SECRET:-brain-database-url}"
+NEON_URL_FILE="${NEON_URL_FILE:-$HOME/.digital-brain/neon-database-url}"
+if [ -z "${BRAIN_DATABASE_URL:-}" ] && [ -f "$NEON_URL_FILE" ]; then
+  BRAIN_DATABASE_URL="$(tr -d '\r\n' < "$NEON_URL_FILE")"
+  echo "  database URL loaded from $NEON_URL_FILE (value not printed)"
+fi
+SECRET_BINDS="PROXY_API_KEY=${SECRET}:latest"
+if [ -n "${BRAIN_DATABASE_URL:-}" ]; then
+  if ! gcloud secrets describe "$DB_SECRET" --project "$PROJECT" >/dev/null 2>&1; then
+    gcloud secrets create "$DB_SECRET" --project "$PROJECT" --replication-policy=automatic \
+      --labels=app=digital-brain
+  fi
+  printf '%s' "$BRAIN_DATABASE_URL" | gcloud secrets versions add "$DB_SECRET" \
+    --project "$PROJECT" --data-file=- >/dev/null
+  echo "  database URL stored as a new version of $DB_SECRET (value not printed)"
+  if [ -n "${RUNTIME_SA:-}" ]; then
+    gcloud secrets add-iam-policy-binding "$DB_SECRET" \
+      --project "$PROJECT" --member="serviceAccount:${RUNTIME_SA}" \
+      --role=roles/secretmanager.secretAccessor --quiet >/dev/null || true
+  fi
+  SECRET_BINDS="${SECRET_BINDS},BRAIN_DATABASE_URL=${DB_SECRET}:latest"
+else
+  echo "  WARNING: no BRAIN_DATABASE_URL — deploying with ephemeral /tmp SQLite."
+  echo "  Data will not survive a cold start. Create Neon and write the URL to"
+  echo "  $NEON_URL_FILE (postgresql+psycopg://…, mode 600) before a real ship."
+fi
+
 # A file, not --set-env-vars: a token on gcloud's argv is visible to `ps` and is
 # written verbatim into gcloud's own ~/.config/gcloud/logs — the same class of
 # leak as the bundle. 0600, and removed on exit.
@@ -151,9 +181,6 @@ trap 'rm -f "$ENV_FILE_YAML"' EXIT
   printf 'PROXY_UPSTREAM: "%s"\n' "$PROXY_UPSTREAM"
   printf 'OPENAI_MODEL: "%s"\n' "$OPENAI_MODEL"
 } > "$ENV_FILE_YAML"
-if [ -n "${BRAIN_DATABASE_URL:-}" ]; then
-  printf 'BRAIN_DATABASE_URL: "%s"\n' "$BRAIN_DATABASE_URL" >> "$ENV_FILE_YAML"
-fi
 
 gcloud run deploy "$SERVICE" \
   --image "$IMAGE" \
@@ -169,7 +196,7 @@ gcloud run deploy "$SERVICE" \
   --concurrency 20 \
   --timeout 300 \
   --env-vars-file "$ENV_FILE_YAML" \
-  --set-secrets "PROXY_API_KEY=${SECRET}:latest" \
+  --set-secrets "$SECRET_BINDS" \
   --quiet
 
 URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" \

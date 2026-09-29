@@ -13,8 +13,12 @@
       `audit_events`): a human is named by `users.id`, a machine token only by a
       non-recoverable preview, unattributed work records `system`. Raw credentials
       never land in the audit table.
-- [ ] Persistent PostgreSQL as the hosted default, with the restart release gate
-      exercised against it.
+- [x] Persistent PostgreSQL as the hosted default: Neon free project
+      `digital-brain` (id `ancient-queen-28972054`), restart proof against live
+      Neon (`grounded=True` after reconnect), deploy script loads
+      `~/.digital-brain/neon-database-url` into Secret Manager as
+      `BRAIN_DATABASE_URL`. Local dev still defaults to SQLite; Compose still
+      ships local Postgres 16.
 
 ## M1 — trusted thin slice (implemented)
 

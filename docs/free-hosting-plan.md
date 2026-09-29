@@ -41,7 +41,7 @@ experiment is step 2 below and everything else branches on its result.**
 |---|---|---|---|
 | Frontend (static) | ~1 MB | Cloudflare Pages / Vercel | builds today |
 | FastAPI backend | 112 MB venv, 5,091 lines | Cloud Run (1 GB, 0.083 vCPU) | fits |
-| Database | — | Neon free (Postgres, scale-to-zero) | fits, not yet wired |
+| Database | — | Neon free (Postgres, scale-to-zero) | wired: project `digital-brain`, deploy loads URL via Secret Manager |
 | Memory engine | 1.1 GB RAM, 364 MB disk | **no verified free home** | the blocker |
 | LLM | — | operator's own key | already have one |
 
@@ -132,9 +132,10 @@ than the engine being local.
    supported (`OPENAI_API_KEY` + `OPENAI_BASE_URL` + `OPENAI_MODEL`); the engine
    currently reports `degraded` only because no model is configured. No
    Supermemory cloud, no Cloudflare account, no marginal cost.
-4. **Postgres path.** Move `database_url` to Neon. The architecture spec already
-   names Postgres as the production target and development still defaults to
-   SQLite, so this closes a known gap rather than opening a new one.
+4. **Postgres path.** **Done.** Neon project `digital-brain` holds production
+   data; `~/.digital-brain/neon-database-url` is the local handle; deploy puts
+   it in Secret Manager. Dev still defaults to SQLite; Compose uses local
+   Postgres 16. Restart gate proven against the live Neon instance.
 5. **Tunnel and demo.** One command, verified end to end.
 
 ## Measured locally (2026-09-27)

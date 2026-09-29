@@ -62,11 +62,16 @@ curl -s -H "X-Brain-Token: $TOKEN" "$URL/api/v1/overview" | head -c 200  # data
 - **Cold starts.** `--min-instances 0` means the first request after a quiet
   period takes roughly 30s. That is a real demo problem and it is the price of
   $0.
-- **The data is disposable.** The image defaults `BRAIN_DATABASE_URL` to
-  `sqlite:////tmp/brain.db` because `/tmp` is the only writable path on Cloud
-  Run, and `/tmp` does not survive a cold start. A deployment that must keep its
-  data should point that variable at Postgres — Neon's free tier is the plan's
-  choice (`docs/free-hosting-plan.md`), and `psycopg` is already a dependency.
+- **Hosted data lives on Neon Postgres.** The image still *defaults* to
+  `sqlite:////tmp/brain.db` so a container boots without extra accounts, but
+  `scripts/deploy-cloud-run.sh` treats Neon as the hosted path: it loads
+  `~/.digital-brain/neon-database-url` (or `BRAIN_DATABASE_URL` from the
+  environment) and stores it in Secret Manager as `brain-database-url`, mounted
+  into the service as `BRAIN_DATABASE_URL`. Never put the URL in a plain service
+  env var — those are readable in the console. The Neon project used here is
+  `digital-brain` (`ancient-queen-28972054`, aws-us-east-1, pooled). Restart
+  proof against that project: capture → approve → new process → search +
+  grounded chat still work. Local day-to-day stays SQLite or Compose Postgres.
 - **The token is not in the bundle.** The image is built tokenless, so the served
   JavaScript contains no credential: an unauthenticated visitor gets an access
   gate that requests nothing and discloses nothing. The token lives only in the
