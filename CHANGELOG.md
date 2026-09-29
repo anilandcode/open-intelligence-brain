@@ -73,6 +73,28 @@ operator error must be visible and fail closed.
 
 Full suites: **319 passed on SQLite** (28 new), **337 passed on PostgreSQL**.
 
+### Audit attribution
+
+The final v1.1 piece: an audit event says **who** acted, not merely that
+something happened.
+
+- `audit_events` gains `actor_kind` and `actor_id`. `user` carries a `users.id`;
+  `system` means no caller was resolved; `token` carries only a
+  **non-recoverable preview** of the machine credential.
+- **The raw token is never written to the audit log.** An audit table that
+  stored live credentials would be a credential store with a misleading name,
+  and every backup and export of it would leak access. A test asserts the raw
+  value appears in no column of any row.
+- **Work nobody asked for is not blamed on anyone.** Engine derivation, startup
+  backfill, and scheduled routines record `system` rather than inventing a
+  human or crediting a token that did not act. Passing `actor=None` is the
+  honest answer for those paths.
+- The migration is additive and idempotent with a `system` default, so an
+  existing audit trail keeps working and — importantly — an old row never
+  claims a human that it cannot name.
+
+Full suites: **332 passed on SQLite** (13 new), **350 passed on PostgreSQL**.
+
 ## 1.0.2 — Retrieval persistence and PostgreSQL correctness
 
 A PostgreSQL readiness pass found that the default SQLite deployment had been

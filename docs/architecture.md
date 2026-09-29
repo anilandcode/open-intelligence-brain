@@ -113,6 +113,8 @@ into the caller's.
 26. A session secret is never stored — only its hash. A database read, an export, or a backup must not yield a usable credential.
 27. Login grants identity, not reach. A session reaches a workspace only through `workspace_members`, resolved per request, so revoking a membership or deactivating a person takes effect immediately without touching an open session.
 28. A request carries exactly one credential class. A session and a machine token travel in different headers and are never interchangeable; a request bearing both is refused rather than resolved by preference.
+29. An audit event names a caller, and never a raw credential. `actor_kind` is `user`, `token`, or `system`; a `token` is recorded only as a non-recoverable preview, so an audit table can never become a store of live credentials. Work nobody asked for (engine derivation, startup backfill) records `system` rather than borrowing a human or a token that did not act.
+30. Nothing may claim an actor it cannot name. Rows written before attribution existed resolve to `system`, not to a plausible person.
 
 ## Data model
 
@@ -134,7 +136,8 @@ into the caller's.
 - `proposal_evidence`: exact source-version and span edge.
 - `knowledge`: approved wording, evidence, version, approval timestamp.
 - `knowledge_revisions`: append-only canonical wording history and provenance.
-- `audit_events`: append-only domain event summary.
+- `audit_events`: append-only domain event summary, each row naming who acted
+  (`actor_kind`, `actor_id`) — see Invariant 29.
 - `interview_sessions`: guided conversation metadata (topic, person, audience).
 - `interview_questions`: ordinal questions with responses and extraction status.
 - `drafts`: assembled output document (title, intent, audience).

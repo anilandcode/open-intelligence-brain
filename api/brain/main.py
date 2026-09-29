@@ -28,6 +28,7 @@ from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
 from .mcp_http import router as mcp_http_router
 from .migrate import (
+    add_audit_actor_columns,
     add_engine_link_columns,
     add_grant_scope_and_expiry,
     add_nullable_evidence_span,
@@ -140,6 +141,13 @@ async def lifespan(_: FastAPI):
     granted = add_grant_scope_and_expiry()
     if granted:
         logging.getLogger(__name__).info("Added grant columns: %s", ", ".join(granted))
+    # Attributes audit events to a caller. Additive with a 'system' default, so
+    # an existing audit trail keeps working and never claims a human it cannot
+    # name. Defined here rather than only in create_all because create_all does
+    # not add columns to a table that already exists.
+    attributed = add_audit_actor_columns()
+    if attributed:
+        logging.getLogger(__name__).info("Added audit actor columns: %s", ", ".join(attributed))
     # Build the ranked full-text index for canonical knowledge. The backend
     # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
     # PostgreSQL. `ensure_fts` picks; we only log which one answered.
@@ -475,7 +483,7 @@ def create_source(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
-    source = create_source_with_proposals(db, payload, access.workspace_id)
+    source = create_source_with_proposals(db, payload, access.workspace_id, actor=access)
     count = (
         db.scalar(
             select(func.count(Proposal.id)).where(
@@ -558,7 +566,7 @@ def create_source_version(
 ):
     source = require_in_workspace(db, access, Source, source_id)
     try:
-        version = add_source_version(db, source, payload.content, payload.change_note)
+        version = add_source_version(db, source, payload.content, payload.change_note, actor=access)
         db.commit()
         db.refresh(version)
     except ValueError as exc:
@@ -660,7 +668,7 @@ def approve(
 ):
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     try:
-        item = approve_proposal(db, proposal, payload.statement, payload.rationale)
+        item = approve_proposal(db, proposal, payload.statement, payload.rationale, actor=access)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     # Engine-derived facts: tell the engine so its index agrees with our
@@ -690,6 +698,7 @@ def reject(
         "proposal",
         proposal.id,
         payload.reason,
+        actor=access,
     )
     db.commit()
     db.refresh(proposal)
@@ -749,7 +758,7 @@ def supersede(
     item = require_in_workspace(db, access, Knowledge, knowledge_id)
     try:
         item = supersede_knowledge(
-            db, item, payload.statement, payload.rationale, payload.change_note
+            db, item, payload.statement, payload.rationale, payload.change_note, actor=access
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

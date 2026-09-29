@@ -125,7 +125,15 @@ def create_interview(
         outcome=payload.outcome,
     )
     db.add(session)
-    audit(db, access.workspace_id, "interview.created", "interview", session.id, payload.title)
+    audit(
+        db,
+        access.workspace_id,
+        "interview.created",
+        "interview",
+        session.id,
+        payload.title,
+        actor=access,
+    )
     db.commit()
     db.refresh(session)
     return InterviewSessionRead(
@@ -306,6 +314,7 @@ def complete_interview(
         "interview",
         session.id,
         f"Completed with {len(responded)} responses",
+        actor=access,
     )
     db.commit()
     db.refresh(session)
@@ -386,7 +395,7 @@ def create_draft(
         audience=payload.audience,
     )
     db.add(draft)
-    audit(db, access.workspace_id, "draft.created", "draft", draft.id, payload.title)
+    audit(db, access.workspace_id, "draft.created", "draft", draft.id, payload.title, actor=access)
     db.commit()
     db.refresh(draft)
     return DraftRead(
@@ -663,6 +672,7 @@ def assemble_draft(
         "draft",
         draft.id,
         f"Assembled {len(items)} atoms into {len(by_type)} sections",
+        actor=access,
     )
     db.commit()
     db.refresh(draft)

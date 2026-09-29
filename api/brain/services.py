@@ -9,7 +9,7 @@ from typing import Protocol
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .access import ReadScope, workspace_counts
+from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
 from .critic import assess_proposal
 from .database import SessionLocal
 from .engine import (
@@ -69,7 +69,15 @@ def audit(
     resource_type: str,
     resource_id: str,
     detail: str = "",
+    actor: "WorkspaceAccess | None" = None,
 ):
+    """Append one domain event, attributed to whoever caused it.
+
+    `actor` is the resolved caller. Passing None is correct and honest for work
+    nobody asked for — engine derivation, startup backfill, a scheduled routine
+    — and records `system` rather than inventing a human or crediting a token.
+    """
+    actor_kind, actor_id = actor_ref(actor)
     db.add(
         AuditEvent(
             id=new_id("evt"),
@@ -78,6 +86,8 @@ def audit(
             resource_type=resource_type,
             resource_id=resource_id,
             detail=detail,
+            actor_kind=actor_kind,
+            actor_id=actor_id,
         )
     )
 
@@ -127,6 +137,7 @@ def add_source_version(
     change_note: str,
     *,
     create_proposals: bool = True,
+    actor: WorkspaceAccess | None = None,
 ) -> SourceVersion:
     digest = content_hash(content)
     existing = db.scalar(
@@ -209,16 +220,27 @@ def add_source_version(
         "source",
         source.id,
         f"Created source version {version.version}: {change_note}",
+        actor=actor,
     )
     return version
 
 
-def create_source_with_proposals(db: Session, payload: SourceCreate, workspace_id: str) -> Source:
+def create_source_with_proposals(
+    db: Session, payload: SourceCreate, workspace_id: str, actor: WorkspaceAccess | None = None
+) -> Source:
     source = Source(id=new_id("src"), workspace_id=workspace_id, **payload.model_dump())
     db.add(source)
     db.flush()
-    add_source_version(db, source, payload.content, "Initial capture")
-    audit(db, workspace_id, "source.ingested", "source", source.id, f"Imported {source.title}")
+    add_source_version(db, source, payload.content, "Initial capture", actor=actor)
+    audit(
+        db,
+        workspace_id,
+        "source.ingested",
+        "source",
+        source.id,
+        f"Imported {source.title}",
+        actor=actor,
+    )
     db.commit()
     db.refresh(source)
     offer_to_engine(source)
@@ -383,7 +405,11 @@ def record_review_with_engine(proposal: Proposal, action: str, memory_id: str | 
 
 
 def approve_proposal(
-    db: Session, proposal: Proposal, statement: str | None, rationale: str | None
+    db: Session,
+    proposal: Proposal,
+    statement: str | None,
+    rationale: str | None,
+    actor: WorkspaceAccess | None = None,
 ) -> Knowledge:
     if proposal.status != "proposed":
         raise ValueError("Only proposed knowledge can be approved")
@@ -431,6 +457,7 @@ def approve_proposal(
         "knowledge",
         canonical.id,
         f"Approved {proposal.id}",
+        actor=actor,
     )
     db.commit()
     db.refresh(canonical)
@@ -449,6 +476,7 @@ def supersede_knowledge(
     statement: str,
     rationale: str,
     change_note: str,
+    actor: WorkspaceAccess | None = None,
 ) -> Knowledge:
     current = db.scalar(
         select(KnowledgeRevision)
@@ -482,6 +510,7 @@ def supersede_knowledge(
         "knowledge",
         item.id,
         f"Created revision {revision}",
+        actor=actor,
     )
     db.commit()
     db.refresh(item)

@@ -126,7 +126,7 @@ api/                  FastAPI domain, services, and tests
     usage.py          Knowledge usage tracking and analytics
     evaluation.py     Held-out evaluation for Jev promotion decisions
     messaging.py       Hermes messaging pairing for digest delivery
-  tests/              255 backend tests across 21 modules (273 against PostgreSQL)
+  tests/              332 backend tests across 22 modules (350 against PostgreSQL)
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -195,7 +195,7 @@ Implemented:
 - Improved conflict detection with same-topic/same-type matching.
 - Security hardening (v1.0.1): static-file containment, MCP scope binding, export/usage sensitivity ceiling, token previews, SSRF-free evaluation config, admin-gated restore — each pinned by a regression test.
 - Retrieval persistence and PostgreSQL correctness (v1.0.2): search broke after the first restart on SQLite (contentless FTS5 returned NULL ids and shadowed the fallback) — fixed, plus PostgreSQL ranked search, transaction rollback safety, standard `GROUP BY`, FK-preserving migrations — each pinned, and a restart release gate on both dialects.
-- 255 backend tests (273 against PostgreSQL) and 5 frontend tests.
+- 332 backend tests (350 against PostgreSQL) and 5 frontend tests.
 
 Next:
 

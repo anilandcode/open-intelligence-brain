@@ -9,7 +9,10 @@
       `X-Brain-Session` for people, `X-Brain-Token` unchanged for agents.
       Session secrets stored hashed only. Identity never comes from model
       output.
-- [ ] Audit events attributed to a human identity, not just a token.
+- [x] Audit events attributed to a caller (`actor_kind` / `actor_id` on
+      `audit_events`): a human is named by `users.id`, a machine token only by a
+      non-recoverable preview, unattributed work records `system`. Raw credentials
+      never land in the audit table.
 - [ ] Persistent PostgreSQL as the hosted default, with the restart release gate
       exercised against it.
 

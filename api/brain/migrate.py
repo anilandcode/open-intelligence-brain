@@ -235,6 +235,37 @@ def add_turn_lease_columns() -> list[str]:
     return added
 
 
+def add_audit_actor_columns() -> list[str]:
+    """Add `actor_kind` and `actor_id` to audit_events.
+
+    Additive and idempotent: two new columns with defaults, and no existing row
+    is read, rewritten, or dropped. A pre-existing row keeps `system`, which is
+    the truthful answer — before this migration nothing recorded who acted, so
+    no row may claim a human.
+
+    `NOT NULL DEFAULT` is accepted by both SQLite and PostgreSQL, so this
+    needs no rebuild on either dialect.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "audit_events" not in columns:
+        return []
+    wanted = {
+        "audit_events": [
+            ("actor_kind", "VARCHAR(20) NOT NULL DEFAULT 'system'"),
+            ("actor_id", "VARCHAR(64)"),
+        ]
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                added.append(f"{table}.{column}")
+    return added
+
+
 def add_proposal_critic_notes() -> list[str]:
     """Add `critic_notes` column to proposals.
 

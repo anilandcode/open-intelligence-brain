@@ -258,6 +258,12 @@ class AuditEvent(Base):
     resource_type: Mapped[str] = mapped_column(String(40))
     resource_id: Mapped[str] = mapped_column(String(32))
     detail: Mapped[str] = mapped_column(Text, default="")
+    # WHO acted. `user` carries a users.id; `token` carries only a
+    # non-recoverable preview of the machine credential (never the raw value —
+    # an audit table must not become a token store); `system` means no caller
+    # was resolved, e.g. engine derivation or startup backfill.
+    actor_kind: Mapped[str] = mapped_column(String(20), default="system", index=True)
+    actor_id: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 

@@ -292,8 +292,24 @@ def token_preview(principal: str) -> str:
     return f"{principal[:8]}…{principal[-4:]}"
 
 
+def actor_ref(access: "WorkspaceAccess | None") -> tuple[str, str | None]:
+    """The (kind, id) an audit row should record for a caller.
+
+    A human is identified by `users.id`. A machine credential is identified only
+    by a NON-RECOVERABLE preview — writing the raw token into an audit row would
+    turn the audit log into a store of live credentials, which is the opposite of
+    what an audit trail is for. No resolved caller at all means `system`.
+    """
+    if access is None:
+        return "system", None
+    if access.actor_kind == "user":
+        return "user", access.actor_id
+    return "token", token_preview(access.principal)
+
+
 def audit_access(db: Session, access: WorkspaceAccess, action: str, detail: str = "") -> None:
     """Record a workspace-level event in the same stream as record events."""
+    actor_kind, actor_id = actor_ref(access)
     db.add(
         AuditEvent(
             id=new_id("evt"),
@@ -302,6 +318,8 @@ def audit_access(db: Session, access: WorkspaceAccess, action: str, detail: str 
             resource_type="workspace",
             resource_id=access.workspace_id,
             detail=detail,
+            actor_kind=actor_kind,
+            actor_id=actor_id,
         )
     )
 
