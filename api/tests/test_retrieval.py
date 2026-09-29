@@ -115,7 +115,12 @@ class TestFTS5:
         rebuild_fts(db)
         db.expire_all()
         results = search_fts(db, "grounded trustworthy")
-        assert len(results) >= 1
+        # Assert identity, never merely a count. `len(results) >= 1` passed
+        # while the index was contentless and returning [None] — a truthy list
+        # of NULLs that matched no row downstream, which silently disabled
+        # search after every restart. A count assertion can never catch that.
+        assert results == [item.id]
+        assert all(isinstance(r, str) and r for r in results)
 
     def test_sync_fts_insert(self, db):
         ensure_fts(db)

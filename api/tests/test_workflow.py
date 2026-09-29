@@ -291,6 +291,14 @@ def test_backup_restores_same_canonical_result_into_empty_workspace(client, head
 
 def test_pre_m2_records_receive_provenance_without_wording_changes():
     with Session(engine) as db:
+        # The workspace row must exist first: sources.workspace_id is a foreign
+        # key to workspaces.id, and the model's default points at
+        # DEFAULT_WORKSPACE_ID. SQLite does not enforce that reference and the
+        # autouse fixture only creates empty tables, so this insert silently
+        # referenced a workspace that did not exist until PostgreSQL rejected it.
+        ensure_default_workspace(db)
+        db.commit()
+
         source = Source(
             id="src_legacy",
             title="Legacy note",
@@ -316,7 +324,17 @@ def test_pre_m2_records_receive_provenance_without_wording_changes():
             rationale="Legacy rationale",
             source_excerpt=source.content,
         )
-        db.add_all([source, proposal, knowledge])
+        # Add and flush in dependency order. Knowledge has no relationship() to
+        # Proposal, so the unit of work cannot infer that proposals must be
+        # inserted first; add_all() lets it flush knowledge before its proposal
+        # exists. SQLite does not enforce foreign keys by default and so tolerated
+        # this for as long as the suite ran on SQLite alone — PostgreSQL rejects
+        # it with a ForeignKeyViolation.
+        db.add(source)
+        db.flush()
+        db.add(proposal)
+        db.flush()
+        db.add(knowledge)
         db.commit()
         original = knowledge.statement
 

@@ -3,7 +3,7 @@
 import pytest
 
 from brain.database import SessionLocal
-from brain.models import Knowledge, Source, new_id
+from brain.models import Knowledge, Proposal, Source, new_id
 
 
 @pytest.fixture
@@ -44,10 +44,29 @@ def knowledge_items(workspace):
             )
             db.add(source)
             db.flush()
+            # A real Proposal row, not a fabricated id. `proposal_id=new_id("prop")`
+            # pointed knowledge at a proposal that was never inserted, which
+            # SQLite tolerated (foreign keys are not enforced without
+            # PRAGMA foreign_keys=ON) and PostgreSQL rejected with a
+            # ForeignKeyViolation. Flush before Knowledge because Knowledge has no
+            # relationship() to Proposal, so the unit of work cannot infer the
+            # insert order on its own.
+            proposal = Proposal(
+                id=new_id("prop"),
+                workspace_id=workspace.id,
+                source_id=source.id,
+                type=typ,
+                statement=stmt,
+                rationale="Test rationale",
+                source_excerpt=f"Excerpt {i}",
+                status="approved",
+            )
+            db.add(proposal)
+            db.flush()
             k = Knowledge(
                 id=new_id("know"),
                 workspace_id=workspace.id,
-                proposal_id=new_id("prop"),
+                proposal_id=proposal.id,
                 source_id=source.id,
                 type=typ,
                 statement=stmt,

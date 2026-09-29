@@ -21,6 +21,88 @@ jobs:
       - run: ruff format --check api
       - run: pytest api/tests
 
+  # Separate job, deliberately: SQLite and PostgreSQL exercise different index
+  # backends (FTS5 vs a tsvector GIN index) and different SQL strictness
+  # (PostgreSQL rejects non-standard GROUP BY and aborts a transaction after any
+  # statement error). Folding this into `backend` would let a service
+  # misconfiguration show up as skipped tests inside an otherwise green job.
+  #
+  # BRAIN_REQUIRE_POSTGRES_TESTS=1 makes an absent or unreachable server FAIL
+  # rather than skip. Skipped parity tests once read as green while the
+  # PostgreSQL search path was silently degraded.
+  postgres-parity:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: brain
+          POSTGRES_PASSWORD: brain-ci-only
+          POSTGRES_DB: brain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Both are required and they do different jobs:
+      #   BRAIN_DATABASE_URL      -> what conftest points the WHOLE suite at
+      #   BRAIN_TEST_POSTGRES_URL -> where the parity fixtures create their own
+      #                              throwaway databases
+      # Without the first, conftest's setdefault silently falls back to SQLite
+      # and the "full suite on PostgreSQL" step would re-run SQLite and report
+      # green — the exact failure this job exists to prevent.
+      BRAIN_DATABASE_URL: postgresql+psycopg://brain:brain-ci-only@localhost:5432/brain
+      BRAIN_TEST_POSTGRES_URL: postgresql+psycopg://brain:brain-ci-only@localhost:5432/postgres
+      BRAIN_REQUIRE_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e './api[dev]'
+      # Fail loudly if the service did not come up, before pytest can skip.
+      - name: Assert PostgreSQL is reachable
+        run: |
+          python - <<'PY'
+          import os, sys
+          from sqlalchemy import create_engine, text
+          for var in ("BRAIN_TEST_POSTGRES_URL", "BRAIN_DATABASE_URL",
+                      "BRAIN_REQUIRE_POSTGRES_TESTS"):
+              if not os.environ.get(var):
+                  sys.exit(f"{var} must be set in this job")
+          for var in ("BRAIN_TEST_POSTGRES_URL", "BRAIN_DATABASE_URL"):
+              url = os.environ[var]
+              if not url.startswith("postgresql"):
+                  sys.exit(f"{var} is not a PostgreSQL URL: {url!r}")
+              with create_engine(url).connect() as c:
+                  print(var, "->", c.execute(text("select version()")).scalar())
+          PY
+      # Proves the suite under test really is bound to PostgreSQL. Without this,
+      # a conftest default could quietly re-point the "full suite" step at SQLite
+      # and the job would still go green.
+      - name: Assert the suite's engine dialect is PostgreSQL
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "api")
+          from brain.database import engine
+          name = engine.dialect.name
+          print("brain.database.engine dialect:", name)
+          if not name.startswith("postgres"):
+              sys.exit(f"expected postgresql, got {name!r} — the suite would run on SQLite")
+          PY
+      - name: Dialect parity + migration + restart regressions (no skips permitted)
+        run: >-
+          pytest api/tests/test_dialect_parity.py api/tests/test_migration_fks.py
+          api/tests/test_fts_content_regression.py api/tests/test_retrieval.py
+          api/tests/test_restart_gate.py -q
+          -p no:cacheprovider --no-header -rs
+      - name: Full suite against PostgreSQL
+        run: pytest api/tests -q -p no:cacheprovider --no-header -rs
+
   frontend:
     runs-on: ubuntu-latest
     steps:
