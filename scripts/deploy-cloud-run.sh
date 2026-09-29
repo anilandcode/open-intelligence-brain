@@ -109,12 +109,16 @@ echo "  key stored as a new version of $SECRET (value not printed)"
 # default compute account unless one was chosen at deploy time.
 RUNTIME_SA="${RUNTIME_SA:-$(gcloud iam service-accounts list --project "$PROJECT" \
   --filter='displayName:Compute Engine default service account' --format='value(email)' | head -1)}"
+if [ -z "$RUNTIME_SA" ]; then
+  PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+  RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+fi
 if [ -n "$RUNTIME_SA" ]; then
   gcloud secrets add-iam-policy-binding "$SECRET" \
     --project "$PROJECT" --member="serviceAccount:${RUNTIME_SA}" \
     --role=roles/secretmanager.secretAccessor --quiet >/dev/null \
-    && echo "  ${RUNTIME_SA} may read it" \
-    || echo "  note: could not grant ${RUNTIME_SA} access; if the service cannot read the secret, grant roles/secretmanager.secretAccessor"
+    && echo "  ${RUNTIME_SA} may read $SECRET" \
+    || die "Could not grant ${RUNTIME_SA} roles/secretmanager.secretAccessor on $SECRET"
 fi
 
 # The owner token is set only at runtime now. It is not a build input, because
@@ -160,7 +164,9 @@ if [ -n "${BRAIN_DATABASE_URL:-}" ]; then
   if [ -n "${RUNTIME_SA:-}" ]; then
     gcloud secrets add-iam-policy-binding "$DB_SECRET" \
       --project "$PROJECT" --member="serviceAccount:${RUNTIME_SA}" \
-      --role=roles/secretmanager.secretAccessor --quiet >/dev/null || true
+      --role=roles/secretmanager.secretAccessor --quiet >/dev/null \
+      && echo "  ${RUNTIME_SA} may read $DB_SECRET" \
+      || die "Could not grant ${RUNTIME_SA} roles/secretmanager.secretAccessor on $DB_SECRET"
   fi
   SECRET_BINDS="${SECRET_BINDS},BRAIN_DATABASE_URL=${DB_SECRET}:latest"
 else
