@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.1.0 — Human identity (v1.1, part 1)
+
+First commit of the identity milestone: a real human identity model and the
+trust boundary that produces it. Machine credentials keep working exactly as
+they did, and identity stays optional.
+
+### Identity
+
+- **`users`**: a person, keyed on `(provider, provider_subject)` — the
+  provider's stable external identity. Email is deliberately *not* a key: a
+  provider may reassign an address, and keying on it would let a new person
+  inherit the old one's memberships.
+- **`workspace_members`**: a person's access to one workspace and the role they
+  hold. The human counterpart to `workspace_grants` (a machine credential),
+  kept as a separate table on purpose — a token is not a person and a person is
+  not a token, so an audit trail that conflated them could never say who acted.
+- **Identity provider boundary** (`identity.py`): identity is an *assertion from
+  an identity provider*, verified before anything is written. Nothing in a
+  request body, query parameter, or model output can name a user. A provider
+  that fails to verify leaves no trace in `users`, because verification happens
+  before the write. Verification failures raise one uninformative message
+  (`Sign-in failed`) so the error is not a user-enumeration oracle.
+- `VerifiedIdentity` is the only thing that may reach `upsert_user`; a hosted
+  provider (Google, Firebase) is a drop-in that returns the same shape, behind
+  a one-method `IdentityProvider` protocol.
+- Deactivating a person revokes every workspace immediately (`is_active` is
+  consulted on every membership read) — no walking the membership table.
+
+### Credential boundary
+
+- `WorkspaceAccess` now records `actor_kind` and `actor_id`, so an audit row can
+  say a person acted rather than that a token did. `principal` alone is
+  ambiguous: it holds a raw token or a user id depending on which class resolved
+  it.
+- Pinned by tests in both directions: a `User` row is not sendable in
+  `X-Brain-Token`, and a machine token never creates or implies a `User`.
+- The machine-token path is byte-for-byte unchanged for existing callers
+  (`actor_kind="token"`, `actor_id=None` defaults).
+
+### Optional by construction
+
+With `identity_provider` unset, `get_identity_provider()` returns None and the
+whole machine-token surface behaves as before — invariant 10 holds. A typo in
+the provider name raises rather than silently disabling login, because an
+operator error must be visible and fail closed.
+
+Full suites: **291 passed on SQLite** (36 new), **309 passed on PostgreSQL**.
+
 ## 1.0.2 — Retrieval persistence and PostgreSQL correctness
 
 A PostgreSQL readiness pass found that the default SQLite deployment had been

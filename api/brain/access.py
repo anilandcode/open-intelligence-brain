@@ -121,6 +121,13 @@ class WorkspaceAccess:
     principal: str
     role: str
     scope: str | None = None
+    # Which class of credential answered: "token" (a machine credential from
+    # workspace_grants) or "user" (a person from users/workspace_members).
+    # Recorded so an audit row can say who acted rather than that a token did.
+    # `principal` alone is ambiguous — it holds a raw token or a user id
+    # depending on the class that resolved it.
+    actor_kind: str = "token"
+    actor_id: str | None = None
 
     @property
     def workspace_id(self) -> str:

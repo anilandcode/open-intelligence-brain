@@ -106,7 +106,8 @@ api/                  FastAPI domain, services, and tests
     main.py           API routes and lifespan
     mcp_server.py     Read-only stdio MCP server
     migrate.py        Additive schema migrations
-    models.py          SQLAlchemy models (sources, proposals, knowledge, workspaces)
+    models.py          SQLAlchemy models (sources, proposals, knowledge, workspaces, users)
+    identity.py        Identity provider boundary: users, workspace_members, verified assertions
     schemas.py         Pydantic request/response schemas
     services.py        Domain logic (extraction, approval, search, backup)
     retrieval.py       Dialect-aware ranked search (FTS5 / tsvector GIN) + index versioning

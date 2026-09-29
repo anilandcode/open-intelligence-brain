@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -63,6 +63,60 @@ class WorkspaceGrant(Base):
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class User(Base):
+    """A human with an account in one or more Brains.
+
+    Identity is an assertion from an identity provider, verified at the boundary
+    (`identity.py`) before it becomes a row here. `provider` + `provider_subject`
+    is the stable external identity and is the only unique key: an email address
+    is display metadata that a provider may reassign, so keying on it would let
+    a new person inherit the old person's memberships.
+
+    A `User` is never a credential. It cannot be sent in a header and it cannot
+    reach a workspace except through `workspace_members`. That separation from
+    `workspace_grants` (machine credentials) is deliberate and is pinned by
+    tests: neither class may be substituted for the other.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_subject", name="uq_user_provider_subject"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(40), index=True)
+    provider_subject: Mapped[str] = mapped_column(String(120), index=True)
+    email: Mapped[str] = mapped_column(String(240), default="")
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    # Deactivating a person must revoke access immediately and without hunting
+    # through memberships, so the flag is consulted on every membership read.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+
+class WorkspaceMember(Base):
+    """A person's access to one workspace, and the role they hold there.
+
+    The human counterpart to `workspace_grants`, which records a machine
+    credential. Kept as a separate table on purpose: a token is not a person and
+    a person is not a token, so an audit trail that conflated them could never
+    say who acted. Roles are `owner`, `admin` or `member`, and the sensitivity
+    ceiling for each is the same rule `workspace_grants` uses.
+    """
+
+    __tablename__ = "workspace_members"
+    __table_args__ = (UniqueConstraint("workspace_id", "user_id", name="uq_workspace_member_user"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="member")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 

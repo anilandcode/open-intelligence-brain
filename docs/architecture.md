@@ -107,11 +107,20 @@ into the caller's.
 20. The readiness probe writes only to a dedicated healthcheck container, never a company's, and its result is cached because it sits on the overview request path.
 21. The engine is an implementation, not a dependency. With nothing configured the product runs on deterministic local extraction and makes no network calls. A self-hosted engine needs no account or key from anyone, because it prints its own on first boot.
 22. Engine-derived facts enter only as proposals, and each carries evidence — a source version at minimum — so an inference is never approved against a citation that does not exist.
+23. Identity is an assertion from an identity provider, verified at the boundary before it becomes a row. Nothing in a request body, a query parameter, or model output can name a user or grant them access.
+24. A human credential and a machine credential are not interchangeable. `users`/`workspace_members` describe people; `workspace_grants` describes opaque tokens. Neither may be substituted for the other, and an audit event says which class acted (`actor_kind`/`actor_id`).
+25. Identity is optional. With no provider configured every read, review, and export works exactly as before on machine credentials alone (invariant 10).
 
 ## Data model
 
 - `workspaces`: one company, the outermost scoping boundary.
-- `workspace_grants`: principal-to-workspace access and role.
+- `users`: a human identity, keyed on the identity provider's stable
+  `(provider, provider_subject)` pair. Email is display metadata, never a key.
+- `workspace_members`: a person's access to one workspace and the role they
+  hold there — the human counterpart to a machine grant.
+- `workspace_grants`: principal-to-workspace access and role. This is a MACHINE
+  credential (an opaque token), deliberately not the same table as
+  `workspace_members`.
 - `sources`: stable source identity, original text, type, sensitivity, timestamp.
 - `source_versions`: immutable content, SHA-256 hash, parser version, change note.
 - `source_spans`: exact offsets, immutable excerpt, span hash, optional speaker.

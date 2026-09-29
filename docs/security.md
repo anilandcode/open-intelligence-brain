@@ -26,6 +26,8 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 ## Known gaps (deliberate, documented)
 
 - **Token `scope` is stored and returned but NOT enforced.** `TokenCreate` accepts a `scope` string and grants carry it, but no route checks it — a "read-only" scoped token can still write. Do not rely on scope for restriction until it is enforced; use role and expiry, which are enforced.
+- **Human identity exists (`users`, `workspace_members`, `identity.py`) but no login route consumes it yet.** The provider boundary is real and tested — a credential is verified before any row is written, and one uninformative error covers every failure so it cannot be used to enumerate people — but sessions and HTTP login land in the next v1.1 commit. Until then every authenticated request is a machine token.
+- **A `User` is not a credential and a token is not a person.** `X-Brain-Token` carries only machine tokens (`workspace_grants`); a user id, provider subject, or email is rejected as a token. That separation is pinned by tests and must not be collapsed for convenience — an audit trail that cannot say whether a person or a token acted is worthless when it matters.
 - The owner token is a long-lived static bearer credential.
 - SQLite/Postgres access control is application-level only; there is no row-level security in the database.
 
