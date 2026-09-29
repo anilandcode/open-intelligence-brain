@@ -68,6 +68,17 @@ RUN set -eux; \
     cp /out/supermemory-server-* /out/supermemory-server; \
     chmod +x /out/supermemory-server
 
+# Local embedding weights (Xenova/bge-base-en-v1.5). Separate stage so the
+# runtime image never needs curl, and so Cloud Build can cache this layer
+# independently of the app. Copied to /opt/engine/models — not /tmp — because
+# Cloud Run mounts an empty tmpfs over /tmp on every cold start.
+FROM debian:bookworm-slim AS embeddings
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY scripts/fetch-embedding-model.sh /tmp/fetch-embedding-model.sh
+RUN bash /tmp/fetch-embedding-model.sh /out
+
 # ---------------------------------------------------------------- web stage
 FROM node:24-alpine AS web
 WORKDIR /web
@@ -106,15 +117,7 @@ COPY --from=web /web/dist /srv/web/dist
 COPY --from=engine /out/supermemory-server /usr/local/bin/supermemory-server
 COPY engine/llm_proxy.py engine/entrypoint.sh /opt/engine/
 RUN chmod +x /opt/engine/entrypoint.sh
-
-# Local embedding weights. The engine defaults to Xenova/bge-base-en-v1.5 and
-# downloads it into SUPERMEMORY_DATA_DIR/models on first use. Cloud Run mounts
-# an empty tmpfs on /tmp every cold start, so a baked copy under /tmp would be
-# hidden; HF also 429s Google egress. Bake outside /tmp and let entrypoint
-# seed the data dir before the engine starts.
-COPY scripts/fetch-embedding-model.sh /tmp/fetch-embedding-model.sh
-RUN bash /tmp/fetch-embedding-model.sh /opt/engine/models \
- && rm /tmp/fetch-embedding-model.sh
+COPY --from=embeddings /out /opt/engine/models
 
 # The engine listens on loopback only. Cloud Run routes nothing but $PORT, so
 # this is defence in depth rather than the only thing keeping it private.
