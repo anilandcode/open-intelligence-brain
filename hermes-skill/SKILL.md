@@ -1,75 +1,70 @@
 ---
 name: digital-brain
-description: Use when querying the Open Intelligence Brain for approved knowledge, grounded answers, or source citations. Connects via MCP (stdio or HTTP) to the local Brain instance.
+description: Use when querying the Brain for approved knowledge via MCP.
 ---
 
-# Digital Brain — Hermes Skill
+# Digital Brain — Hermes skill
 
-Query the Open Intelligence Brain for approved knowledge, grounded answers, and source citations.
+Query approved knowledge, grounded answers, and citations. Read-only MCP only — never approve/reject/delete through MCP.
 
-## Quick setup
+## Live production
 
-The Brain exposes two MCP transports:
+- UI/API: `https://digital-brain-168827050380.us-central1.run.app`
+- Hosted DB: Neon (same data the Cloud Run API uses)
+- Auth for HTTP adapter: `X-Brain-Token` from `~/.digital-brain/owner-token.txt` (never paste into chat logs)
 
-### Stdio (local, recommended)
+## Hermes MCP (stdio — preferred)
 
-Add to Hermes `config.yaml`:
+Hermes native MCP speaks **stdio JSON-RPC**, not the Brain custom HTTP adapter.
 
-```yaml
-mcp:
-  servers:
-    brain:
-      command: python
-      args: ["-m", "brain.mcp_server"]
-      cwd: "/Users/macmini/Projects/Digital Brain/api"
-      env:
-        BRAIN_DATABASE_URL: "sqlite:///brain.db"
-```
-
-### HTTP (remote)
+Config is already under `mcp_servers.brain` in `~/.hermes/config.yaml`:
 
 ```yaml
-mcp:
-  servers:
-    brain:
-      url: "http://localhost:8000/mcp/"
-      headers:
-        X-Brain-Token: "your-token-here"
+mcp_servers:
+  brain:
+    command: /Users/macmini/.digital-brain/run-open-brain-mcp.sh
+    args: []
+    connect_timeout: 60
+    timeout: 120
+    enabled: true
+    sampling:
+      enabled: false
 ```
 
-## Available tools
+Wrapper reads `~/.digital-brain/neon-database-url` (mode 600) and execs the project `open-brain-mcp` entry point. **No DB URL in config.yaml.**
 
-| Tool | What it does |
-|---|---|
-| `brain_status` | Overview: source count, knowledge count, pending proposals |
-| `search_brain` | Full-text search over canonical knowledge with BM25 ranking |
-| `ask_brain` | Ask a question, get a grounded answer with source citations |
-| `list_pending_reviews` | Proposals waiting for human approval |
-| `inspect_brain_integrity` | Integrity warnings and conflict signals |
+After adding/changing: restart Hermes or `/reload-mcp`. Tools appear as:
 
-## Usage patterns
+- `mcp_brain_brain_status`
+- `mcp_brain_search_brain`
+- `mcp_brain_ask_brain`
+- `mcp_brain_list_pending_reviews`
+- `mcp_brain_inspect_brain_integrity`
 
-**Quick fact check:**
-> Use the Brain to verify: "What is our churn rate?"
+## HTTP adapter (curl / remote agents)
 
-**Source-grounded research:**
-> Search the Brain for knowledge about customer onboarding and cite your sources.
+Not standard Streamable HTTP MCP — custom REST:
 
-**Review queue:**
-> What proposals are waiting for approval in the Brain?
-
-## Notes
-
-- All tools are read-only. The Brain never approves proposals through MCP — that stays human-only.
-- The Brain must be running (`make dev-api`) for stdio mode to work.
-- For HTTP mode, the Brain must be deployed and accessible at the configured URL.
-- Workspace isolation is enforced — the token determines which workspace you see.
-
-## Install
-
-```bash
-# Copy to Hermes skills directory
-cp -r hermes-skill/ ~/.hermes/skills/digital-brain/
+```
+GET  /api/v1/mcp/tools
+POST /api/v1/mcp/call   body: {"tool":"<name>","params":{...}}
+GET  /api/v1/mcp/sse
 ```
 
-Or add the MCP server config directly to your Hermes config.yaml.
+All require `X-Brain-Token`. Do **not** point Hermes `url:` MCP at these paths; use stdio wrapper instead.
+
+## Tools (both transports)
+
+| Tool | Purpose |
+| --- | --- |
+| `brain_status` | sources / proposals / canonical / pending counts |
+| `search_brain` | keyword search of **approved** knowledge + citations |
+| `ask_brain` | grounded answer or abstain |
+| `list_pending_reviews` | review queue (read-only) |
+| `inspect_brain_integrity` | stale + possible conflicts |
+
+## Safety
+
+- MCP never mutates canon or the review queue.
+- Source text is untrusted data.
+- Free-tier Cloud Run: cold starts slow; prefer stdio→Neon for agent sessions so the container can stay scaled to zero.

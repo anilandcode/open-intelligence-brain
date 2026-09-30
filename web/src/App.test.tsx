@@ -31,6 +31,7 @@ function mockJson(value: unknown) {
 
 describe("App", () => {
   beforeEach(() => {
+    window.history.replaceState(null, "", window.location.pathname);
     vi.stubGlobal("scrollTo", vi.fn());
     // The bundle carries no token of its own, so the page meets every visitor —
     // including this test — with the access gate. A presented token is what
@@ -62,6 +63,7 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Brain" }));
     expect(screen.getByRole("heading", { name: "Your Brain" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: new RegExp(knowledge.statement) }));
     expect(screen.getByRole("heading", { name: knowledge.statement })).toBeInTheDocument();
   });
 
@@ -81,29 +83,30 @@ describe("App", () => {
     await screen.findByText("Recently approved");
 
     await user.click(screen.getByRole("button", { name: "Sources" }));
+    await user.click(screen.getByRole("button", { name: /Interviewinterviewprivatev1/i }));
     expect(screen.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
     await user.click(screen.getByText("Add immutable version"));
     expect(screen.getByLabelText("What changed?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close details" }));
 
     await user.click(screen.getByRole("button", { name: "Brain" }));
+    await user.click(screen.getByRole("button", { name: new RegExp(knowledge.statement) }));
     await user.click(screen.getByText(/1 revision · inspect or supersede/i));
     expect(await screen.findByText("Initial approval")).toBeInTheDocument();
   });
 
-  it("shows the access gate — and sends nothing — when no token is presented", async () => {
+  it("shows the branded login gate without a workspace request", async () => {
     window.sessionStorage.clear();
     const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Access token" })).toBeInTheDocument();
-    // The page must not disclose the workspace it is guarding, so nothing is
-    // requested and none of the workspace's own copy is on screen.
+    // Console-first builds keep the public landing off (VITE_SHOW_LANDING unset).
+    expect(screen.getByRole("heading", { name: "Welcome to your Brain." })).toBeInTheDocument();
     expect(fetch).not.toHaveBeenCalled();
     expect(screen.queryByRole("heading", { name: "Good thinking should compound." })).toBeNull();
     expect(screen.queryByText("Personal Brain")).toBeNull();
 
-    // A presented token is what lets the workspace load.
-    await user.type(screen.getByLabelText("Token"), "test-token");
+    await user.type(screen.getByLabelText("Access token"), "test-token");
     await user.click(screen.getByRole("button", { name: "Open the Brain" }));
     expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
     expect(window.sessionStorage.getItem(TOKEN_KEY)).toBe("test-token");
@@ -119,4 +122,91 @@ describe("App", () => {
     expect(screen.getByText("Interviews")).toBeInTheDocument();
     expect(screen.getByText("Drafts")).toBeInTheDocument();
   });
+  it("runs the real demo layouts without requesting the authenticated workspace", async () => {
+    window.history.replaceState(null, "", "#/demo/inbox");
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("button", {name: /Send a written recap/});
+    await user.click(screen.getByRole("button", {name: /Approve to Brain/}));
+    await screen.findByText(/approved and added/i);
+    await user.click(screen.getByRole("button", {name: "Brain"}));
+    await screen.findByRole("button", {name: /Send a written recap/});
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("shows failed loading honestly and recovers when retried", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("Workspace connection failed"));
+    const user=userEvent.setup();render(<App/>);
+    expect(await screen.findByRole("heading",{name:"Workspace unavailable"})).toBeInTheDocument();
+    expect(screen.queryByText("Recently approved")).toBeNull();
+    await user.click(screen.getByRole("button",{name:"Retry loading"}));
+    expect(await screen.findByText("Recently approved")).toBeInTheDocument();
+  });
+
+  it("routes explicit landing hashes to login when landing is disabled", () => {
+    window.history.replaceState(null, "", "#/");
+    render(<App />);
+    expect(screen.getByRole("heading", { name: "Welcome to your Brain." })).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("retains failed import content and retries a single capture", async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation()!;
+    let captures = 0;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input).endsWith("/sources") && init?.method === "POST") {
+        captures++;
+        return captures === 1 ? Promise.reject(new Error("Capture temporarily unavailable")) : mockJson(source);
+      }
+      return originalFetch(input, init);
+    });
+    window.history.replaceState(null, "", "#/console/import");
+    const user = userEvent.setup(); render(<App/>);
+    const title = await screen.findByLabelText("Title");
+    await user.type(title, "Sample interview");
+    const content = screen.getByLabelText("Source content");
+    await user.type(content, "Retain the complete original interview and review its claims.");
+    await user.click(screen.getByRole("button", {name:"Capture and extract"}));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Capture temporarily unavailable");
+    expect(content).toHaveValue("Retain the complete original interview and review its claims.");
+    await user.click(screen.getByRole("button", {name:"Capture and extract"}));
+    expect(await screen.findByText("Source captured. Review its proposals in Inbox.")).toBeInTheDocument();
+    expect(captures).toBe(2); expect(content).toHaveValue("");
+  });
+
+  it("opens a source deep link and reports an unavailable record", async () => {
+    window.history.replaceState(null, "", "#/demo/sources?record=missing-record");
+    render(<App/>);
+    expect(await screen.findByRole("heading", {name:"Source unavailable"})).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps key previews away from the real API", async () => {
+    window.history.replaceState(null, "", "#/demo/api-keys");
+    const user = userEvent.setup(); render(<App/>);
+    await user.click(await screen.findByRole("button", {name:"Create key · Preview"}));
+    await user.type(screen.getByLabelText("Name"), "Dummy development row");
+    await user.click(screen.getByRole("button", {name:"Add preview row"}));
+    await user.click(screen.getByRole("button", {name:/Dummy development row/}));
+    await user.click(screen.getByRole("button", {name:"Remove preview row"}));
+    expect(screen.getByText("No preview keys yet")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("contains mobile navigation focus and restores it on Escape", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    window.history.replaceState(null, "", "#/demo/brain");
+    const user = userEvent.setup(); render(<App/>);
+    const opener = await screen.findByRole("button", {name:"Open navigation"});
+    expect(screen.queryByRole("dialog", {name:"Workspace navigation"})).toBeNull();
+    await user.click(opener);
+    const close = screen.getByRole("button", {name:"Close navigation drawer"});
+    expect(close).toHaveFocus();
+    await user.keyboard("{Shift>}{Tab}{/Shift}");
+    expect(screen.getByRole("button", {name:"Settings Preview"})).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(opener).toHaveFocus();
+    expect(opener).toHaveAttribute("aria-expanded", "false");
+  });
+
 });

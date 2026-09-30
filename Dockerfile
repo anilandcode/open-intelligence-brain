@@ -89,6 +89,10 @@ COPY web/ ./
 # variable into the shipped JavaScript, so a build-time token would be readable
 # by anyone who opens the page. The bundle is built tokenless and asks for one
 # at runtime instead.
+# VITE_SHOW_LANDING is a non-secret UI flag. Console-first releases leave it
+# false so unauthenticated visitors see branded login, not the marketing site.
+ARG VITE_SHOW_LANDING=false
+ENV VITE_SHOW_LANDING=$VITE_SHOW_LANDING
 RUN npm run build
 
 # ------------------------------------------------------------ runtime stage
