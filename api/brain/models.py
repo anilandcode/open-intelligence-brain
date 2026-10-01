@@ -292,3 +292,53 @@ class UserSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # Best-effort provenance for the sign-in itself, never an authz input.
     user_agent: Mapped[str] = mapped_column(String(240), default="")
+
+
+class ApiCredential(Base):
+    """A machine API key for one workspace.
+
+    The raw `brn_live_…` secret is never stored — only `key_hash`. Listings and
+    audit rows carry `key_prefix` only. Soft-revoke via `revoked_at` so history
+    remains inspectable without resurrecting the secret.
+
+    Distinct from `workspace_grants`, which still holds the bootstrap owner
+    token (and any legacy plaintext principals) during the v1.1 transition.
+    """
+
+    __tablename__ = "api_credentials"
+    __table_args__ = (UniqueConstraint("key_hash", name="uq_api_credential_key_hash"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    owner_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True, default=None
+    )
+    name: Mapped[str] = mapped_column(String(120), default="")
+    key_prefix: Mapped[str] = mapped_column(String(40), index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    role: Mapped[str] = mapped_column(String(20), default="member")
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class ApiCredentialScope(Base):
+    """One operation scope attached to one machine credential.
+
+    No rows means unrestricted (owner/bootstrap equivalent). Presence of any
+    row means the credential may only perform the listed operations, unless
+    `admin` is among them.
+    """
+
+    __tablename__ = "api_credential_scopes"
+    __table_args__ = (UniqueConstraint("credential_id", "scope", name="uq_api_credential_scope"),)
+
+    credential_id: Mapped[str] = mapped_column(ForeignKey("api_credentials.id"), primary_key=True)
+    scope: Mapped[str] = mapped_column(String(40), primary_key=True)

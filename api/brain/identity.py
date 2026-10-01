@@ -105,6 +105,54 @@ class LocalIdentityProvider:
         )
 
 
+class FirebaseIdentityProvider:
+    """Verify a Firebase ID token. Hosted browser path for Google sign-in.
+
+    The credential is a Firebase ID token from the client SDK. Verification
+    uses Google's certs (via `google-auth`); a failed or expired token raises
+    `IdentityError` with the same uninformative message as every other failure.
+    The stable subject is the Firebase UID — never the email.
+    """
+
+    name = "firebase"
+
+    def __init__(self, project_id: str) -> None:
+        if not project_id or not project_id.strip():
+            raise ValueError("identity_provider=firebase requires identity_firebase_project_id")
+        self.project_id = project_id.strip()
+
+    def verify(self, credential: str) -> VerifiedIdentity:
+        if not credential or not credential.strip():
+            raise IdentityError("Sign-in failed")
+        try:
+            from google.auth.transport import requests as google_requests
+            from google.oauth2 import id_token
+        except ImportError as exc:
+            raise IdentityError("Sign-in failed") from exc
+        try:
+            claims = id_token.verify_firebase_token(
+                credential.strip(),
+                google_requests.Request(),
+                audience=self.project_id,
+            )
+        except Exception as exc:
+            # Any failure mode (bad sig, wrong audience, expired) → one message.
+            raise IdentityError("Sign-in failed") from exc
+        if not isinstance(claims, dict):
+            raise IdentityError("Sign-in failed")
+        subject = claims.get("sub") or claims.get("user_id")
+        if not subject or not isinstance(subject, str):
+            raise IdentityError("Sign-in failed")
+        name = claims.get("name") or ""
+        email = claims.get("email") or ""
+        return VerifiedIdentity(
+            provider=self.name,
+            subject=subject,
+            email=str(email),
+            display_name=str(name),
+        )
+
+
 def get_identity_provider(settings: Settings | None = None) -> IdentityProvider | None:
     """The configured provider, or None when identity is not in use.
 
@@ -120,20 +168,22 @@ def get_identity_provider(settings: Settings | None = None) -> IdentityProvider 
     name = (settings.identity_provider or "").strip().lower()
     if not name:
         return None
-    if name != "local":
-        raise ValueError(f"Unknown identity provider: {settings.identity_provider!r}")
-    import json
+    if name == "local":
+        import json
 
-    raw = (settings.identity_dev_claims or "").strip()
-    if not raw:
-        raise ValueError("identity_provider=local requires identity_dev_claims")
-    try:
-        claims = json.loads(raw)
-    except ValueError as exc:
-        raise ValueError("identity_dev_claims must be a JSON object") from exc
-    if not isinstance(claims, dict):
-        raise ValueError("identity_dev_claims must be a JSON object")
-    return LocalIdentityProvider(claims)
+        raw = (settings.identity_dev_claims or "").strip()
+        if not raw:
+            raise ValueError("identity_provider=local requires identity_dev_claims")
+        try:
+            claims = json.loads(raw)
+        except ValueError as exc:
+            raise ValueError("identity_dev_claims must be a JSON object") from exc
+        if not isinstance(claims, dict):
+            raise ValueError("identity_dev_claims must be a JSON object")
+        return LocalIdentityProvider(claims)
+    if name == "firebase":
+        return FirebaseIdentityProvider(settings.identity_firebase_project_id)
+    raise ValueError(f"Unknown identity provider: {settings.identity_provider!r}")
 
 
 def find_user(db: Session, provider: str, subject: str) -> User | None:

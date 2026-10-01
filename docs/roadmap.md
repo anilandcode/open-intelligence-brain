@@ -19,6 +19,20 @@
       `~/.digital-brain/neon-database-url` into Secret Manager as
       `BRAIN_DATABASE_URL`. Local dev still defaults to SQLite; Compose still
       ships local Postgres 16.
+- [x] Hashed machine API credentials (`api_credentials` + scopes):
+      `brn_live_…` secrets returned once, stored as SHA-256 only; soft-revoke;
+      `require_scope` on write/admin routes. Bootstrap owner token remains a
+      legacy `workspace_grants` principal for one release (emergency unlock).
+- [x] Firebase identity provider (`identity_provider=firebase` +
+      `identity_firebase_project_id`); optional `google-auth` extra. Web gate
+      offers human sign-in when `/api/v1/auth/status` reports a provider, and
+      still accepts machine token paste.
+- [ ] Wire Firebase web SDK + Google button on the hosted console (needs a
+      Firebase project id in env). Until then: paste Firebase ID token or use
+      `local` provider for dev.
+- [ ] First-owner bootstrap: auto-membership for the first verified human, or
+      an explicit invite flow, so Google sign-in is usable without a prior
+      `workspace_members` row.
 
 ## M1 — trusted thin slice (implemented)
 
@@ -93,7 +107,9 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - [x] Hermes messaging pairing.
 - [x] Release packaging, compatibility matrix, and hardening.
 - [x] Security audit pass (v1.0.1): static-file containment, MCP caller-scope binding, export/usage ceiling, token previews, SSRF-free evaluation, admin-gated restore, worker path fixes — 32 regression tests.
-- [ ] Enforce (or remove) workspace-token `scope` — stored but currently unenforced.
+- [x] Enforce machine-credential scopes via `require_scope` on hashed
+      `api_credentials` (legacy free-form `workspace_grants.scope` still
+      stored for listing only).
 - [ ] Four-week personal usage study.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.

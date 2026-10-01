@@ -73,6 +73,32 @@ class MeResponse(BaseModel):
     memberships: list[MembershipRead]
 
 
+class AuthStatusRead(BaseModel):
+    """Public, unauthenticated: which human sign-in path this deployment offers.
+
+    Never includes claims, secrets, or project numbers beyond what the client
+    already needs to know whether to show a sign-in form.
+    """
+
+    sign_in_available: bool
+    provider: str | None = None
+
+
+@router.get("/status", response_model=AuthStatusRead)
+def auth_status():
+    """Whether a human can sign in on this deployment."""
+    from .identity import get_identity_provider
+
+    try:
+        provider = get_identity_provider()
+    except ValueError:
+        # Misconfigured provider is not "available" to the browser; ops must fix it.
+        return AuthStatusRead(sign_in_available=False, provider=None)
+    if provider is None:
+        return AuthStatusRead(sign_in_available=False, provider=None)
+    return AuthStatusRead(sign_in_available=True, provider=provider.name)
+
+
 @router.post("/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
 def login(
     payload: LoginRequest,

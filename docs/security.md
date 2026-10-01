@@ -25,12 +25,34 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 
 ## Known gaps (deliberate, documented)
 
-- **Token `scope` is stored and returned but NOT enforced.** `TokenCreate` accepts a `scope` string and grants carry it, but no route checks it — a "read-only" scoped token can still write. Do not rely on scope for restriction until it is enforced; use role and expiry, which are enforced.
-- **Human sign-in exists and is consumed by every route** (`user_sessions`, `sessions.py`, `auth_api.py`), but only the `local` provider is implemented. The provider boundary is real and tested — a credential is verified before any row is written, and one uninformative error covers every failure so it cannot be used to enumerate people — but a deployment that wants Google or Firebase sign-in must add a verifier behind the same one-method `IdentityProvider` protocol. Session secrets are stored only as a SHA-256 hash; the raw value appears exactly once, in the login response.
-- **A `User` is not a credential and a token is not a person.** `X-Brain-Token` carries only machine tokens (`workspace_grants`); a user id, provider subject, or email is rejected as a token. That separation is pinned by tests and must not be collapsed for convenience — an audit trail that cannot say whether a person or a token acted is worthless when it matters.
-- **Audit events name a caller without storing credentials.** `actor_kind` is `user` / `token` / `system`; a token is recorded only as a non-recoverable preview. Tests assert the raw token appears in no audit column. Rows written before attribution existed resolve to `system`, never a fabricated person.
-- The owner token is a long-lived static bearer credential.
-- SQLite/Postgres access control is application-level only; there is no row-level security in the database.
+- **Hashed API credentials enforce scopes.** New machine keys are
+  `brn_live_…` secrets stored only as SHA-256 digests in `api_credentials`,
+  with optional rows in `api_credential_scopes`. `require_scope` gates write
+  and admin routes. Legacy free-form `workspace_grants.scope` is still
+  listed but not operation-enforced; the bootstrap owner token remains a
+  plaintext principal for emergency unlock during the v1.1 transition.
+- **Human sign-in** (`user_sessions`, `sessions.py`, `auth_api.py`) supports
+  `local` (dev claims) and `firebase` (ID token verification via optional
+  `google-auth`). The provider boundary is real and tested — a credential is
+  verified before any row is written, and one uninformative error covers every
+  failure so it cannot be used to enumerate people. Session secrets are stored
+  only as a SHA-256 hash; the raw value appears exactly once, in the login
+  response. The web gate shows human sign-in when `/api/v1/auth/status`
+  reports a provider; machine token paste always remains available.
+- **A `User` is not a credential and a token is not a person.** `X-Brain-Token`
+  carries only machine tokens; `X-Brain-Session` carries human sessions. A user
+  id, provider subject, or email is rejected as a token. That separation is
+  pinned by tests and must not be collapsed for convenience.
+- **Audit events name a caller without storing credentials.** `actor_kind` is
+  `user` / `token` / `system`; a token is recorded only as a non-recoverable
+  preview. Tests assert the raw token appears in no audit column. Rows written
+  before attribution existed resolve to `system`, never a fabricated person.
+- The owner token is a long-lived static bearer credential (bootstrap only).
+- SQLite/Postgres access control is application-level only; there is no
+  row-level security in the database.
+- **Still open for hosted Google UX:** Firebase web SDK button + first-owner
+  membership bootstrap so a fresh Google account can be invited/joined without
+  a prior `workspace_members` row.
 
 Proven fixed in v1.0.2 (search persistence, not auth, but it is a safety property):
 a contentless FTS5 index made `search_knowledge` return empty on every restart,

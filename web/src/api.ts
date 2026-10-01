@@ -9,8 +9,13 @@ const API_URL =
    hand the owner token of this Brain to anyone who opens the page and reads the
    JavaScript. The token arrives at runtime instead: pasted into the access
    screen, or carried in the `#token=` fragment, which browsers keep out of the
-   request line and therefore out of server logs. */
+   request line and therefore out of server logs.
+
+   Human sessions (`X-Brain-Session`) are a separate class: minted by
+   `/api/v1/auth/login` after a verified identity provider assertion. A request
+   may carry exactly one of the two headers. */
 export const TOKEN_KEY = "brain.token";
+export const SESSION_KEY = "brain.session";
 
 /** Raised when the API refuses the token this browser is holding. */
 export class Unauthorized extends Error {
@@ -21,39 +26,64 @@ export class Unauthorized extends Error {
 }
 
 // Storage can be unavailable (private mode, blocked storage), in which case the
-// token still works for the life of the page but is never persisted.
+// credential still works for the life of the page but is never persisted.
 let memoryToken = "";
+let memorySession = "";
 
-function storeToken(value: string): void {
+function storeKey(key: string, value: string): void {
   try {
-    if (value) window.sessionStorage.setItem(TOKEN_KEY, value);
-    else window.sessionStorage.removeItem(TOKEN_KEY);
+    if (value) window.sessionStorage.setItem(key, value);
+    else window.sessionStorage.removeItem(key);
   } catch {
     // No storage: the in-memory copy above is all we have.
   }
 }
 
-/** The token this browser is holding, if any. Never a compiled-in default. */
-export function getToken(): string {
+function readKey(key: string, memory: string): string {
   try {
-    return window.sessionStorage.getItem(TOKEN_KEY) ?? memoryToken;
+    return window.sessionStorage.getItem(key) ?? memory;
   } catch {
-    return memoryToken;
+    return memory;
   }
 }
 
+/** The machine token this browser is holding, if any. Never a compiled-in default. */
+export function getToken(): string {
+  return readKey(TOKEN_KEY, memoryToken);
+}
+
+export function getSession(): string {
+  return readKey(SESSION_KEY, memorySession);
+}
+
 export function hasToken(): boolean {
-  return getToken().length > 0;
+  return getToken().length > 0 || getSession().length > 0;
 }
 
 export function setToken(value: string): void {
   memoryToken = value.trim();
-  storeToken(memoryToken);
+  storeKey(TOKEN_KEY, memoryToken);
+  // A request may carry exactly one credential class.
+  if (memoryToken) {
+    memorySession = "";
+    storeKey(SESSION_KEY, "");
+  }
+}
+
+export function setSession(value: string): void {
+  memorySession = value.trim();
+  storeKey(SESSION_KEY, memorySession);
+  if (memorySession) {
+    memoryToken = "";
+    storeKey(TOKEN_KEY, "");
+  }
 }
 
 export function clearToken(): void {
   memoryToken = "";
-  storeToken("");
+  memorySession = "";
+  storeKey(TOKEN_KEY, "");
+  storeKey(SESSION_KEY, "");
 }
 
 // A link may hand the token over in the fragment: read it once, then strip it
@@ -240,16 +270,22 @@ async function refusedDetail(response: Response): Promise<string | undefined> {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const session = getSession();
+  const token = getToken();
+  const authHeaders: Record<string, string> = {};
+  // Exactly one credential class per request — matches the API invariant.
+  if (session) authHeaders["X-Brain-Session"] = session;
+  else if (token) authHeaders["X-Brain-Token"] = token;
   const response = await fetch(`${API_URL}${path}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-Brain-Token": getToken(),
+      ...authHeaders,
       ...options.headers,
     },
   });
-  // A refused token is a different thing from a failed request: it means the
-  // page should go back to asking for one instead of reporting a broken Brain.
+  // A refused credential is a different thing from a failed request: it means
+  // the page should go back to asking for one instead of reporting a broken Brain.
   if (response.status === 401) {
     throw new Unauthorized(await refusedDetail(response));
   }
@@ -257,10 +293,64 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const payload = await response.json().catch(() => ({ detail: response.statusText }));
     throw new Error(payload.detail ?? "The Brain could not complete that request.");
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
+export type AuthStatus = {
+  sign_in_available: boolean;
+  provider: string | null;
+};
+
+export type AuthUser = {
+  id: string;
+  provider: string;
+  email: string;
+  display_name: string;
+};
+
+export type LoginResult = {
+  session_token: string;
+  expires_at: string;
+  user: AuthUser;
+};
+
 export const api = {
+  authStatus: () =>
+    fetch(`${API_URL}/api/v1/auth/status`).then(async (response) => {
+      if (!response.ok) return { sign_in_available: false, provider: null } as AuthStatus;
+      return response.json() as Promise<AuthStatus>;
+    }),
+  login: async (credential: string) => {
+    const result = await fetch(`${API_URL}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential }),
+    });
+    if (result.status === 401) {
+      throw new Unauthorized(await refusedDetail(result));
+    }
+    if (!result.ok) {
+      const payload = await result.json().catch(() => ({ detail: result.statusText }));
+      throw new Error(payload.detail ?? "Sign-in failed.");
+    }
+    const body = (await result.json()) as LoginResult;
+    setSession(body.session_token);
+    return body;
+  },
+  logout: async () => {
+    const session = getSession();
+    if (session) {
+      await fetch(`${API_URL}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: { "X-Brain-Session": session },
+      }).catch(() => undefined);
+    }
+    clearToken();
+  },
+  me: () => request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/me"),
   overview: () => request<Overview>("/api/v1/overview"),
   sources: () => request<Source[]>("/api/v1/sources"),
   sourceVersions: (id: string) => request<SourceVersion[]>(`/api/v1/sources/${id}/versions`),

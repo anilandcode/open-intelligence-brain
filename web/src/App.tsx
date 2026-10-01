@@ -273,17 +273,68 @@ function CommandPalette({ knowledge, sources, onNavigate, onClose, focusFallback
   );
 }
 
-/* The access token is deliberately not part of the bundle, so an unauthenticated
-   browser is met with somewhere to put one. The page discloses nothing: it
-   renders this gate, and no request leaves it until a token is present. */
-function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: (token: string) => void }) {
+/* The access credential is deliberately not part of the bundle. An unauthenticated
+   browser is met with a gate: machine token paste always works; human sign-in
+   appears when the deployment has an identity provider configured. */
+function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => void }) {
   const [value, setValue] = useState("");
+  const [mode, setMode] = useState<"token" | "signin">("token");
+  const [signInAvailable, setSignInAvailable] = useState(false);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
 
-  function submit(event: FormEvent) {
+  useEffect(() => {
+    let cancelled = false;
+    api.authStatus().then((status) => {
+      if (cancelled) return;
+      setSignInAvailable(status.sign_in_available);
+      setProvider(status.provider);
+      if (status.sign_in_available) setMode("signin");
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!value.trim()) return;
-    onUnlock(value.trim());
+    if (!value.trim() || busy) return;
+    setLocalError("");
+    setBusy(true);
+    try {
+      if (mode === "signin") {
+        await api.login(value.trim());
+      } else {
+        setToken(value.trim());
+      }
+      onUnlock();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setBusy(false);
+    }
   }
+
+  const title =
+    mode === "signin"
+      ? provider === "firebase"
+        ? "Sign in to your Brain."
+        : "Sign in with your identity credential."
+      : "Welcome to your Brain.";
+  const copy =
+    mode === "signin"
+      ? provider === "firebase"
+        ? "Use the ID token from Google sign-in. Your membership still decides what you can reach."
+        : "Enter the development identity credential provisioned for this Brain."
+      : "Enter the access token from your Brain administrator to open the workspace.";
+  const label = mode === "signin" ? "Sign-in credential" : "Access token";
+  const placeholder =
+    mode === "signin"
+      ? provider === "firebase"
+        ? "Paste Firebase ID token"
+        : "e.g. dev-alice"
+      : "Paste the token you were given";
 
   return (
     <div className="access-gate">
@@ -292,25 +343,45 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: (token:
           <span className="brand-mark" aria-hidden="true"><Brain size={20} strokeWidth={2.2} /></span>
           <span className="eyebrow">Open Brain</span>
         </div>
-        <h1 className="access-title">Welcome to your Brain.</h1>
-        <p className="access-copy">
-          Enter the access token from your Brain administrator to open the workspace.
-        </p>
-        {refused && (
+        <h1 className="access-title">{title}</h1>
+        <p className="access-copy">{copy}</p>
+        {signInAvailable && (
+          <div className="access-mode-tabs" role="tablist" aria-label="Sign-in method">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "signin"}
+              className={mode === "signin" ? "access-mode is-active" : "access-mode"}
+              onClick={() => { setMode("signin"); setLocalError(""); }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "token"}
+              className={mode === "token" ? "access-mode is-active" : "access-mode"}
+              onClick={() => { setMode("token"); setLocalError(""); }}
+            >
+              Access token
+            </button>
+          </div>
+        )}
+        {(refused || localError) && (
           <div className="alert alert--error" role="alert">
             <TriangleAlert size={18} strokeWidth={2.1} />
-            <span>That token was refused. Check it and try again.</span>
+            <span>{localError || "That credential was refused. Check it and try again."}</span>
           </div>
         )}
         <div className="form-field">
-          <label htmlFor="brain-token">Access token</label>
+          <label htmlFor="brain-token">{label}</label>
           <input
             id="brain-token"
             className="input"
             type="password"
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            placeholder="Paste the token you were given"
+            placeholder={placeholder}
             autoComplete="off"
             spellCheck={false}
             autoFocus
@@ -318,10 +389,14 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: (token:
           <span className="field-help">Stored for this browser tab only. Close the tab to clear access.</span>
         </div>
         <div className="access-actions">
-          <button className="primary-button" type="submit" disabled={!value.trim()}>
-            Open the Brain
+          <button className="primary-button" type="submit" disabled={!value.trim() || busy}>
+            {busy ? "Opening…" : mode === "signin" ? "Sign in" : "Open the Brain"}
           </button>
-          <span className="access-hint">No token? Ask whoever runs this Brain.</span>
+          <span className="access-hint">
+            {mode === "signin"
+              ? "No membership yet? Ask an owner to invite you."
+              : "No token? Ask whoever runs this Brain."}
+          </span>
         </div>
         {SHOW_LANDING ? (
           <a className="access-back" href="#/">← Back to home</a>
@@ -442,8 +517,7 @@ export default function App() {
     setError(requestError instanceof Error ? requestError.message : "Could not load the workspace.");
   }
 
-  function unlock(value: string) {
-    setToken(value);
+  function unlock() {
     setTokenRefused(false);
     setLoading(true);
     setTokenRequired(false);

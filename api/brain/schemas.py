@@ -200,9 +200,13 @@ class WorkspaceRead(BaseModel):
 
 
 class TokenCreate(BaseModel):
-    """Create a scoped or expiring access token for a workspace."""
+    """Create a hashed, optionally scoped access token for a workspace."""
 
     role: str = Field(default="member", pattern="^(owner|admin|member)$")
+    name: str = Field(default="", max_length=120)
+    # Preferred: explicit operation scopes. Empty/omitted = unrestricted.
+    scopes: list[str] | None = Field(default=None, max_length=32)
+    # Legacy single string — folded into `scopes` when provided alone.
     scope: str | None = Field(default=None, max_length=80)
     expires_in_hours: int | None = Field(default=None, ge=1, le=8760)  # max 1 year
 
@@ -219,7 +223,9 @@ class TokenRead(BaseModel):
     workspace_id: str
     principal: str
     role: str
+    name: str = ""
     scope: str | None = None
+    scopes: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
     created_at: datetime
 
@@ -232,9 +238,14 @@ class TokenListRead(BaseModel):
     workspace_id: str
     principal_preview: str
     role: str
+    name: str = ""
     scope: str | None = None
+    scopes: list[str] = Field(default_factory=list)
     expires_at: datetime | None = None
     created_at: datetime
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+    kind: str = "api_key"  # api_key | legacy_grant
 
 
 class EventCreate(BaseModel):

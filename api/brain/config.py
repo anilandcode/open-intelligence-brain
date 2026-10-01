@@ -35,12 +35,13 @@ class Settings(BaseSettings):
     #
     # `identity_provider` names the verifier at the boundary (`identity.py`).
     # "local" reads `identity_dev_claims`, a JSON object mapping a dev credential
-    # to its claims — for local development only, never for a deployment. A
-    # hosted provider (Google, Firebase) is added as another verifier that
-    # yields the same `VerifiedIdentity`; nothing anywhere may trust a request
-    # body, a query parameter, or model output to say who a caller is.
+    # to its claims — for local development only, never for a deployment.
+    # "firebase" verifies a Firebase ID token against `identity_firebase_project_id`.
+    # Nothing anywhere may trust a request body, a query parameter, or model
+    # output to say who a caller is.
     identity_provider: str = ""
     identity_dev_claims: str = ""
+    identity_firebase_project_id: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 

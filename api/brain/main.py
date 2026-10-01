@@ -2,7 +2,6 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +18,7 @@ from .access import (
     ensure_default_workspace,
     grant_workspace,
     require_in_workspace,
+    require_scope,
     resolve_workspace,
     token_preview,
 )
@@ -303,8 +303,26 @@ def ready(db: Session = Depends(get_db)):
 def list_workspaces(
     access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)
 ):
-    """Every workspace the caller's token is granted. Never a global list."""
-    rows = (
+    """Every workspace the caller's credential reaches. Never a global list."""
+    if access.actor_kind == "user":
+        from .models import WorkspaceMember
+
+        rows = (
+            db.execute(
+                select(Workspace)
+                .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+                .where(WorkspaceMember.user_id == access.actor_id)
+                .order_by(Workspace.created_at)
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
+
+    # Hashed API credentials bind to exactly one workspace (access.workspace).
+    # Legacy grants may span several; look those up by raw principal only when
+    # the principal still matches a grant row (bootstrap / test tokens).
+    grant_rows = (
         db.execute(
             select(Workspace)
             .join(
@@ -317,7 +335,9 @@ def list_workspaces(
         .scalars()
         .all()
     )
-    return list(rows)
+    if grant_rows:
+        return list(grant_rows)
+    return [access.workspace]
 
 
 @app.post("/api/v1/workspaces", response_model=WorkspaceRead, status_code=201)
@@ -355,13 +375,13 @@ def create_workspace_token(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
-    """Create a scoped or expiring access token for a workspace.
+    """Mint a hashed API credential for a workspace.
 
-    Only owners and admins can create tokens. The generated token string is
-    returned in the `principal` field — give it to the person or agent that
-    needs access. Scoped tokens can only perform actions within their scope;
-    expiring tokens stop working after `expires_in_hours`.
+    Only owners and admins can create tokens. The raw secret is returned exactly
+    once in `principal`. Scopes, when provided, are enforced on every later
+    request; omit them for an unrestricted machine key (still bound to role).
     """
+    require_scope(access, "admin")
     if not access.can_administer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -372,27 +392,52 @@ def create_workspace_token(
         raise HTTPException(status_code=404, detail="Workspace not found")
     if workspace.id != access.workspace_id:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    token_string = f"brn_{uuid4().hex}"
+
+    from .credentials import create_api_credential, validate_scopes
+
+    scopes = payload.scopes
+    if scopes is None and payload.scope:
+        scopes = [s.strip() for s in payload.scope.split(",") if s.strip()]
+    try:
+        normalised = validate_scopes(scopes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     expires_at = None
     if payload.expires_in_hours is not None:
         expires_at = datetime.now(UTC) + timedelta(hours=payload.expires_in_hours)
-    grant = grant_workspace(
+    owner_user_id = access.actor_id if access.actor_kind == "user" else None
+    raw, cred = create_api_credential(
         db,
         workspace,
-        token_string,
+        name=payload.name,
         role=payload.role,
-        scope=payload.scope,
+        scopes=normalised,
         expires_at=expires_at,
+        owner_user_id=owner_user_id,
     )
+    scope_label = ",".join(normalised) if normalised else None
     audit_access(
         db,
         access,
         "token.created",
-        f"Created {payload.role} token" + (f" scoped to {payload.scope}" if payload.scope else ""),
+        f"Created {payload.role} credential"
+        + (f" scoped to {scope_label}" if scope_label else "")
+        + (f" ({payload.name})" if payload.name else ""),
     )
     db.commit()
-    db.refresh(grant)
-    return grant
+    db.refresh(cred)
+    return TokenRead(
+        id=cred.id,
+        workspace_id=cred.workspace_id,
+        principal=raw,
+        role=cred.role,
+        name=cred.name,
+        scope=scope_label,
+        scopes=list(normalised or []),
+        expires_at=cred.expires_at,
+        created_at=cred.created_at,
+    )
 
 
 @app.get("/api/v1/workspaces/{workspace_slug}/tokens", response_model=list[TokenListRead])
@@ -401,13 +446,12 @@ def list_workspace_tokens(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
-    """List all tokens for a workspace. Only owners and admins.
+    """List credentials for a workspace. Only owners and admins.
 
-    Returns a preview of each credential, never the credential: the raw
-    string is shown exactly once, in the creation response. A listing that
-    carried live tokens would hand every one of them — including the owner
-    token — to anything that can capture an admin response.
+    Returns previews only — never raw secrets. Includes hashed API keys and
+    legacy workspace_grants (bootstrap owner token shown as a preview).
     """
+    require_scope(access, "admin")
     if not access.can_administer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -416,21 +460,47 @@ def list_workspace_tokens(
     workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
     if workspace is None or workspace.id != access.workspace_id:
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+    from .credentials import list_api_credentials, scopes_for_credential
+
+    rows: list[TokenListRead] = []
+    for cred in list_api_credentials(db, workspace.id):
+        scopes = scopes_for_credential(db, cred)
+        rows.append(
+            TokenListRead(
+                id=cred.id,
+                workspace_id=cred.workspace_id,
+                principal_preview=token_preview(cred.key_prefix + "xxxx"),
+                role=cred.role,
+                name=cred.name,
+                scope=",".join(scopes) if scopes else None,
+                scopes=scopes,
+                expires_at=cred.expires_at,
+                created_at=cred.created_at,
+                last_used_at=cred.last_used_at,
+                revoked_at=cred.revoked_at,
+                kind="api_key",
+            )
+        )
     grants = db.scalars(
         select(WorkspaceGrant).where(WorkspaceGrant.workspace_id == workspace.id)
     ).all()
-    return [
-        TokenListRead(
-            id=grant.id,
-            workspace_id=grant.workspace_id,
-            principal_preview=token_preview(grant.principal),
-            role=grant.role,
-            scope=grant.scope,
-            expires_at=grant.expires_at,
-            created_at=grant.created_at,
+    for grant in grants:
+        rows.append(
+            TokenListRead(
+                id=grant.id,
+                workspace_id=grant.workspace_id,
+                principal_preview=token_preview(grant.principal),
+                role=grant.role,
+                name="",
+                scope=grant.scope,
+                scopes=[grant.scope] if grant.scope else [],
+                expires_at=grant.expires_at,
+                created_at=grant.created_at,
+                kind="legacy_grant",
+            )
         )
-        for grant in grants
-    ]
+    return rows
 
 
 @app.delete("/api/v1/workspaces/{workspace_slug}/tokens/{token_id}", status_code=204)
@@ -441,6 +511,7 @@ def revoke_workspace_token(
     db: Session = Depends(get_db),
 ):
     """Revoke an access token. Only owners and admins."""
+    require_scope(access, "admin")
     if not access.can_administer:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -449,12 +520,26 @@ def revoke_workspace_token(
     workspace = db.scalar(select(Workspace).where(Workspace.slug == workspace_slug))
     if workspace is None or workspace.id != access.workspace_id:
         raise HTTPException(status_code=404, detail="Workspace not found")
+
+    from .credentials import revoke_api_credential
+    from .models import ApiCredential
+
+    if revoke_api_credential(db, token_id, workspace.id):
+        audit_access(db, access, "token.revoked", f"Revoked API credential {token_id}")
+        db.commit()
+        return None
+
     grant = db.get(WorkspaceGrant, token_id)
     if grant is None or grant.workspace_id != workspace.id:
+        # Also accept api credential id that was already revoked — 404 either way.
+        cred = db.get(ApiCredential, token_id)
+        if cred is None or cred.workspace_id != workspace.id:
+            raise HTTPException(status_code=404, detail="Token not found")
         raise HTTPException(status_code=404, detail="Token not found")
     db.delete(grant)
     audit_access(db, access, "token.revoked", f"Revoked token {token_id}")
     db.commit()
+    return None
 
 
 @app.get("/api/v1/overview", response_model=OverviewRead)
@@ -483,6 +568,7 @@ def create_source(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
+    require_scope(access, "sources:write")
     source = create_source_with_proposals(db, payload, access.workspace_id, actor=access)
     count = (
         db.scalar(
@@ -666,6 +752,7 @@ def approve(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
+    require_scope(access, "reviews:write")
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     try:
         item = approve_proposal(db, proposal, payload.statement, payload.rationale, actor=access)
@@ -686,6 +773,7 @@ def reject(
     access: WorkspaceAccess = Depends(resolve_access),
     db: Session = Depends(get_db),
 ):
+    require_scope(access, "reviews:write")
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     if proposal.status != "proposed":
         raise HTTPException(status_code=409, detail="Only proposed knowledge can be rejected")
@@ -774,9 +862,11 @@ def get_integrity(scope: ReadScope = Depends(read_scope), db: Session = Depends(
 @app.post("/api/v1/chat", response_model=ChatResponse)
 def chat(
     payload: ChatRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
     scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
+    require_scope(access, "brain:ask")
     result = answer_question(db, scope, payload.question)
     # Track which knowledge atoms were cited
     if result.citations:

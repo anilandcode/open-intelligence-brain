@@ -33,6 +33,10 @@ dev = [
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
 ]
+# Optional: Firebase ID-token verification for hosted human sign-in.
+identity = [
+  "google-auth>=2.30,<3",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["brain"]

@@ -61,7 +61,18 @@ class TestProviderBoundary:
     def test_unknown_provider_name_fails_loudly(self):
         """A typo must be visible, not a silent fallback to no identity."""
         with pytest.raises(ValueError, match="Unknown identity provider"):
+            get_identity_provider(_settings(identity_provider="not-a-real-provider"))
+
+    def test_firebase_provider_requires_project_id(self):
+        with pytest.raises(ValueError, match="identity_firebase_project_id"):
             get_identity_provider(_settings(identity_provider="firebase"))
+
+    def test_firebase_provider_is_selected_when_configured(self):
+        provider = get_identity_provider(
+            _settings(identity_provider="firebase", identity_firebase_project_id="demo-brain")
+        )
+        assert provider is not None
+        assert provider.name == "firebase"
 
     def test_local_provider_without_claims_fails_loudly(self):
         with pytest.raises(ValueError, match="requires identity_dev_claims"):

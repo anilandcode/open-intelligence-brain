@@ -37,7 +37,21 @@ export function createDemoClient(): BrainClient {
     const s: DraftSection = { id: id("section"), draft_id: d.id, ordinal: d.sections.length+1, title: payload.title, content: payload.content, created_at: date(), citations: atoms.map(k => ({ id: id("citation"), section_id: "", knowledge_id: k.id, created_at: date() })), knowledge_items: atoms.map(k => ({id: k.id, statement: k.statement, type: k.type, source_excerpt: k.source_excerpt})) };
     s.citations.forEach(c => c.section_id = s.id); d.sections.push(s); d.section_count = d.sections.length; d.citation_count += atoms.length; return s;
   }
-  return {
+      return {
+    authStatus: async () => ({ sign_in_available: false, provider: null }),
+    login: async () => {
+      throw new Error("Sign-in is not available in the sample workspace.");
+    },
+    logout: async () => undefined,
+    me: async () => ({
+      user: {
+        id: "sample-user",
+        provider: "demo",
+        email: "sample@example.com",
+        display_name: "Sample reviewer",
+      },
+      memberships: [],
+    }),
     overview: async () => ({ sources: sources.length, proposals: proposals.length, canonical: knowledge.length, pending_reviews: proposals.filter(p => p.status === "proposed").length, recent_activity: copy(events), engine: { name: "Synthetic demo", available: false, detail: "Local examples only. No model or API is connected.", container_tag: "sample", degraded: false } }),
     sources: async () => copy(sources), proposals: async () => copy(proposals.filter(p => p.status === "proposed")), knowledge: async (q = "") => copy(knowledge.filter(k => k.statement.toLowerCase().includes(q.toLowerCase()))),
     integrity: async () => ({ stale_count: knowledge.filter(k => k.stale).length, conflict_count: 0, issues: knowledge.filter(k => k.stale).map(k => ({kind: "stale_source" as const, knowledge_id: k.id, related_id: null, detail: "Sample source has a newer version. Review its approved knowledge."})) }),

@@ -380,3 +380,25 @@ class TestWorkspaceSelection:
         )
         assert response.status_code == unknown.status_code == 401
         assert response.json()["detail"] == unknown.json()["detail"]
+
+
+class TestAuthStatusDiscovery:
+    """Public discovery so the gate can offer sign-in without leaking people."""
+
+    def test_status_reports_no_provider_by_default(self, client):
+        response = client.get("/api/v1/auth/status")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["sign_in_available"] is False
+        assert body["provider"] is None
+
+    def test_status_reports_local_when_configured(self, auth_client):
+        response = auth_client.get("/api/v1/auth/status")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["sign_in_available"] is True
+        assert body["provider"] == "local"
+
+    def test_status_needs_no_credential(self, auth_client):
+        """The gate must be able to ask before the visitor has signed in."""
+        assert auth_client.get("/api/v1/auth/status").status_code == 200

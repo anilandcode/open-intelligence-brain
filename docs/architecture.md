@@ -108,13 +108,14 @@ into the caller's.
 21. The engine is an implementation, not a dependency. With nothing configured the product runs on deterministic local extraction and makes no network calls. A self-hosted engine needs no account or key from anyone, because it prints its own on first boot.
 22. Engine-derived facts enter only as proposals, and each carries evidence — a source version at minimum — so an inference is never approved against a citation that does not exist.
 23. Identity is an assertion from an identity provider, verified at the boundary before it becomes a row. Nothing in a request body, a query parameter, or model output can name a user or grant them access.
-24. A human credential and a machine credential are not interchangeable. `users`/`workspace_members` describe people; `workspace_grants` describes opaque tokens. Neither may be substituted for the other, and an audit event says which class acted (`actor_kind`/`actor_id`).
+24. A human credential and a machine credential are not interchangeable. `users`/`workspace_members` describe people; `api_credentials` (and legacy `workspace_grants`) describe opaque machine keys. Neither may be substituted for the other, and an audit event says which class acted (`actor_kind`/`actor_id`).
 25. Identity is optional. With no provider configured every read, review, and export works exactly as before on machine credentials alone (invariant 10).
-26. A session secret is never stored — only its hash. A database read, an export, or a backup must not yield a usable credential.
+26. A session secret is never stored — only its hash. A database read, an export, or a backup must not yield a usable credential. The same rule applies to machine API keys: only SHA-256 digests live in `api_credentials`.
 27. Login grants identity, not reach. A session reaches a workspace only through `workspace_members`, resolved per request, so revoking a membership or deactivating a person takes effect immediately without touching an open session.
 28. A request carries exactly one credential class. A session and a machine token travel in different headers and are never interchangeable; a request bearing both is refused rather than resolved by preference.
 29. An audit event names a caller, and never a raw credential. `actor_kind` is `user`, `token`, or `system`; a `token` is recorded only as a non-recoverable preview, so an audit table can never become a store of live credentials. Work nobody asked for (engine derivation, startup backfill) records `system` rather than borrowing a human or a token that did not act.
 30. Nothing may claim an actor it cannot name. Rows written before attribution existed resolve to `system`, not to a plausible person.
+31. Machine credential scopes are real. Hashed `api_credentials` may carry a scope set; write and admin routes call `require_scope`. Empty/unrestricted means owner-class ops for that principal. Legacy `workspace_grants` remain operation-unrestricted for the bootstrap owner token only.
 
 ## Data model
 
@@ -126,9 +127,12 @@ into the caller's.
 - `user_sessions`: one human sign-in. Stores only a SHA-256 hash of the session
   secret; the raw value exists solely in the login response. Proves WHO is
   asking and never grants reach on its own.
-- `workspace_grants`: principal-to-workspace access and role. This is a MACHINE
-  credential (an opaque token), deliberately not the same table as
-  `workspace_members`.
+- `workspace_grants`: legacy MACHINE principal (bootstrap owner token). Still
+  accepted; free-form `scope` is listed only. Prefer `api_credentials`.
+- `api_credentials`: preferred machine keys. Raw `brn_live_…` secret returned
+  once; only SHA-256 `key_hash` is stored. Soft-revoke via `revoked_at`.
+- `api_credential_scopes`: optional scope pins for a credential
+  (`brain:read`, `brain:ask`, `sources:write`, `reviews:write`, `admin`, …).
 - `sources`: stable source identity, original text, type, sensitivity, timestamp.
 - `source_versions`: immutable content, SHA-256 hash, parser version, change note.
 - `source_spans`: exact offsets, immutable excerpt, span hash, optional speaker.

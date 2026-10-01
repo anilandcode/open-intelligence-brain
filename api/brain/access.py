@@ -28,6 +28,8 @@ from .models import (
     new_id,
 )
 
+# Imported lazily inside resolve_workspace to avoid a cycle with credentials.py.
+
 
 class AccessDenied(Exception):
     """The principal may not act on this workspace."""
@@ -122,12 +124,16 @@ class WorkspaceAccess:
     role: str
     scope: str | None = None
     # Which class of credential answered: "token" (a machine credential from
-    # workspace_grants) or "user" (a person from users/workspace_members).
-    # Recorded so an audit row can say who acted rather than that a token did.
-    # `principal` alone is ambiguous — it holds a raw token or a user id
-    # depending on the class that resolved it.
+    # workspace_grants / api_credentials) or "user" (a person from
+    # users/workspace_members). Recorded so an audit row can say who acted
+    # rather than that a token did. `principal` alone is ambiguous — it holds
+    # a raw legacy token, a key prefix, or a user id depending on the class.
     actor_kind: str = "token"
     actor_id: str | None = None
+    # Operation scopes for hashed API credentials. None = unrestricted
+    # (humans, bootstrap owner token, legacy grants, or credentials minted
+    # without an explicit scope list). A frozenset means only those ops.
+    scopes: frozenset[str] | None = None
 
     @property
     def workspace_id(self) -> str:
@@ -135,6 +141,10 @@ class WorkspaceAccess:
 
     @property
     def can_administer(self) -> bool:
+        if self.scopes is not None and "admin" not in self.scopes and self.scopes:
+            # A narrowly scoped machine key cannot administer even if role says admin.
+            if self.role in ("owner", "admin") and "admin" not in self.scopes:
+                return False
         return self.role in ("owner", "admin")
 
     @property
@@ -143,6 +153,29 @@ class WorkspaceAccess:
 
     def can_read_source(self, source_id: str, sensitivity: str) -> bool:
         return sensitivity in self.permitted
+
+    def has_scope(self, needed: str) -> bool:
+        """Whether this caller may perform an operation gated by `needed`."""
+        if self.scopes is None:
+            return True
+        if "admin" in self.scopes:
+            return True
+        return needed in self.scopes
+
+
+def require_scope(access: WorkspaceAccess, needed: str) -> None:
+    """Refuse when a scoped machine credential lacks an operation.
+
+    Humans and unrestricted tokens (scopes is None) always pass. Centralising
+    the check here keeps endpoint code from inventing ad-hoc role shortcuts
+    that would silently ignore a minted scope list.
+    """
+    if access.has_scope(needed):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=f"This credential lacks scope {needed}",
+    )
 
 
 def require_in_workspace(db: Session, access: WorkspaceAccess, model, record_id: str):
@@ -201,12 +234,44 @@ def resolve_workspace(
 ) -> WorkspaceAccess:
     """Turn a token plus an optional workspace slug into a scoped access object.
 
+    Resolution order:
+
+    1. Hashed `brn_live_…` API credentials (`api_credentials`) — preferred path.
+    2. Legacy plaintext `workspace_grants.principal` (bootstrap owner token).
+
     With a single grant the workspace is implied and the header is optional. With
     several grants the caller must say which workspace it means, so a request
     can never silently act on the wrong company's Brain.
     """
     if not token:
         raise AccessDenied("Invalid Brain token")
+
+    from .credentials import (
+        credential_scopes,
+        resolve_api_credential,
+        touch_last_used,
+    )
+
+    hashed = resolve_api_credential(db, token)
+    if hashed is not None:
+        workspace = db.get(Workspace, hashed.workspace_id)
+        if workspace is None:
+            raise AccessDenied("Unknown workspace")
+        if requested_slug and workspace.slug != requested_slug:
+            raise AccessDenied("This Brain token has no access to that workspace")
+        scopes = credential_scopes(db, hashed.id)
+        touch_last_used(db, hashed)
+        # principal is the non-secret prefix so list/audit paths never see the raw key.
+        return WorkspaceAccess(
+            workspace=workspace,
+            principal=hashed.key_prefix,
+            role=hashed.role,
+            scope=",".join(sorted(scopes)) if scopes else None,
+            actor_kind="token",
+            actor_id=token_preview(hashed.key_prefix),
+            scopes=scopes,
+        )
+
     grants = list(db.scalars(select(WorkspaceGrant).where(WorkspaceGrant.principal == token)).all())
     if not grants:
         raise AccessDenied("Invalid Brain token")
@@ -239,8 +304,15 @@ def resolve_workspace(
         now = datetime.now(UTC).replace(tzinfo=None) if expiry.tzinfo is None else datetime.now(UTC)
         if expiry < now:
             raise AccessDenied("This Brain token has expired")
+    # Legacy grants stay operation-unrestricted (scopes=None). Their free-form
+    # `scope` column was never enforced; only hashed api_credentials pin scopes.
+    # Role still drives the sensitivity ceiling.
     return WorkspaceAccess(
-        workspace=workspace, principal=token, role=target.role, scope=target.scope
+        workspace=workspace,
+        principal=token,
+        role=target.role,
+        scope=target.scope,
+        scopes=None,
     )
 
 
