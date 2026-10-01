@@ -1,7 +1,7 @@
 # Agent integrations
 
-Open Brain exposes three MCP surfaces that share the same read-only tools and
-governance boundary:
+Open Brain exposes three MCP surfaces that share the same read + intake tools
+and governance boundary:
 
 1. **Hosted Streamable HTTP** at `/mcp` — first-party remote MCP (Cursor /
    Claude Connectors / ChatGPT style `url:` config + OAuth).

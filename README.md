@@ -69,7 +69,7 @@ Run the local stdio server against the same database as the API:
 BRAIN_DATABASE_URL=sqlite:///brain.db .venv/bin/open-brain-mcp
 ```
 
-It exposes read-only `brain_status`, `search_brain`, `ask_brain`, `list_pending_reviews`, and `inspect_brain_integrity` tools. See [docs/agent-integrations.md](docs/agent-integrations.md) for the portable host configuration and security boundary.
+It exposes read tools `brain_status`, `search_brain`, `ask_brain`, `list_pending_reviews`, and `inspect_brain_integrity`, plus a proposal-only intake tool `capture_source` (files source + candidates for human review; never approves or writes canonical). See [docs/agent-integrations.md](docs/agent-integrations.md) for the portable host configuration and security boundary.
 
 ## API workflow
 
