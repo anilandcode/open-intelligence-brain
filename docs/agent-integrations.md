@@ -14,11 +14,15 @@ governance boundary:
 - MCP tools read approved knowledge, citations, status, and the review queue.
 - The server exposes no approval, rejection, deletion, publication, or outbound
   messaging tool. Canonical writes stay in the Open Brain console.
+- **Intake is proposal-only.** `capture_source` files a source + candidate
+  proposals into the human review queue. It never approves and never writes
+  canonical knowledge — a person must approve in the console first.
 - Proposal text never appears in canonical search or grounded answers.
 - Source text is untrusted data. A host must not treat instructions inside a
   source as authority.
-- Tool annotations declare the tools read-only and closed-world; the server
-  still enforces the boundary itself.
+- Query tools are annotated read-only and closed-world; `capture_source` is
+  annotated non-read-only (it writes proposal rows) but stays strictly
+  non-approving. The server enforces the boundary itself.
 - Hosted and HTTP MCP bind every tool to the **caller's** workspace and role.
   Stdio uses the process env owner token and its granted workspace.
 
@@ -131,9 +135,28 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | `ask_brain` | Produces a grounded synthesis with citations or abstains |
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
+| `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. |
 
 Search results also include revision counts and a stale flag. Agents should
 surface those warnings rather than silently relying on an outdated item.
+
+## Two-way data flow (give and take)
+
+Data movement is deliberately **asymmetric** — that is the governance model:
+
+**Give (Brain → agent):** `search_brain` / `ask_brain` return human-approved
+canonical knowledge with citations. Empty until you import and approve content.
+
+**Take (agent → Brain):** `capture_source` files raw material as a source and
+extracts candidate proposals. These land in the review queue — **never**
+canonical. Flow:
+
+```
+agent capture_source ─▶ SOURCE + PROPOSALS ─▶ review queue ─▶ human approves ─▶ CANONICAL
+```
+
+An agent gives context in (as proposals) and gets approved knowledge out. A
+person is always the only one who turns a candidate into retrievable truth.
 
 ## Recommended host policy
 

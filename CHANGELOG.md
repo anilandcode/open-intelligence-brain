@@ -21,6 +21,11 @@ read-only tools, human approval → canonical, no write-memory authority.
 - Env: `BRAIN_MCP_HOSTED` (default true), `BRAIN_PUBLIC_BASE_URL` (issuer +
   resource base; set to the Cloud Run HTTPS origin in production).
 - Stdio MCP and legacy `/api/v1/mcp/*` remain.
+- **`capture_source` intake tool** (stdio + hosted): an agent files raw material
+  as a source and candidate proposals for human review. Marked honestly
+  `read_only_hint=False` (it writes proposal rows) but strictly non-approving
+  and non-canonical — no tool can mint truth. Gated by `sources:write` exactly
+  like REST `POST /api/v1/sources`; audit attributes the machine caller.
 - **Connection registry** (`mcp_connections` + `GET /api/v1/mcp/connections`):
   which MCP clients have reached a workspace (owner/admin only, telemetry only
   — never a credential). Covers BOTH auth shapes — OAuth-issued clients and

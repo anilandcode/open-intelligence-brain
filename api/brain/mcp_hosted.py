@@ -39,6 +39,7 @@ from .mcp_oauth import SCOPE_DEFAULT, BrainOAuthProvider, mcp_request_ua_var
 from .mcp_server import (
     ask_brain_scoped,
     brain_status_scoped,
+    capture_source_scoped,
     inspect_brain_integrity_scoped,
     list_pending_reviews_scoped,
     search_brain_scoped,
@@ -85,7 +86,7 @@ def _caller_scope() -> ReadScope:
 
     Hosted transport MUST go through get_access_token() claims. Falling back to
     the stdio owner scope here would let any authenticated client read the
-    default workspace as owner — the same class of bug the HTTP adapter
+    default workspace as its owner — the same class of bug the HTTP adapter
     already guards against.
     """
     token = get_access_token()
@@ -97,6 +98,27 @@ def _caller_scope() -> ReadScope:
     if not workspace_id:
         raise PermissionError("MCP access token is missing workspace claims")
     return ReadScope(str(workspace_id), str(role))
+
+
+def _caller_identity() -> tuple[ReadScope, list[str] | None, str]:
+    """The caller's read scope, operation scopes (None = unrestricted), preview.
+
+    Intake (capture) needs the op scopes to enforce `sources:write` exactly like
+    the REST API, plus a non-recoverable preview for audit attribution.
+    """
+    token = get_access_token()
+    if token is None or not token.claims:
+        raise PermissionError("MCP tool called without an authenticated Brain principal")
+    claims = token.claims
+    workspace_id = claims.get("workspace_id")
+    role = claims.get("role") or "member"
+    if not workspace_id:
+        raise PermissionError("MCP access token is missing workspace claims")
+    scopes_ops = claims.get("scopes_ops")
+    if scopes_ops is not None:
+        scopes_ops = [str(s) for s in scopes_ops]
+    principal_preview = str(claims.get("principal_preview") or "mcp")
+    return ReadScope(str(workspace_id), str(role)), scopes_ops, principal_preview
 
 
 def _consent_page(summary: dict[str, Any] | None, error: str | None = None) -> HTMLResponse:
@@ -137,8 +159,9 @@ def _consent_page(summary: dict[str, Any] | None, error: str | None = None) -> H
 </head>
 <body>
   <h1>Authorize Open Brain MCP</h1>
-  <p class="meta">Client <code>{client}</code> is requesting read-only access
-  ({scopes}). Approval and writes stay in the Open Brain console.</p>
+  <p class="meta">Client <code>{client}</code> is requesting read + capture
+  ({scopes}). Capture files candidates for review; canonical approval and
+  writes stay in the Open Brain console.</p>
   {err}
   <form method="post" action="/mcp/consent">
     <input type="hidden" name="rid" value="{rid}"/>
@@ -201,6 +224,9 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
     )
 
     read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+    # Intake is NOT read-only (writes source + proposal rows) but is strictly
+    # non-approving and non-canonical — no tool here can mint truth.
+    intake = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 
     @server.tool(title="Get Brain status", annotations=read_only)
     def brain_status() -> Any:
@@ -233,6 +259,29 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
     def inspect_brain_integrity() -> Any:
         """List stale knowledge and possible conflicts without changing canonical records."""
         return inspect_brain_integrity_scoped(_caller_scope())
+
+    @server.tool(title="Capture a source for review", annotations=intake)
+    def capture_source(
+        title: Annotated[str, Field(min_length=3, max_length=240)],
+        content: Annotated[str, Field(min_length=20, max_length=100_000)],
+        kind: Annotated[str, Field(pattern="^(note|research|interview|decision)$")] = "note",
+        sensitivity: Annotated[str, Field(pattern="^(private|internal|public)$")] = "private",
+    ) -> Any:
+        """Capture raw material as a source and extract candidate proposals for HUMAN review.
+
+        Never approves and never writes canonical knowledge — a person must
+        approve each candidate in the console before it becomes retrievable truth.
+        """
+        scope, scopes_ops, principal_preview = _caller_identity()
+        return capture_source_scoped(
+            scope,
+            title=title,
+            content=content,
+            kind=kind,
+            sensitivity=sensitivity,
+            scopes_ops=scopes_ops,
+            principal_preview=principal_preview,
+        )
 
     @server.custom_route("/mcp/consent", methods=["GET", "POST"])
     async def consent(request: Request) -> Response:

@@ -3,14 +3,16 @@ from typing import Annotated
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from .access import ReadScope, ensure_default_workspace
+from .access import ReadScope, WorkspaceAccess, ensure_default_workspace
 from .config import get_settings
 from .database import SessionLocal
-from .models import Proposal, Source
+from .models import Proposal, Source, Workspace
+from .schemas import SourceCreate
 from .services import (
     answer_question,
+    create_source_with_proposals,
     integrity_snapshot,
     knowledge_is_stale,
     knowledge_revision_count,
@@ -99,6 +101,15 @@ class IntegrityResult(BaseModel):
     stale_count: int
     conflict_count: int
     issues: list[IntegrityIssueResult]
+
+
+class CaptureResult(BaseModel):
+    """What an intake produced: a source plus candidate proposals — never canon."""
+
+    source_id: str
+    title: str
+    proposal_count: int
+    status: str  # always "awaiting_review"; approval is a human act
 
 
 # --- Scope-explicit implementations -----------------------------------------
@@ -195,7 +206,58 @@ mcp = MCPServer(
     ),
 )
 
+
+def capture_source_scoped(
+    scope: ReadScope,
+    *,
+    title: str,
+    content: str,
+    kind: str = "note",
+    sensitivity: str = "private",
+    scopes_ops: list[str] | None = None,
+    principal_preview: str = "mcp",
+) -> CaptureResult:
+    """File raw material as a source and extract candidate proposals for review.
+
+    Governance boundary: this NEVER approves and NEVER writes canonical
+    knowledge. It creates a Source + SourceVersion + Proposal rows (status
+    "proposed") that sit in the human review queue; a person must approve each
+    candidate in the console before it becomes retrievable truth. Write
+    authority is gated exactly like REST `POST /api/v1/sources` (`sources:write`
+    via the same `has_scope` logic), and audit attributes the machine caller.
+    """
+    payload = SourceCreate(title=title, kind=kind, sensitivity=sensitivity, content=content)
+    with SessionLocal() as db:
+        ws = db.get(Workspace, scope.workspace_id)
+        if ws is None:
+            raise PermissionError("Unknown workspace")
+        actor = WorkspaceAccess(
+            workspace=ws,
+            principal=principal_preview,
+            role=scope.role,
+            actor_kind="token",
+            actor_id=None,
+            scopes=frozenset(scopes_ops) if scopes_ops is not None else None,
+        )
+        if not actor.has_scope("sources:write"):
+            raise PermissionError("This credential lacks scope sources:write")
+        source = create_source_with_proposals(db, payload, scope.workspace_id, actor=actor)
+        count = (
+            db.scalar(select(func.count(Proposal.id)).where(Proposal.source_id == source.id)) or 0
+        )
+        return CaptureResult(
+            source_id=source.id,
+            title=source.title,
+            proposal_count=count,
+            status="awaiting_review",
+        )
+
+
 read_only = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+# Intake is NOT read-only: it writes a source + candidate proposal rows. It is
+# still non-approving and non-canonical — no tool here can mint truth. Marked
+# honestly (read_only_hint=False) so a host does not treat it as a pure query.
+intake = ToolAnnotations(read_only_hint=False, open_world_hint=False)
 
 
 @mcp.tool(title="Get Brain status", annotations=read_only)
@@ -233,6 +295,23 @@ def list_pending_reviews(
 def inspect_brain_integrity() -> IntegrityResult:
     """List stale knowledge and possible conflicts without changing canonical records."""
     return inspect_brain_integrity_scoped(_scope())
+
+
+@mcp.tool(title="Capture a source for review", annotations=intake)
+def capture_source(
+    title: Annotated[str, Field(min_length=3, max_length=240)],
+    content: Annotated[str, Field(min_length=20, max_length=100_000)],
+    kind: Annotated[str, Field(pattern="^(note|research|interview|decision)$")] = "note",
+    sensitivity: Annotated[str, Field(pattern="^(private|internal|public)$")] = "private",
+) -> CaptureResult:
+    """Capture raw material as a source and extract candidate proposals for HUMAN review.
+
+    Never approves and never writes canonical knowledge — a person must approve
+    each candidate in the console before it becomes retrievable truth.
+    """
+    return capture_source_scoped(
+        _scope(), title=title, content=content, kind=kind, sensitivity=sensitivity
+    )
 
 
 def main() -> None:
