@@ -19,6 +19,7 @@ import json
 import logging
 import secrets
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
@@ -40,7 +41,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from .access import AccessDenied, resolve_workspace, token_preview
 from .database import Base, SessionLocal
-from .models import now_utc
+from .models import new_id, now_utc
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,11 @@ REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30  # 30 days
 AUTH_CODE_TTL_SECONDS = 60 * 10
 PENDING_TTL_SECONDS = 60 * 15
 SCOPE_DEFAULT = "brain:read"
+
+# Client user-agent for the in-flight /mcp request, captured by a thin ASGI
+# wrapper so a connection can be labelled (Antigravity, Cursor, …) instead of
+# only "some bearer". Empty when the transport did not report one.
+mcp_request_ua_var: ContextVar[str] = ContextVar("mcp_request_ua", default="")
 
 
 def _hash_secret(value: str) -> str:
@@ -119,6 +125,84 @@ class McpOAuthTokenRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class McpConnection(Base):
+    """One MCP client that has reached this Brain, with last-seen telemetry.
+
+    Covers BOTH auth shapes: OAuth-issued tokens (a registered client name) and
+    direct Bearer API keys (an agent like Antigravity sending a header). Without
+    this table a header-bearer client is invisible to a "connected apps" view,
+    because it never registers an OAuth client. Identity is the triple
+    (workspace, principal, client_id); client_id is "" for direct bearer, so a
+    stable agent user-agent disambiguates.
+    """
+
+    __tablename__ = "mcp_connections"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(String(32), index=True)
+    principal_preview: Mapped[str] = mapped_column(String(80))
+    role: Mapped[str] = mapped_column(String(20), default="member")
+    client_id: Mapped[str] = mapped_column(String(64), default="", index=True)
+    client_name: Mapped[str] = mapped_column(String(200), default="")
+    source_kind: Mapped[str] = mapped_column(String(20), default="api_key")  # oauth | api_key
+    user_agent: Mapped[str] = mapped_column(String(200), default="")
+    access_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_seen: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, index=True
+    )
+
+
+def note_connection(
+    principal: BrainPrincipal,
+    *,
+    client_id: str = "",
+    client_name: str = "",
+    source_kind: str = "api_key",
+) -> None:
+    """Record or refresh a client connection. Best-effort — never fails auth.
+
+    Called on every successful MCP token verification so the console can show
+    which agents are reaching the Brain, whichever credential shape they use.
+    """
+    try:
+        ua = (mcp_request_ua_var.get() or "")[:200]
+        with SessionLocal() as db:
+            row = db.scalar(
+                select(McpConnection).where(
+                    McpConnection.workspace_id == principal.workspace_id,
+                    McpConnection.principal_preview == principal.principal_preview,
+                    McpConnection.client_id == client_id,
+                )
+            )
+            now = now_utc()
+            if row is None:
+                db.add(
+                    McpConnection(
+                        id=new_id("mcpc"),
+                        workspace_id=principal.workspace_id,
+                        principal_preview=principal.principal_preview,
+                        role=principal.role,
+                        client_id=client_id,
+                        client_name=client_name,
+                        source_kind=source_kind,
+                        user_agent=ua,
+                        access_count=1,
+                        first_seen=now,
+                        last_seen=now,
+                    )
+                )
+            else:
+                row.role = principal.role
+                row.client_name = client_name or row.client_name
+                row.source_kind = source_kind
+                row.user_agent = ua or row.user_agent
+                row.access_count += 1
+                row.last_seen = now
+            db.commit()
+    except Exception:  # noqa: BLE001 — telemetry must never break an MCP call
+        log.debug("mcp connection note failed", exc_info=True)
+
+
 @dataclass(frozen=True)
 class BrainPrincipal:
     workspace_id: str
@@ -129,7 +213,10 @@ class BrainPrincipal:
 
 def resolve_brain_principal(db: Session, brain_token: str) -> BrainPrincipal:
     access = resolve_workspace(db, brain_token, None)
-    preview = token_preview(access.principal) if len(access.principal) > 12 else access.principal
+    # token_preview masks ALL lengths (short values become "abcd…"), so a raw
+    # credential never reaches a principal preview, an audit row, or a
+    # connection record — the preview must never be the usable secret.
+    preview = token_preview(access.principal)
     return BrainPrincipal(
         workspace_id=access.workspace.id,
         role=access.role,
@@ -205,6 +292,16 @@ class BrainTokenVerifier:
                         else row.expires_at
                     ).timestamp()
                 )
+                client_name = ""
+                client_row = db.get(McpOAuthClient, row.client_id)
+                if client_row is not None:
+                    client_name = client_row.client_name or ""
+                note_connection(
+                    principal,
+                    client_id=row.client_id,
+                    client_name=client_name,
+                    source_kind="oauth",
+                )
                 return access_token_from_principal(
                     token=token,
                     client_id=row.client_id,
@@ -224,6 +321,7 @@ class BrainTokenVerifier:
             log.exception("Brain token verification failed")
             return None
 
+        note_connection(principal, client_id="", client_name="", source_kind="api_key")
         return access_token_from_principal(
             token=token,
             client_id="brain-api-key",

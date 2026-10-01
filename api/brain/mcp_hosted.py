@@ -29,12 +29,13 @@ from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, Re
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl, Field
+from starlette.middleware import Middleware
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from .access import AccessDenied, ReadScope
 from .config import Settings, get_settings
-from .mcp_oauth import SCOPE_DEFAULT, BrainOAuthProvider
+from .mcp_oauth import SCOPE_DEFAULT, BrainOAuthProvider, mcp_request_ua_var
 from .mcp_server import (
     ask_brain_scoped,
     brain_status_scoped,
@@ -44,6 +45,32 @@ from .mcp_server import (
 )
 
 log = logging.getLogger(__name__)
+
+
+class _McpRequestContextASGI:
+    """Capture the request user-agent for connection telemetry.
+
+    This is the OUTERMOST middleware so the user-agent is set before the auth
+    middleware resolves the token and records a connection. Pure ASGI (not
+    BaseHTTPMiddleware) so the ContextVar reaches the verifier in the same task.
+    Reset on exit to avoid leaking a UA across requests in one task.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        ua = ""
+        for key, value in scope.get("headers", []):
+            if key == b"user-agent":
+                ua = value.decode("latin-1", "replace")[:200]
+                break
+        token = mcp_request_ua_var.set(ua)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            mcp_request_ua_var.reset(token)
+
 
 # Built once per process; streamable_http_app() must run before session_manager.
 _hosted_server: MCPServer | None = None
@@ -278,6 +305,9 @@ def install_hosted_mcp_routes(app) -> Any:
     # insert them so Authentication is outermost.
     for mw in reversed(list(asgi.user_middleware)):
         app.user_middleware.insert(0, mw)
+    # User-agent capture must run OUTERMOST — before the copied auth middleware
+    # resolves the token and records a connection — so label the request first.
+    app.user_middleware.insert(0, Middleware(_McpRequestContextASGI))
     # Rebuild stack next request.
     app.middleware_stack = None
     # MCP + OAuth routes before API and SPA catch-all.

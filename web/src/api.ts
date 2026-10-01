@@ -311,6 +311,20 @@ export type AuthUser = {
   display_name: string;
 };
 
+export type McpConnection = {
+  id: string;
+  client_id: string;
+  client_name: string;
+  source_kind: string;
+  principal_preview: string;
+  role: string;
+  user_agent: string;
+  access_count: number;
+  first_seen: string;
+  last_seen: string;
+  status: string;
+};
+
 export type LoginResult = {
   session_token: string;
   expires_at: string;
@@ -351,6 +365,7 @@ export const api = {
     clearToken();
   },
   me: () => request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/me"),
+  mcpConnections: () => request<McpConnection[]>("/api/v1/mcp/connections"),
   overview: () => request<Overview>("/api/v1/overview"),
   sources: () => request<Source[]>("/api/v1/sources"),
   sourceVersions: (id: string) => request<SourceVersion[]>(`/api/v1/sources/${id}/versions`),

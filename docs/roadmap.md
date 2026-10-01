@@ -36,6 +36,9 @@
 - [x] Hosted Streamable HTTP MCP at `/mcp` with OAuth 2.1 paste-token consent
       and dual Bearer (OAuth token or raw Brain API key). Read-only tools only;
       approval stays in the console. `BRAIN_PUBLIC_BASE_URL` for issuer/resource.
+- [x] MCP connection registry (`GET /api/v1/mcp/connections` + console
+      **Agents & MCP** view): see which clients reached a workspace across both
+      auth shapes, with last-seen/status and no credential exposure.
 
 ## M1 — trusted thin slice (implemented)
 

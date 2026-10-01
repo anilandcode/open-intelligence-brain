@@ -29,6 +29,7 @@ from .harness import Turn as TurnRow
 from .mcp_hosted import install_hosted_mcp_routes
 from .mcp_http import router as mcp_http_router
 from .mcp_oauth import (  # noqa: F401 — register OAuth tables on Base.metadata
+    McpConnection,
     McpOAuthClient,
     McpOAuthCode,
     McpOAuthPending,
@@ -66,6 +67,7 @@ from .schemas import (
     IntegrityRead,
     KnowledgeRead,
     KnowledgeRevisionRead,
+    McpConnectionRead,
     OverviewRead,
     ProactivityRead,
     ProactivityUpdate,
@@ -571,6 +573,52 @@ def revoke_workspace_token(
     audit_access(db, access, "token.revoked", f"Revoked token {token_id}")
     db.commit()
     return None
+
+
+@app.get("/api/v1/mcp/connections", response_model=list[McpConnectionRead])
+def list_mcp_connections(
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Which MCP clients have reached this workspace. Owner/admin only.
+
+    Telemetry only — never a credential. Covers BOTH auth shapes: OAuth-issued
+    clients (named) and direct-bearer agents such as Antigravity. `status`
+    reflects last-seen recency: active (<5m), idle (<24h), else stale.
+    """
+    require_scope(access, "admin")
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can view MCP connections",
+        )
+    rows = db.scalars(
+        select(McpConnection)
+        .where(McpConnection.workspace_id == access.workspace_id)
+        .order_by(McpConnection.last_seen.desc())
+    ).all()
+    now = datetime.now(UTC)
+    out: list[McpConnectionRead] = []
+    for r in rows:
+        last = r.last_seen.replace(tzinfo=UTC) if r.last_seen.tzinfo is None else r.last_seen
+        age = (now - last).total_seconds()
+        conn_status = "active" if age < 300 else ("idle" if age < 86400 else "expired")
+        out.append(
+            McpConnectionRead(
+                id=r.id,
+                client_id=r.client_id,
+                client_name=r.client_name,
+                source_kind=r.source_kind,
+                principal_preview=r.principal_preview,
+                role=r.role,
+                user_agent=r.user_agent,
+                access_count=r.access_count,
+                first_seen=r.first_seen,
+                last_seen=r.last_seen,
+                status=conn_status,
+            )
+        )
+    return out
 
 
 @app.get("/api/v1/overview", response_model=OverviewRead)

@@ -248,6 +248,23 @@ class TokenListRead(BaseModel):
     kind: str = "api_key"  # api_key | legacy_grant
 
 
+class McpConnectionRead(BaseModel):
+    """One MCP client that has reached this Brain (telemetry, no secrets)."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    client_id: str
+    client_name: str
+    source_kind: str  # oauth | api_key
+    principal_preview: str
+    role: str
+    user_agent: str
+    access_count: int
+    first_seen: datetime
+    last_seen: datetime
+    status: str  # active | idle | expired
+
+
 class EventCreate(BaseModel):
     """One inbound message, as a channel or an agent would report it.
 

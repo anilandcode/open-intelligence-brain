@@ -1,7 +1,7 @@
 import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, ArrowRight, ArrowUpDown, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Layers3, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
-import type { ChatResult, Draft, DraftDetail, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, Overview, Proposal, Source, SourceVersion } from "./api";
+import type { ChatResult, Draft, DraftDetail, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
@@ -1302,6 +1302,64 @@ export function AuditView({ overview, integrity }: { overview: Overview; integri
         </ol>
       </section>
       {selectedEvent && <Detail title={selectedEvent.action.replaceAll(".", " ")} onClose={() => setSelectedId(null)}><p>{selectedEvent.detail}</p><div className="detail-stat"><span>Recorded</span><strong>{new Date(selectedEvent.created_at).toLocaleString()}</strong></div><div className="detail-stat"><span>Event ID</span><code>{selectedEvent.id}</code></div></Detail>}
+    </div>
+  );
+}
+
+export function AgentsView({ connections }: { connections: McpConnection[] }) {
+  return (
+    <div className="panel-card">
+      <div className="card-heading">
+        <div>
+          <span className="section-kicker">Connected apps</span>
+          <h2>MCP clients</h2>
+          <p className="section-sub">Agents that have reached this Brain. Tools are read-only — approval stays here in the console.</p>
+        </div>
+        <Brain size={21} />
+      </div>
+      {connections.length ? (
+        <div className="overview-table-scroll">
+          <table className="overview-table">
+            <thead>
+              <tr>
+                <th scope="col">Client</th>
+                <th scope="col">Auth</th>
+                <th scope="col">Principal</th>
+                <th scope="col">Role</th>
+                <th scope="col" className="num">Calls</th>
+                <th scope="col">Last seen</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connections.map((c) => {
+                const label =
+                  c.client_name ||
+                  (c.user_agent ? c.user_agent.split(" ")[0] : "") ||
+                  (c.source_kind === "oauth" ? "OAuth client" : "Direct bearer");
+                return (
+                  <tr key={c.id}>
+                    <td>
+                      <strong>{label}</strong>
+                      {c.user_agent ? <small style={{ display: "block", color: "var(--muted-foreground)" }}>{c.user_agent}</small> : null}
+                    </td>
+                    <td>{c.source_kind === "oauth" ? "OAuth" : "API key"}</td>
+                    <td><code>{c.principal_preview}</code></td>
+                    <td>{c.role}</td>
+                    <td className="num">{c.access_count}</td>
+                    <td>{timeAgo(c.last_seen)}</td>
+                    <td>{c.status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <EmptyState icon={<Brain size={26} />} title="No MCP clients yet">
+          Add this Brain’s <code>/mcp</code> URL to an agent (Antigravity, Cursor, Claude) and call a tool. A connection appears here the first time a client authenticates.
+        </EmptyState>
+      )}
     </div>
   );
 }

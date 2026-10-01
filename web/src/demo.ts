@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection } from "./api";
+import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -18,6 +18,7 @@ export function createDemoClient(): BrainClient {
   const revisions = new Map<string, KnowledgeRevision[]>(knowledge.map(k => [k.id, [{ id: `${k.id}-r1`, knowledge_id: k.id, revision: 1, statement: k.statement, rationale: k.rationale, source_id: k.source_id, source_version_id: `${k.source_id}-v1`, source_span_id: null, source_excerpt: k.source_excerpt, change_note: "Sample approval", approved_at: k.approved_at }]]));
   const interviews: InterviewSessionDetail[] = [{ id: "sample-interview-1", workspace_id: "sample-workspace", title: "A better first customer week", topic: "Onboarding", person: "Sample product lead", audience: "Customer success", outcome: "Understand handoff decisions", status: "active", source_id: null, created_at: date(), completed_at: null, question_count: 1, response_count: 0, extracted_count: 0, questions: [{ id: "sample-question-1", session_id: "sample-interview-1", ordinal: 1, question_text: "What makes a customer handoff work well?", response_text: "", extracted: false, created_at: date() }] }];
   const drafts: DraftDetail[] = [];
+  const connections: McpConnection[] = [{ id: "sample-mcp-1", client_id: "", client_name: "", source_kind: "api_key", principal_preview: "owner…demo", role: "owner", user_agent: "Antigravity/1.0 (sample)", access_count: 3, first_seen: date(), last_seen: date(), status: "active" }];
   const events = [{ id: id("event"), action: "knowledge.approved", detail: "Synthetic onboarding knowledge approved for this demo", created_at: date() }];
   function event(action: string, detail: string) { events.unshift({ id: id("event"), action, detail, created_at: date() }); }
   function find<T extends {id: string}>(items: T[], key: string): T { const item = items.find(x => x.id === key); if (!item) throw new Error("Sample record not found."); return item; }
@@ -65,6 +66,7 @@ export function createDemoClient(): BrainClient {
     chat: async question => {const terms=question.toLowerCase().split(/\W+/).filter(x=>x.length>3);const atoms=knowledge.filter(k=>terms.some(t=>k.statement.toLowerCase().includes(t)));return {answer:atoms.length?`Sample cited retrieval:\n\n${atoms.map(k=>k.statement).join("\n\n")}`:"No matching approved sample knowledge. Try asking about onboarding, customer owners, or decisions.",grounded:atoms.length>0,citations:atoms.map(k=>({knowledge_id:k.id,source_id:k.source_id,source_title:k.source_title,excerpt:k.source_excerpt}))};},
     exportUrl: "", // Workspace export is intentionally absent from the demo shell.
     interviews: async()=>copy(interviews), interview: async key=>copy(find(interviews,key)),
+    mcpConnections: async()=>copy(connections),
     createInterview: async payload=>{const s:InterviewSessionDetail={...payload,id:id("interview"),workspace_id:"sample-workspace",topic:payload.topic??"",person:payload.person??"",audience:payload.audience??"",outcome:payload.outcome??"",status:"active",source_id:null,created_at:date(),completed_at:null,question_count:0,response_count:0,extracted_count:0,questions:[]};interviews.unshift(s);return copy(s);},
     addQuestion: async(key,text)=>{const s=find(interviews,key);const q={id:id("question"),session_id:key,ordinal:++s.question_count,question_text:text,response_text:"",extracted:false,created_at:date()};s.questions.push(q);return copy(q);},
     submitResponse: async(key,qid,text)=>{const s=find(interviews,key);const q=find(s.questions,qid);if(!q.response_text)s.response_count++;q.response_text=text;if(!q.extracted)s.extracted_count++;q.extracted=true;capture({title:`${s.title} — response`,kind:"interview",sensitivity:"private",content:text});return copy(q);},

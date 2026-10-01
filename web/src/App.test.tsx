@@ -48,6 +48,7 @@ describe("App", () => {
       if (url.includes("/chat")) return mockJson({ answer: knowledge.statement, grounded: true, citations: [{ knowledge_id: knowledge.id, source_id: source.id, source_title: source.title, excerpt: knowledge.source_excerpt }] });
       if (url.includes("/studio/interviews")) return mockJson([]);
       if (url.includes("/studio/drafts")) return mockJson([]);
+      if (url.includes("/mcp/connections")) return mockJson([]);
       return mockJson({});
     }));
   });

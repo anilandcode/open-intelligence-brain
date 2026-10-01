@@ -21,12 +21,22 @@ read-only tools, human approval → canonical, no write-memory authority.
 - Env: `BRAIN_MCP_HOSTED` (default true), `BRAIN_PUBLIC_BASE_URL` (issuer +
   resource base; set to the Cloud Run HTTPS origin in production).
 - Stdio MCP and legacy `/api/v1/mcp/*` remain.
+- **Connection registry** (`mcp_connections` + `GET /api/v1/mcp/connections`):
+  which MCP clients have reached a workspace (owner/admin only, telemetry only
+  — never a credential). Covers BOTH auth shapes — OAuth-issued clients and
+  direct-bearer agents such as Antigravity — with principal, role, call count,
+  last-seen and an `active`/`idle`/`expired` status. The console's **Agents &
+  MCP** view renders it. User-agent is captured by an outermost ASGI middleware
+  so a connection can name its client; principal previews are always
+  `token_preview`-masked so a raw secret never lands in the registry.
 
 ### Docs / tests
 
 - `docs/agent-integrations.md` documents the three surfaces.
 - `api/tests/test_mcp_hosted.py` covers discovery, Bearer tools, and the full
   register → authorize → consent → token exchange path.
+- `api/tests/test_mcp_connections.py` covers the connection registry: bearer
+  visibility, credential-leak protection, per-client idempotency, admin gate.
 
 ## 1.1.0 — Human identity (v1.1, part 1)
 

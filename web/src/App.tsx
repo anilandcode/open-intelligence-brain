@@ -1,4 +1,4 @@
-import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, CaptureDialog } from "./LivePages";
+import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
@@ -6,7 +6,7 @@ import { createDemoClient } from "./demo";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
-import { api, Draft, Integrity, InterviewSession, Knowledge, Overview, Proposal, Source, clearToken, getToken, hasToken, setToken, Unauthorized } from "./api";
+import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getToken, hasToken, setToken, Unauthorized } from "./api";
 
 type NavItem = { id: View; label: string; icon: typeof Home; future?: boolean };
 
@@ -34,7 +34,7 @@ const operationsNav: NavItem[] = [
 const developerNav: NavItem[] = [
   { id: "connectors", label: "Connectors", icon: Boxes, future: true },
   { id: "api-keys", label: "API Keys", icon: KeyRound, future: true },
-  { id: "agents", label: "Agents & MCP", icon: Brain, future: true },
+  { id: "agents", label: "Agents & MCP", icon: Brain },
   { id: "requests", label: "Requests", icon: Activity, future: true },
   { id: "audit", label: "Audit", icon: Activity },
 ];
@@ -423,6 +423,7 @@ export default function App() {
   const [integrity, setIntegrity] = useState<Integrity | null>(null);
   const [interviews, setInterviews] = useState<InterviewSession[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [mcpConnections, setMcpConnections] = useState<McpConnection[]>([]);
   const [loadedClient, setLoadedClient] = useState<typeof api | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -466,7 +467,7 @@ export default function App() {
   useEffect(() => {
     const sync = () => {
       const next = readRoute();
-      if (next.screen !== route.screen) { setLoading(true); setError(""); setLoadedClient(null); setOverview(null); setSources([]); setProposals([]); setKnowledge([]); setIntegrity(null); setInterviews([]); setDrafts([]); }
+      if (next.screen !== route.screen) { setLoading(true); setError(""); setLoadedClient(null); setOverview(null); setSources([]); setProposals([]); setKnowledge([]); setIntegrity(null); setInterviews([]); setDrafts([]); setMcpConnections([]); }
       setRoute(next);
     };
     window.addEventListener("hashchange", sync);
@@ -486,8 +487,8 @@ export default function App() {
   async function refresh() {
     try {
       setError("");
-      const [overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData] = await Promise.all([
-        client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts(),
+      const [overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData, mcpConnectionData] = await Promise.all([
+        client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts(), client.mcpConnections(),
       ]);
       setOverview(overviewData);
       setSources(sourceData);
@@ -496,6 +497,7 @@ export default function App() {
       setIntegrity(integrityData);
       setInterviews(interviewData);
       setDrafts(draftData);
+      setMcpConnections(mcpConnectionData);
       setLoadedClient(client);
     } catch (requestError) {
       recordRequestError(requestError);
@@ -530,8 +532,8 @@ export default function App() {
     // load must not reach the API at all.
     if ((tokenRequired && route.screen !== "demo") || !["console", "demo"].includes(route.screen)) return;
     let active = true;
-    Promise.all([client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts()])
-      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData]) => {
+    Promise.all([client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts(), client.mcpConnections()])
+      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData, mcpConnectionData]) => {
         if (!active) return;
         setOverview(overviewData);
         setSources(sourceData);
@@ -540,6 +542,7 @@ export default function App() {
         setIntegrity(integrityData);
         setInterviews(interviewData);
         setDrafts(draftData);
+        setMcpConnections(mcpConnectionData);
         setLoadedClient(client);
       })
       .catch((requestError: unknown) => {
@@ -673,7 +676,8 @@ export default function App() {
               {view === "activate" && <ActivateView knowledge={knowledge} onNavigate={navigate} onNotice={setNotice} />}
               {view === "analytics" && <AnalyticsPreview overview={overview} knowledge={knowledge} integrity={integrity} />}
               {view === "audit" && overview && <AuditView overview={overview} integrity={integrity} />}
-              {(["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
+              {view === "agents" && <AgentsView connections={mcpConnections} />}
+              {(["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>
           )}
         </main>

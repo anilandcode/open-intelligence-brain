@@ -114,6 +114,8 @@ api/                  FastAPI domain, services, and tests
     services.py        Domain logic (extraction, approval, search, backup)
     retrieval.py       Dialect-aware ranked search (FTS5 / tsvector GIN) + index versioning
     mcp_http.py        MCP HTTP transport (binds the caller's ReadScope into tools)
+    mcp_hosted.py      Hosted Streamable HTTP MCP at /mcp + OAuth routes
+    mcp_oauth.py       OAuth 2.1 provider + MCP connection telemetry
     studio.py         Interview session and draft data models
     studio_api.py     Intelligence Studio API (interviews, drafts, sections)
     studio_schemas.py Pydantic schemas for Studio
