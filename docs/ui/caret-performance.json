@@ -1,0 +1,10 @@
+[
+  {
+    "width": 1440,
+    "metrics": "{\"lcp\":276,\"cls\":0.000009589112835165894,\"maxEvent\":72,\"eventCount\":8}"
+  },
+  {
+    "width": 390,
+    "metrics": "{\"lcp\":216,\"cls\":0,\"maxEvent\":56,\"eventCount\":6}"
+  }
+]

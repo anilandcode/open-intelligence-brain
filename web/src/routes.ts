@@ -6,10 +6,44 @@ export type View = typeof liveViews[number] | typeof previewViews[number];
 export type Screen = "landing" | "login" | "console" | "demo";
 export type Route = { screen: Screen; view: View; record?: string };
 
-/** Non-secret build flag. Console release keeps landing off; later website release sets VITE_SHOW_LANDING=true. */
+/** Non-secret build flag. Console release keeps landing off; website release sets VITE_SHOW_LANDING=true. */
 export const SHOW_LANDING = import.meta.env.VITE_SHOW_LANDING === "true";
 
-const landingHashes = new Set(["#/", "#how-it-works", "#principles", "#agents", "#landing-main"]);
+/** Absolute origin of the live console (Cloud Run). Set on the Vercel marketing build so Open Brain CTAs leave the site. */
+export const CONSOLE_URL = (import.meta.env.VITE_CONSOLE_URL ?? "").replace(/\/$/, "");
+
+/** Absolute origin of the public website (Vercel). Set on the console build so login can link back home. */
+export const SITE_URL = (import.meta.env.VITE_SITE_URL ?? "").replace(/\/$/, "");
+
+/** Open the real console login — external when CONSOLE_URL is set on the marketing site. */
+export function openConsole(hash: string = "#/login") {
+  const target = hash.startsWith("#") ? hash : `#/${hash.replace(/^\//, "")}`;
+  if (CONSOLE_URL) {
+    window.location.href = `${CONSOLE_URL}/${target}`;
+    return;
+  }
+  goTo("login");
+}
+
+/** Public site home — external when SITE_URL is set and landing is not bundled. */
+export function openSiteHome() {
+  if (SITE_URL) {
+    window.location.href = `${SITE_URL}/`;
+    return;
+  }
+  if (SHOW_LANDING) goTo("landing");
+}
+
+const landingHashes = new Set([
+  "#/",
+  "#how-it-works",
+  "#principles",
+  "#agents",
+  "#landing-main",
+  "#product",
+  "#provenance",
+  "#recall",
+]);
 
 export function readRoute(): Route {
   const [hash, query = ""] = window.location.hash.split("?");

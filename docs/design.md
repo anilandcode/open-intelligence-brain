@@ -1,47 +1,73 @@
-# Digital Brain design system
+# Open Brain — current design system
 
-## Direction
+Updated 1 October 2026. This is the authoritative visual specification. Read it with [design structure](design-structure.md), [handoff](design-handoff.md), [capability matrix](interface.md) and [validation](ui-validation.md). Current source and these specifications supersede the older AgenticX, wallpaper/inset-console and square-console experiments.
 
-The public page adapts the supplied Cartesia study's warm paper, forest accent, editorial type hierarchy, section rhythm, restrained borders and paired calls to action. Its section sequence explains Brain's own product and trust model. No Cartesia customer claims, original service integrations, analytics scripts or study-only fonts are shipped. The hero is an original generated network illustration.
+## Accepted direction
 
-The console follows the user's Supermemory references: near-black neutral surfaces, gray borders, compact grouped navigation, wide data lists and centered setup panels. Following the user's correction, large green areas were removed. Blue marks navigation, focus and primary actions. Green is reserved for small labelled health indicators. Supermemory endpoints, benchmarks, pricing gates and compliance claims are not copied.
+The website preserves the supplied [Caret composition](https://caret-clone.vercel.app/): actual HTML wrapper/grid structure, numbered bands, continuous hairlines, patterned gutters, clipped illustrations, colorful pixel-textured scenery and faded footer lettering. The reference repository is `anilandcode/caret-clone`, particularly `clone/en/index.html`, `design/DESIGN.md` and `design/style-guide.html`. Open Brain copy and original artwork replace Caret product claims and illustrations. Do not reduce this to generic cards using a similar palette.
 
-## Tokens
+The console uses the reviewed Supermemory spatial layout: compact sidebar and header, quiet near-black content surfaces, subtle rounding and blue navigation selection. It fills the browser. It has no wallpaper, outer inset, desktop frame or shell blur. Scenic media belongs to website illustrations only.
 
-| Token | Dark console | Light console |
-|---|---|---|
-| Canvas | `#09090b` | `#f7f7f8` |
-| Surface | `#101012` | `#ffffff` |
-| Raised field | `#161619` | `#f1f1f3` |
-| Border | `#27272d` | `#dedee3` |
-| Main text | `#ececef` | `#202024` |
-| Muted text | `#a0a0aa` | `#686870` |
-| Navigation/focus blue | `#599df8` | `#216bcb` |
-| Primary button | `#216bcb` with white text | `#216bcb` with white text |
-| Health green | `#8ccda5` | `#287548` |
+Primary controls are monochrome. Green is limited to small semantic health/status indicators. Do not restore the earlier forest-green theme. Public branding is the text wordmark **Open Brain**, without an adjacent logo icon, including mobile navigation and illustrated console headers. Functional Brain symbols inside knowledge illustrations remain. The actual console/access branding was not changed by the landing-wordmark correction.
 
-Landing paper is `#f4f4f1`; forest is `#004e23`; verdant is `#309d4b`. Landing defaults to light; console defaults to dark with a browser appearance preference and light alternative. Public landing currently retains its light editorial theme.
+## Palette and shape
 
-Fonts are self-hosted Inter for interface text, Source Serif 4 for public editorial emphasis, and IBM Plex Mono for code/metadata. No font CDN request is needed. `product.css` scopes console palette overrides with `data-surface="console"` and theme overrides with `data-theme`. Existing working layout styles remain underneath the product layer.
+| Role | Website | Dark console | Light console |
+| --- | --- | --- | --- |
+| Canvas | `#09090b` | `#0a0a0a` | `#ffffff` |
+| Content surface | `#18181b` base; illustrations use console tokens | `#0c0c0c` | `#ffffff` |
+| Secondary surface | `#27272a` | `#141414` | `#f4f4f5` |
+| Sidebar | — | `#101010` | `#fafafa` |
+| Main text | `#fafafa` | `#fafafa` | `#09090b` |
+| Muted text | `#9f9fa9` | `#a0a0a0` | `#65656e` |
+| Primary control | `#e4e4e7`, dark text | `#e4e4e7`, dark text | `#18181b`, light text |
+| Border | white 10%; grid borders `#27272a` | white 8% | `#e4e4e7` |
+| Selected navigation | — | `#83b6ff` on `#102031` | existing light blue tokens |
 
-## Layout and components
+Shared values live in `web/src/console-theme.css`. Panels/dialogs use **10px**, fields/controls **6px**, navigation **7px**, compact badges **4px** in both console themes and corresponding public console illustrations. Shared table/header corners meet cleanly; inner row boundaries may stay square. The outer console shell, sidebar and header have **0px** corners. Status dots stay circular. Website CTA buttons and glass pills are intentionally pill-shaped; do not apply console corners indiscriminately to the public composition.
 
-Desktop sidebar: 224px. Header: 56px. Gutters scale from 20–48px. Setup previews center at a maximum of 960px. The sidebar becomes a drawer below 880px; forms stack and tables scroll inside their containers. The header collapses search/capture buttons to labelled icons on narrow screens. The account region remains reachable in short viewports.
+Dark is the console default. Preserve the working browser-stored light appearance preference.
 
-Brain and Sources use compact list tables with evidence/version drawers. Inbox retains queue, editor, exact evidence and approval actions. Playground gives the composer and answer their own full-width panels. Studio retains interview/draft tabs. Activate assembles and exports existing approved context, with an explicit no-generation explanation.
+## Typography — restored from the original HTML
 
-Shared styling covers buttons, fields, tabs, labels, panels, empty states, status notices, and native dialogs. The graph uses a lightweight SVG with pointer pan, keyboard controls, zoom, filters, a legend and a list alternative. Public knowledge-flow lines animate through CSS; reduced-motion preferences disable animation. The embedded public preview is the actual React demo UI, not a fabricated workspace screenshot.
+Verified self-hosted fonts: Figtree 400/500/600 for website text, Inter for display headings and the console interface, Source Serif 4 for occasional editorial emphasis, IBM Plex Mono for metadata. Figtree's open-font source is [erikdkennedy/figtree](https://github.com/erikdkennedy/figtree); do not redistribute the mirror's study-only fonts or add a font CDN.
 
-## Console-first release flag
+| Website role | Size / line height | Weight |
+| --- | --- | --- |
+| Hero heading | 48/48px desktop; 40/40px below 768px | 450, Inter with available-font fallback |
+| Hero supporting paragraph | 18/28px, including mobile | 400 |
+| Hero/final CTA | 16/20px; minimum height 40px | 500 |
+| Navigation CTA | 14/20px; minimum height 36px | 500 |
+| Desktop navigation | 14px | 500 |
+| Example chips | 14/20px; minimum height 32px | 500 |
+| Feature paragraphs | 16/24px below 768px; 18/24.75px from 768px | 400 |
+| Human-control paragraphs | 16/22px below 768px; 18/24.75px from 768px | 400 |
+| Final CTA paragraph | 16/24px below 768px; 18/24.75px from 768px | 400 |
+| Feature headings | 24px desktop; 21px tablet; 22px below 768px | 500 |
+| Copy action / inline feature link | 14px | 500 |
+| Footer description / footer metadata | 14px / 12px | 400 |
 
-`VITE_SHOW_LANDING` is a non-secret frontend build flag (default **false**).
+These values restore the original `text-base`, `text-sm font-medium`, and `md:text-lg md:leading-snug` hierarchy. Do not reintroduce the 10–12px regular-weight primary buttons or 13–14px marketing paragraphs. Small, intentionally cropped console illustrations have their own compact UI metadata scale; do not enlarge every diagram label as if it were marketing prose. The actual console retains its compact 13px base, 20px page headings, 12px page descriptions and table content. This landing correction did not change console typography.
 
-- **false / unset (console release):** unauthenticated visitors and explicit landing hashes (`#/`, section anchors) resolve to branded login. Authenticated visitors open Overview. Demo routes stay available with synthetic data.
-- **true (later website release):** public landing is enabled.
+## Media and composition
 
-Do not put tokens or secrets in any `VITE_*` variable.
+Four original backgrounds: warm panoramic hero, square hills/clouds, peach/lilac/ice-blue pixel review scene, yellow/blue textured source/context/revision crops. Native masters, licensing/provenance and responsive dimensions are recorded in [the port report](ui/caret-html-port.md). Delivery files live in `web/public/website/`; masters are archived under `docs/ui/media/`. AVIF/WebP variants are downsampled, never claimed as native 4K. Earlier dusk/mist masters are archival, not current artwork.
 
-## Content and trust
+Render text, citations, windows, lines, cards, docks and pills separately in React/SVG. Never bake UI text into artwork. Slash, dot and chevron patterns remain scoped to the website. Scenic strip wording identifies a **synthetic workflow illustration**, not the real console's background. Public source/context windows consume shared console color/corner tokens and use opaque surfaces, compact web headers/sidebar navigation and blue selection; do not restore Mac window dots, pale frosted editors or oversized corners.
 
-Source material is evidence. Proposed claims and working memory are interpretations. Approved knowledge is a human decision. These categories keep distinct names, statuses and views. Availability is stated per feature; previews cannot pretend to connect services, issue keys, save policies, run agents or analyze real users. Public examples contain synthetic content only.
+## Extension rules
 
+- Preserve the section sequence, wrapper hierarchy, proportions and shared borders documented in [design-structure.md](design-structure.md).
+- Extend existing primitives and tokens. Edit the owning rules rather than adding another broad override stylesheet. Keep the public `.brain-site` layer scoped and console-specific rules scoped to the console.
+- Do not mount the full console on the public homepage. Use lightweight synthetic compositions. Demo interactions never call production APIs or consume private records/tokens.
+- Preserve labels, keyboard tab behavior, evidence disclosures, copy success/failure feedback and native mobile-menu focus restoration.
+- Keep images dimensioned, responsive and decorative; hero eager/high priority, below-fold images lazy. Respect reduced motion and provide opaque blur fallbacks. Use Google Modern Web Guidance with Baseline defaults and progressive enhancement.
+- Retain semantic tables and contained horizontal scrolling. Navigation scrolls independently while the account area remains reachable.
+- Backend failures stay failures; never substitute demo data. Read [architecture](architecture.md) before changing approval, citations, authentication or persistence.
+- New capabilities must use the existing Live/Preview boundaries in [interface.md](interface.md). Design work does not authorize backend additions or deployment.
+
+## Validation references
+
+The latest landing typography/wordmark proof is [desktop](ui/screenshots/landing-console-review/brain-typography-desktop.png) and [feature band](ui/screenshots/landing-console-review/brain-typography-features.png). The [landing review](ui/landing-console-review.md) records public preview alignment and typography checks. [Rounded Overview](ui/screenshots/supermemory-console/rounded-overview.png) records the accepted console rounding. Original matched Caret comparisons establish composition, but precede the final typography and preview-shell corrections; do not treat them as exact current screenshots.
+
+See [ui-validation.md](ui-validation.md) for what passed and what remains unverified. No Google Cloud deployment, new authentication or native desktop software is part of this design baseline.

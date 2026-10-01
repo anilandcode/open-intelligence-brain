@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -60,11 +60,31 @@ describe("App", () => {
   it("loads the dashboard and navigates to approved knowledge", async () => {
     const user = userEvent.setup();
     render(<App />);
-    expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Brain" }));
     expect(screen.getByRole("heading", { name: "Your Brain" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: new RegExp(knowledge.statement) }));
     expect(screen.getByRole("heading", { name: knowledge.statement })).toBeInTheDocument();
+  });
+
+  it("keeps rail search and secondary Settings navigation usable in the isolated demo", async () => {
+    window.location.hash = "/demo/overview";
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Recently approved");
+    expect(fetch).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Search or jump to… ⌘K" }));
+    const search = screen.getByRole("dialog");
+    await user.type(within(search).getByRole("textbox"), "Settings");
+    await user.click(within(search).getByRole("option", { name: /Settings/ }));
+    expect(screen.getByRole("heading", { name: "General" })).toBeInTheDocument();
+    const navigation = screen.getByRole("navigation", { name: "Settings navigation" });
+    await user.click(within(navigation).getByRole("button", { name: "Team Preview" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Team" })).toBeInTheDocument();
+    expect(screen.getByText("Settings for team are not connected in this UI phase.")).toBeInTheDocument();
+    await user.click(within(navigation).getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Overview" })).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("asks a grounded question and renders evidence", async () => {
@@ -95,20 +115,24 @@ describe("App", () => {
     expect(await screen.findByText("Initial approval")).toBeInTheDocument();
   });
 
-  it("shows the branded login gate without a workspace request", async () => {
+  it("shows the public landing and token gate without a workspace request", async () => {
     window.sessionStorage.clear();
     const user = userEvent.setup();
     render(<App />);
 
-    // Console-first builds keep the public landing off (VITE_SHOW_LANDING unset).
-    expect(screen.getByRole("heading", { name: "Welcome to your Brain." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /A shared brain for/i })).toBeInTheDocument();
+    // The page must not disclose the workspace it is guarding, so nothing is
+    // requested and none of the workspace's own copy is on screen.
     expect(fetch).not.toHaveBeenCalled();
-    expect(screen.queryByRole("heading", { name: "Good thinking should compound." })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
     expect(screen.queryByText("Personal Brain")).toBeNull();
 
+    // A presented token is what lets the workspace load.
+    await user.click(screen.getAllByRole("button", { name: "Open your Brain" })[0]);
+    expect(screen.getByRole("heading", { name: "Welcome to your Brain." })).toBeInTheDocument();
     await user.type(screen.getByLabelText("Access token"), "test-token");
     await user.click(screen.getByRole("button", { name: "Open the Brain" }));
-    expect(await screen.findByRole("heading", { name: "Good thinking should compound." })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(window.sessionStorage.getItem(TOKEN_KEY)).toBe("test-token");
   });
 
@@ -143,10 +167,51 @@ describe("App", () => {
     expect(await screen.findByText("Recently approved")).toBeInTheDocument();
   });
 
-  it("routes explicit landing hashes to login when landing is disabled", () => {
-    window.history.replaceState(null, "", "#/");
-    render(<App />);
-    expect(screen.getByRole("heading", { name: "Welcome to your Brain." })).toBeInTheDocument();
+  it("keeps public home accessible when a token is already present", () => {
+    window.history.replaceState(null,"","#/");render(<App/>);
+    expect(screen.getByRole("heading", {name:/A shared brain for/})).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps landing section links public and supports keyboard workflow tabs", async () => {
+    window.history.replaceState(null,"","#/"); const user=userEvent.setup(); render(<App/>);
+    await user.click(screen.getByRole("link", {name:/Inside the console/}));
+    await waitFor(()=>expect(window.location.hash).toBe("#product"));
+    expect(screen.getByRole("heading", {name:/A shared brain for/})).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", {name:/Capture/}));
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", {name:/Review/})).toHaveAttribute("aria-selected","true");
+    expect(screen.getByRole("tabpanel", {name:/Capture|Review|Reuse/})).toHaveTextContent("awaiting approval");
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tabpanel", {name:/Capture|Review|Reuse/})).toHaveTextContent("Approved knowledge");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("copies synthetic landing context and gives a usable failure message", async () => {
+    window.history.replaceState(null,"","#/"); const user=userEvent.setup(); render(<App/>);
+    const copy=vi.spyOn(navigator.clipboard,"writeText");
+    await user.click(screen.getByRole("button", {name:"Copy sample context"}));
+    expect(await screen.findByText("Sample context copied.")).toBeInTheDocument();
+    expect(copy).toHaveBeenCalledWith(expect.stringContaining("Synthetic example"));
+    copy.mockRejectedValueOnce(new Error("Copy denied"));
+    await user.click(screen.getByRole("button", {name:"Copy sample context"}));
+    expect(await screen.findByText(/Copy is unavailable here/)).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalled(); copy.mockRestore();
+  });
+
+  it("switches public recall examples and exposes exact synthetic evidence without a workspace request", async () => {
+    window.history.replaceState(null,"","#/"); const user=userEvent.setup(); render(<App/>);
+    await user.click(screen.getByRole("tab", {name:"Context"}));
+    await user.keyboard("{End}");
+    expect(screen.getByRole("tab", {name:"History"})).toHaveAttribute("aria-selected","true");
+    const history = screen.getByRole("tabpanel", {name:"History"});
+    expect(history).toHaveTextContent("Send a written recap after every customer interview.");
+    await user.click(within(history).getByText("Research practice · v2"));
+    expect(history.querySelector("details")).toHaveAttribute("open");
+    expect(history).toHaveTextContent("A written recap helps the whole team check what they heard before making a decision.");
+    await user.keyboard("{Tab}");
+    await user.click(screen.getByRole("tab", {name:"Evidence"}));
+    expect(screen.getByRole("tabpanel",{name:"Evidence"})).toHaveTextContent("Record the rationale behind each product decision.");
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -207,6 +272,12 @@ describe("App", () => {
     await user.keyboard("{Escape}");
     expect(opener).toHaveFocus();
     expect(opener).toHaveAttribute("aria-expanded", "false");
+    await user.click(opener);
+    await user.click(screen.getByRole("button", {name:"Search or jump to… ⌘K"}));
+    const search = screen.getByRole("dialog", {name:"Search and jump to"});
+    fireEvent(search, new Event("cancel", {bubbles:true, cancelable:true}));
+    expect(opener).toHaveFocus();
+    expect(screen.queryByRole("dialog", {name:"Search and jump to"})).toBeNull();
   });
 
 });

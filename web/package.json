@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:site": "VITE_SHOW_LANDING=true vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "build:site": "VITE_SHOW_LANDING=true VITE_CONSOLE_URL=https://digital-brain-168827050380.us-central1.run.app tsc -b && VITE_SHOW_LANDING=true VITE_CONSOLE_URL=https://digital-brain-168827050380.us-central1.run.app vite build",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "VITE_SHOW_LANDING=true vitest run"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.3.0",
@@ -18,7 +20,8 @@
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "@fontsource/figtree": "^5.3.0"
   },
   "devDependencies": {
     "@eslint/js": "latest",

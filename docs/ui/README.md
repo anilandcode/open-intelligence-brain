@@ -1,31 +1,49 @@
-# UI review screenshots
+# Current design evidence — 1 October 2026
 
-Synthetic demo data only. Console screenshots use the revised charcoal/gray/blue palette.
+Start with [design system](../design.md), [structure](../design-structure.md), [handoff](../design-handoff.md) and [current validation](../ui-validation.md).
 
-| Surface | Screenshot |
+Latest landing: [restored typography and text-only wordmark](screenshots/landing-console-review/brain-typography-desktop.png), [feature typography](screenshots/landing-console-review/brain-typography-features.png), [preview alignment report](landing-console-review.md). Current console shape: [rounded Overview](screenshots/supermemory-console/rounded-overview.png). The full Caret comparison set below precedes typography/preview refinements; console layout screenshots precede final rounding. Use them as milestone evidence, not exact current appearance.
+
+---
+
+# Historical console layout review
+
+The [Supermemory console layout correction](supermemory-console-layout.md) supersedes earlier console screenshots. Current: [Overview](screenshots/supermemory-console/overview.png), [Brain](screenshots/supermemory-console/brain.png), [Connectors](screenshots/supermemory-console/connectors.png), [Settings](screenshots/supermemory-console/settings.png), [mobile](screenshots/supermemory-console/mobile.png), [light](screenshots/supermemory-console/light.png).
+
+# Faithful HTML landing structure reference
+
+See [the port report](caret-html-port.md) for the current website, four-width comparisons, section overlays and asset provenance. [Current full-page comparison](screenshots/caret-port/comparison-full-1440.png). Screenshots below document the preceding console milestone; its older website shots are superseded by the port.
+
+# Caret UI review screenshots
+
+Historical milestone, synthetic records only. Older screenshots remain historical artifacts.
+
+[Website desktop](screenshots/caret-landing-hero.png) · [full page](screenshots/caret-landing-1440.png) · [mobile](screenshots/caret-landing-390.png) · [768px](screenshots/caret-landing-768.png) · [1920px](screenshots/caret-landing-1920.png) · [login](screenshots/caret-login-1920.png)
+
+[Mobile Brain](screenshots/caret-brain-mobile.png) · [Light Brain](screenshots/caret-brain-light-1440.png) · [short desktop](screenshots/caret-brain-short.png)
+
+| Console surface | Historical Caret screenshot |
 |---|---|
-| Landing | [Light desktop](screenshots/landing-light-1440.jpg) |
-| Login | [Light desktop](screenshots/login-light-1440.jpg) |
-| Overview | [Dark desktop](screenshots/overview-dark-1440.jpg) |
-| Inbox | [Dark desktop](screenshots/inbox-dark-1440.jpg) |
-| Brain | [Dark desktop](screenshots/brain-dark-1440.jpg), [light desktop](screenshots/brain-light-1440.jpg), [mobile](screenshots/brain-dark-390.jpg) |
-| Playground | [Dark desktop](screenshots/ask-dark-1440.jpg) |
-| Studio | [Dark desktop](screenshots/studio-dark-1440.jpg) |
-| Activate | [Dark desktop](screenshots/activate-dark-1440.jpg) |
-| Sources | [Dark desktop](screenshots/sources-dark-1440.jpg) |
-| Analytics | [Dark desktop](screenshots/analytics-dark-1440.jpg) |
-| Audit | [Dark desktop](screenshots/audit-dark-1440.jpg) |
-| Import | [Dark desktop](screenshots/import-dark-1440.jpg) |
-| Workspaces | [Preview](screenshots/workspaces-dark-1440.jpg) |
-| Working Memory | [Preview](screenshots/working-memory-dark-1440.jpg) |
-| Brain Graph | [Preview](screenshots/graph-dark-1440.jpg) |
-| Connectors | [Preview](screenshots/connectors-dark-1440.jpg) |
-| API Keys | [Preview](screenshots/api-keys-dark-1440.jpg) |
-| Agents & MCP | [Preview](screenshots/agents-dark-1440.jpg) |
-| Requests | [Preview](screenshots/requests-dark-1440.jpg) |
-| Insights | [Preview](screenshots/insights-dark-1440.jpg) |
-| Turns | [Preview](screenshots/turns-dark-1440.jpg) |
-| Proactivity | [Preview](screenshots/proactivity-dark-1440.jpg) |
-| Settings | [Desktop](screenshots/settings-dark-1440.jpg), [mobile](screenshots/settings-dark-390.jpg) |
+| overview | [Caret desktop](screenshots/caret-overview-1440.png) |
+| inbox | [Caret desktop](screenshots/caret-inbox-1440.png) |
+| brain | [Caret desktop](screenshots/caret-brain-1440.png) |
+| ask | [Caret desktop](screenshots/caret-ask-1440.png) |
+| studio | [Caret desktop](screenshots/caret-studio-1440.png) |
+| activate | [Caret desktop](screenshots/caret-activate-1440.png) |
+| sources | [Caret desktop](screenshots/caret-sources-1440.png) |
+| analytics | [Caret desktop](screenshots/caret-analytics-1440.png) |
+| audit | [Caret desktop](screenshots/caret-audit-1440.png) |
+| import | [Caret desktop](screenshots/caret-import-1440.png) |
+| workspaces | [Caret desktop](screenshots/caret-workspaces-1440.png) |
+| working-memory | [Caret desktop](screenshots/caret-working-memory-1440.png) |
+| graph | [Caret desktop](screenshots/caret-graph-1440.png) |
+| connectors | [Caret desktop](screenshots/caret-connectors-1440.png) |
+| api-keys | [Caret desktop](screenshots/caret-api-keys-1440.png) |
+| agents | [Caret desktop](screenshots/caret-agents-1440.png) |
+| requests | [Caret desktop](screenshots/caret-requests-1440.png) |
+| insights | [Caret desktop](screenshots/caret-insights-1440.png) |
+| turns | [Caret desktop](screenshots/caret-turns-1440.png) |
+| proactivity | [Caret desktop](screenshots/caret-proactivity-1440.png) |
+| settings | [Caret desktop](screenshots/caret-settings-1440.png) |
 
-See [validation notes](../ui-validation.md) and [capability matrix](../interface.md) for tested behavior and live/preview boundaries.
+See [validation](../ui-validation.md), [capability matrix](../interface.md), [design system](../design.md), [responsive console checks](caret-responsive-checks.json) and [public checks](caret-public-checks.json).

@@ -91,8 +91,11 @@ COPY web/ ./
 # at runtime instead.
 # VITE_SHOW_LANDING is a non-secret UI flag. Console-first releases leave it
 # false so unauthenticated visitors see branded login, not the marketing site.
+# VITE_SITE_URL is the public Vercel origin so console login can link back home.
 ARG VITE_SHOW_LANDING=false
+ARG VITE_SITE_URL=
 ENV VITE_SHOW_LANDING=$VITE_SHOW_LANDING
+ENV VITE_SITE_URL=$VITE_SITE_URL
 RUN npm run build
 
 # ------------------------------------------------------------ runtime stage

@@ -1,0 +1,22 @@
+{
+  "buildCommand": "npm run build:site",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "build": {
+    "env": {
+      "VITE_SHOW_LANDING": "true",
+      "VITE_CONSOLE_URL": "https://digital-brain-168827050380.us-central1.run.app"
+    }
+  },
+  "rewrites": [
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}

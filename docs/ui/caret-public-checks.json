@@ -1,0 +1,50 @@
+[
+  {
+    "route": "landing",
+    "width": 390,
+    "scroll": 390,
+    "viewport": 390
+  },
+  {
+    "route": "landing",
+    "width": 768,
+    "scroll": 768,
+    "viewport": 768
+  },
+  {
+    "route": "landing",
+    "width": 1440,
+    "scroll": 1440,
+    "viewport": 1440
+  },
+  {
+    "route": "landing",
+    "width": 1920,
+    "scroll": 1920,
+    "viewport": 1920
+  },
+  {
+    "route": "login",
+    "width": 390,
+    "scroll": 390,
+    "viewport": 390
+  },
+  {
+    "route": "login",
+    "width": 768,
+    "scroll": 768,
+    "viewport": 768
+  },
+  {
+    "route": "login",
+    "width": 1440,
+    "scroll": 1440,
+    "viewport": 1440
+  },
+  {
+    "route": "login",
+    "width": 1920,
+    "scroll": 1920,
+    "viewport": 1920
+  }
+]

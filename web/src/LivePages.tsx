@@ -1,3 +1,4 @@
+import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, ArrowRight, ArrowUpDown, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Layers3, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import type { ChatResult, Draft, DraftDetail, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, Overview, Proposal, Source, SourceVersion } from "./api";
@@ -90,82 +91,31 @@ export function OverviewView({
   overview: Overview; proposals: Proposal[]; knowledge: Knowledge[]; integrity: Integrity | null; onNavigate: (view: View) => void;
 }) {
   const attentionCount = (integrity?.stale_count ?? 0) + (integrity?.conflict_count ?? 0);
-  const extracted = overview.canonical + overview.pending_reviews;
-  const approvedShare = extracted ? overview.canonical / extracted : 0;
-  // Order-independent reductions: neither list's server ordering is assumed.
-  const oldestWaiting = proposals.length
-    ? proposals.reduce((oldest, item) => (item.created_at < oldest.created_at ? item : oldest))
-    : null;
-  const latestEvent = overview.recent_activity.length
-    ? overview.recent_activity.reduce((newest, item) => (item.created_at > newest.created_at ? item : newest))
-    : null;
   return (
     <div className="overview-layout">
-      <section className="hero-card">
-        <div className="hero-copy">
-          <div className="hero-signals">
-            <span className="signal-pill"><span /> {attentionCount ? `${attentionCount} integrity signals` : "Knowledge system healthy"}</span>
-            {/* Which engine produced the proposals below. A silent fallback to
-                local extraction is how a deployment ends up believing it is
-                running on a model when it is not, so it sits next to the
-                existing health signal where it is read, not below the fold. */}
-            <span
-              className={`signal-pill signal-pill--engine engine-note--${overview.engine.name}${
-                overview.engine.degraded ? " engine-note--degraded" : ""
-              }`}
-              title={overview.engine.detail}
-            >
-              <span className="engine-dot" aria-hidden="true" />
-              {overview.engine.degraded
-                ? "not learning from new sources"
-                : `${overview.engine.name} extraction`}
-            </span>
-          </div>
-          <h2 className="hero-title">
-            <span className="hero-title-figure">{overview.canonical.toLocaleString()}</span>
-            <span className="hero-title-unit">{overview.canonical === 1 ? "approved atom" : "approved atoms"}</span>
-            <em>{overview.pending_reviews ? `${overview.pending_reviews} still waiting on your call.` : "Nothing is waiting on you."}</em>
-          </h2>
-          <p>Every statement here traces back to a source excerpt. Nothing becomes knowledge until a person approves the exact wording.</p>
+      <section className="workspace-brief" aria-label="Workspace guide">
+        <div className="workspace-brief-copy">
+          <span className="section-kicker">Sources → review → knowledge</span>
+          <h2>{overview.sources ? "Keep your knowledge moving." : "Build your first memory."}</h2>
+          <p>Capture an original source, review the proposed meaning, then reuse approved knowledge with its evidence.</p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={() => onNavigate(proposals.length ? "inbox" : "sources")}>{proposals.length ? "Review next proposal" : "Capture your first source"}<ArrowRight size={17} /></button>
-            <button className="light-button" onClick={() => onNavigate("ask")}><MessageSquareText size={17} /> Ask the Brain</button>
+            <button className="primary-button" onClick={() => onNavigate(proposals.length ? "inbox" : "import")}>{proposals.length ? "Review next proposal" : "Capture your first source"}<ArrowRight size={14}/></button>
+            <button className="secondary-button" onClick={() => onNavigate("ask")}><MessageSquareText size={14}/>Ask the Brain</button>
           </div>
         </div>
-        <aside className="hero-ratio" aria-label="Approval ratio">
-          <span className="hero-ratio-value">{Math.round(approvedShare * 100)}<small>%</small></span>
-          <span className="hero-ratio-label">of {extracted.toLocaleString()} approved and pending claims approved</span>
-          <span className="hero-ratio-bar" role="img" aria-label={`${Math.round(approvedShare * 100)} percent of approved and pending claims approved`}>
-            <span style={{ width: `${Math.round(approvedShare * 100)}%` }} />
-          </span>
-          <dl className="hero-facts">
-            <div><dt>Oldest waiting</dt><dd>{oldestWaiting ? timeAgo(oldestWaiting.created_at) : "—"}</dd></div>
-            <div><dt>Latest activity</dt><dd>{latestEvent ? timeAgo(latestEvent.created_at) : "—"}</dd></div>
-          </dl>
-        </aside>
+        <div className="workspace-steps">
+          <button onClick={() => onNavigate("sources")}><span>01</span><div><strong>Capture original material</strong><small>{overview.sources.toLocaleString()} sources · immutable versions</small></div><ChevronRight size={14}/></button>
+          <button onClick={() => onNavigate("inbox")}><span>02</span><div><strong>Review the interpretation</strong><small>{overview.pending_reviews.toLocaleString()} waiting · human approval required</small></div><ChevronRight size={14}/></button>
+          <button onClick={() => onNavigate("brain")}><span>03</span><div><strong>Recall approved knowledge</strong><small>{overview.canonical.toLocaleString()} approved · citations preserved</small></div><ChevronRight size={14}/></button>
+          <div className="workspace-engine" title={overview.engine.detail}><span className="status-dot" aria-hidden="true"/>Engine: {overview.engine.name}{overview.engine.degraded ? " · not learning from new sources" : overview.engine.available ? " · available" : " · unavailable"}</div>
+        </div>
       </section>
-
       <section className="metric-strip" aria-label="Workspace summary">
-        <Metric label="Approved knowledge" value={overview.canonical} detail="Ready to reuse" icon={<CheckCircle2 />} tone="green" share={approvedShare} shareNote={`${Math.round(approvedShare * 100)}% of ${extracted} approved and pending claims`} />
-        <Metric label="Waiting for review" value={overview.pending_reviews} detail="Needs judgement" icon={<Clock3 />} tone="amber" share={extracted ? 1 - approvedShare : 0} shareNote={`${Math.round((1 - approvedShare) * 100)}% still unreviewed`} />
-        <Metric label="Source material" value={overview.sources} detail="Immutable originals" icon={<Boxes />} tone="blue" />
-        <Metric label="Integrity signals" value={attentionCount} detail={attentionCount ? "Needs attention" : "No issues found"} icon={<ShieldCheck />} tone={attentionCount ? "violet" : ""} />
+        <Metric label="Approved knowledge" value={overview.canonical} detail="Ready to reuse" icon={<CheckCircle2/>} tone=""/>
+        <Metric label="Waiting for review" value={overview.pending_reviews} detail="Human approval required" icon={<Clock3/>} tone=""/>
+        <Metric label="Source material" value={overview.sources} detail="Originals preserved" icon={<Boxes/>} tone=""/>
+        <Metric label="Integrity signals" value={attentionCount} detail={integrity ? attentionCount ? "Needs attention" : "No issues found" : "Status unavailable"} icon={<ShieldCheck/>} tone=""/>
       </section>
-
-      <section className="pipeline-card panel-card">
-        <div className="card-heading">
-          <div><span className="section-kicker">Knowledge pipeline</span><h2>How the Brain gets smarter</h2><p className="section-sub">Each stage keeps the original evidence attached to the claim it produced.</p></div>
-          <span className="updated-label"><span /> {overview.engine.name === "Synthetic demo" ? "Sample workspace" : "Live workspace"}</span>
-        </div>
-        <div className="pipeline">
-          <button onClick={() => onNavigate("sources")}><span className="pipeline-icon"><Archive size={19} /></span><span><small>01 · Capture</small><strong>{overview.sources} sources</strong><em>Original material stays intact</em></span></button>
-          <ChevronRight size={18} className="pipeline-arrow" aria-hidden="true" />
-          <button onClick={() => onNavigate("inbox")}><span className="pipeline-icon pipeline-icon--amber"><Inbox size={19} /></span><span><small>02 · Judge</small><strong>{overview.pending_reviews} proposals</strong><em>Humans decide what is true</em></span></button>
-          <ChevronRight size={18} className="pipeline-arrow" aria-hidden="true" />
-          <button onClick={() => onNavigate("brain")}><span className="pipeline-icon pipeline-icon--green"><Brain size={19} /></span><span><small>03 · Compound</small><strong>{overview.canonical} canonical atoms</strong><em>Approved context gets reused</em></span></button>
-        </div>
-      </section>
-
       <section className="work-grid">
         <div className="panel-card queue-preview">
           <div className="card-heading"><div><span className="section-kicker">Needs judgement</span><h2>Review queue</h2><p className="section-sub">Nothing enters the canon until a person approves the exact wording.</p></div><button className="text-button" onClick={() => onNavigate("inbox")}>Open inbox <ArrowRight size={15} /></button></div>
@@ -695,7 +645,7 @@ export function AskView() {
         <section className="answer-card panel-card">
           <header><span className={result.grounded ? "grounded-badge" : "ungrounded-badge"}>{result.grounded ? <ShieldCheck size={15} /> : <CircleDot size={15} />}{result.grounded ? "Grounded answer" : "Not enough approved knowledge"}</span></header>
           <p className="answer-text">{result.answer}</p>
-          {result.citations.length > 0 && <div className="citations"><h2>Evidence used</h2>{result.citations.map((citation, index) => <details key={`${citation.knowledge_id}-${index}`}><summary><span>{index + 1}</span>{citation.source_title}</summary><blockquote>{citation.excerpt}</blockquote><code>{citation.knowledge_id}</code><a href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}>Inspect original source</a></details>)}</div>}
+          {result.citations.length > 0 && <div className="citations"><h2>Evidence used</h2>{result.citations.map((citation, index) => <EvidenceCitation key={`${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
         </section>
       )}
     </div>

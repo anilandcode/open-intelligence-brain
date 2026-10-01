@@ -1,0 +1,156 @@
+/* Shared Caret tokens. Neutral controls; color carries meaning, not decoration. */
+:root[data-surface="console"],:root[data-surface="public"]{--radius:10px;--radius-card:10px;--radius-sm:7px;--radius-lg:14px;--sidebar-width:224px;--topbar-height:56px;--canvas:#fff;--surface:#fff;--surface-soft:#f4f4f5;--surface-muted:#e4e4e7;--ink:#09090b;--ink-soft:#3f3f46;--muted:#65656e;--muted-soft:#71717b;--line:#e4e4e7;--line-soft:#ededf0;--line-strong:#c7c7ce;--line-pill:#d2d2d8;--sidebar:#fafafa;--sidebar-soft:#e4e4e7;--sidebar-text:#27272a;--sidebar-muted:#65656e;--sidebar-line:#e4e4e7;--accent:#18181b;--accent-dark:#3f3f46;--accent-soft:#e4e4e7;--blue:#216bcb;--blue-soft:#eaf2fe;--green:#287548;--green-soft:#edf5ef;--surface-base:var(--canvas);--surface-card:var(--surface);--surface-raised:var(--surface);--surface-hover:var(--surface-soft);--surface-sunken:#f4f4f5;--fg-primary:var(--ink);--fg-secondary:var(--ink-soft);--fg-muted:var(--muted);--fg-subtle:var(--muted-soft);--fg-faint:var(--muted-soft);--pill-bg:var(--surface-soft);--pill-bg-active:var(--accent-soft);--pill-border:var(--line);--pill-border-active:var(--line-strong)}
+:root[data-surface="console"][data-theme="dark"],:root[data-surface="public"]{color-scheme:dark;--canvas:#09090b;--surface:#18181b;--surface-soft:#27272a;--surface-muted:#323238;--ink:#fafafa;--ink-soft:#d4d4d8;--muted:#9f9fa9;--muted-soft:#9696a1;--line:#ffffff1a;--line-soft:#ffffff0f;--line-strong:#ffffff26;--line-pill:#ffffff26;--sidebar:#18181b;--sidebar-soft:#fafafa14;--sidebar-text:#e4e4e7;--sidebar-muted:#9f9fa9;--sidebar-line:#ffffff1a;--accent:#e4e4e7;--accent-dark:#fff;--accent-soft:#fafafa14;--blue:#9bbcff;--blue-soft:#182438;--green:#8ccda5;--green-soft:#16251d;--amber:#e4bf83;--amber-soft:#302617;--danger:#ff989a;--danger-soft:#351b22;--surface-raised:#27272a;--surface-hover:#27272a;--surface-sunken:#121215;--surface-skeleton:#27272a;--pill-border-active:#ffffff26;--shadow-lg:0 20px 60px #0005}
+body{font-family:Figtree,Inter,system-ui,sans-serif}.app-shell h1,.app-shell h2,.access-title{font-family:Inter,system-ui,sans-serif}.app-shell h1{font-weight:450}.app-shell :is(.panel-card,.hero-card,.pipeline-card,.preview-panel,.answer-card,.source-card,.studio-card,.knowledge-table,.source-table,.metric-strip){border-radius:var(--radius-card);background:var(--surface)}.app-shell :is(input,textarea,select){border-radius:var(--radius-sm)}.app-shell .primary-button,.app-shell .file-preview,:root[data-surface="public"] .primary-button{background:var(--accent);border-color:var(--accent);color:var(--canvas)}.app-shell .primary-button:hover,:root[data-surface="public"] .primary-button:hover{background:var(--accent-dark);border-color:var(--accent-dark);color:var(--canvas)}.app-shell .sidebar{background:var(--sidebar);border-radius:0;min-height:0}.app-shell .topbar{background:var(--surface);border-radius:0}.app-shell .nav-group button.active{background:var(--accent-soft);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-strong)}.app-shell .nav-group button.active svg{color:var(--ink)}.app-shell .brand-mark{background:var(--surface-soft);color:var(--ink)}.app-shell .hero-card{background:var(--surface)!important}.app-shell .queue-row.is-selected,.app-shell .queue-list>button.active{background:var(--accent-soft)}.app-shell .workspace-switcher:hover{background:var(--surface-soft)}.app-shell .knowledge-table,.app-shell .source-table{container-type:inline-size;overflow:auto;scrollbar-width:thin}.app-shell :is(.knowledge-table,.source-table) thead{position:sticky;top:0;z-index:1;background:var(--surface-soft)}.app-shell .metric-strip,.app-shell .metric-item{background:var(--surface)!important}.app-shell .grounded-badge{background:var(--surface-soft);color:var(--ink-soft);border-color:var(--line)}.app-shell .evidence-citation{background:var(--surface-soft)}.app-shell .evidence-citation summary{color:var(--ink)}.app-shell .section-kicker{color:var(--muted)}.access-gate{background:#09090b!important;color:#fafafa}.access-card{background:#18181b;border:1px solid #ffffff1a;border-radius:14px;box-shadow:0 20px 80px #0004}.access-title{font:400 38px/1.15 Inter,sans-serif!important;letter-spacing:-.05em}.access-copy{color:var(--muted)}.access-back{color:var(--ink-soft)}.access-card .brand-mark{background:var(--surface-soft);color:var(--ink)}.access-card input{background:var(--surface-soft);border-color:var(--line-strong);color:var(--ink)}.app-shell .graph-canvas{background:var(--surface)}.app-shell .preview-page{container-type:inline-size}.app-shell .preview-row:hover{background:var(--surface-hover)}.app-shell .setting-row,.app-shell .import-form{background:var(--surface)}
+/* The web console is an edge-to-edge workspace, with the website's neutral surfaces. */
+:root[data-surface="console"] body{background:var(--canvas);background-image:none}
+.app-shell{margin:0;min-height:100dvh;width:100%;border:0;border-radius:0;background:var(--canvas);box-shadow:none;isolation:isolate}
+.app-shell .sidebar{height:100dvh;top:0;background:var(--sidebar);border-radius:0;backdrop-filter:none}
+.app-shell .topbar{top:0;background:var(--surface);border-radius:0;backdrop-filter:none}
+.app-shell .main-column{min-width:0;background:var(--canvas);border-radius:0}
+/* Console layout measured from the authenticated Supermemory reference.
+   Only console tokens change; the public Caret composition keeps its palette. */
+:root[data-surface="console"]{--sidebar-width:240px;--topbar-height:48px;--nav-row:33px}
+:root[data-surface="console"][data-theme="dark"]{--canvas:var(--console-dark-canvas);--surface:var(--console-dark-surface);--surface-soft:var(--console-dark-secondary);--surface-muted:#222;--sidebar:var(--console-dark-sidebar);--sidebar-soft:#191919;--muted:var(--console-dark-muted);--muted-soft:#929292;--sidebar-muted:#a0a0a0;--line:var(--console-dark-border);--line-soft:#ffffff0c;--sidebar-line:#ffffff0a;--surface-raised:#141414;--surface-hover:#141414;--surface-sunken:#101010;--surface-border:var(--line);--blue:var(--console-dark-blue);--blue-soft:var(--console-dark-active)}
+:root[data-surface="console"] body{font-family:Inter,system-ui,sans-serif;font-size:13px}
+.app-shell .sidebar{padding:8px;gap:8px}
+.app-shell .sidebar>.brand{padding:0 8px;min-height:36px;gap:7px;flex-shrink:0}
+.app-shell .sidebar>.brand strong{font-size:15px;font-weight:600;letter-spacing:-.04em}
+.app-shell .sidebar>.brand>svg{color:var(--ink);flex-shrink:0}
+.app-shell .rail-command{width:100%;min-width:0;height:36px;min-height:36px;flex:0 0 36px;padding:0 10px;background:var(--canvas);border-color:var(--line);font-size:12px;color:var(--muted)}
+.app-shell .rail-command>span,.app-shell .rail-command>kbd{display:block}
+.app-shell .rail-command kbd{background:var(--surface-soft);border:0;font-size:10px;padding:2px 4px}
+.app-shell .sidebar>nav{gap:18px;margin:0;padding:4px 0;scrollbar-width:thin}
+.app-shell .nav-group>.nav-label{font:9px/14px "IBM Plex Mono",monospace;color:var(--muted-soft);padding:0 8px 6px;letter-spacing:.08em}
+.app-shell .nav-group:first-child>.nav-label,.app-shell .nav-group:last-child>.nav-label{display:none}
+.app-shell .nav-group button{min-height:33px;height:33px;padding:0 8px;gap:9px;font-size:12px;font-weight:400;color:var(--sidebar-muted)}
+.app-shell .nav-group button.active{background:var(--blue-soft);color:var(--blue);box-shadow:none;font-weight:500}
+.app-shell .nav-group button.active svg{color:var(--blue)}
+.app-shell .nav-group button svg{width:15px;height:15px}
+.app-shell .nav-preview{border:0;font-size:8px;padding:0 3px;color:var(--muted-soft)}
+.app-shell .nav-count{min-width:18px;height:18px;background:var(--surface-soft);color:var(--ink-soft);font-size:10px}
+.app-shell .sidebar-footer{padding:6px 0 0;gap:2px;flex-shrink:0}
+.app-shell .rail-status,.app-shell .rail-account{background:none;border:0;padding:5px 8px;min-height:34px;gap:8px}
+.app-shell .rail-status strong,.app-shell .rail-account strong{font-size:10px;font-weight:500}
+.app-shell .rail-status small,.app-shell .rail-account small{font-size:9px}
+.app-shell .rail-status>svg{width:12px;height:12px;margin-left:auto}
+.app-shell .rail-account .workspace-avatar{width:20px;height:20px;background:var(--surface-soft);color:var(--ink-soft);font-size:9px;border:1px solid var(--line)}
+.app-shell .topbar{height:48px;min-height:48px;padding-inline:24px;background:var(--canvas)}
+.app-shell .topbar-start{gap:12px}
+.app-shell .workspace-switcher{padding:4px 0;gap:7px;font-size:12px;white-space:nowrap}
+.app-shell .workspace-switcher strong{font-size:12px;font-weight:500}
+.app-shell .workspace-switcher .workspace-avatar{width:17px;height:17px;font-size:9px;background:var(--blue-soft);color:var(--blue)}
+.app-shell .workspace-mode{padding:1px 4px;border:1px solid var(--line);font-size:9px;color:var(--muted)}
+.app-shell .workspace-switcher>svg{transform:rotate(90deg);color:var(--muted);width:10px}
+.app-shell .topbar-crumbs{font-size:11px;gap:12px;color:var(--muted)}
+.app-shell .capture-button{height:30px;font-size:11px;padding:0 10px;background:var(--surface-soft)}
+.app-shell .theme-button,.app-shell .mobile-search-button{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--line);background:var(--surface-soft);color:var(--ink);padding:0;flex-shrink:0}
+.app-shell #main-content{padding:24px 24px 48px;min-width:0;width:100%;box-sizing:border-box}
+.app-shell #main-content[data-layout="narrow"]{max-width:1024px;margin-inline:auto}
+.app-shell #main-content>.page-heading{max-width:none;margin-bottom:20px;align-items:center}
+.app-shell .page-heading h1{font-size:20px;font-weight:600;line-height:30px;letter-spacing:-.025em}
+.app-shell .page-heading p{font-size:12px;line-height:19px;margin-top:2px}
+.app-shell .preview-page,.app-shell .preview-page.narrow-page,.app-shell .overview-layout{max-width:none;width:100%;margin:0}
+.app-shell .preview-banner{padding:8px 10px;background:var(--surface);border-color:var(--line);font-size:10px;gap:8px}
+.app-shell .preview-banner svg{width:13px;height:13px;color:var(--muted)}
+.app-shell :is(.primary-button,.secondary-button){min-height:32px;padding:6px 11px;font-size:11px;gap:6px}
+.app-shell :is(.primary-button,.secondary-button) svg{width:14px;height:14px}
+.app-shell :is(.search-field,.filter-chip,.segmented){min-height:32px;font-size:12px}
+.app-shell :is(.search-field input,.preview-toolbar select){min-height:32px;font-size:12px}
+.app-shell .brain-toolbar{padding:0 0 14px;background:none;gap:8px}
+.app-shell .brain-toolbar .segmented{background:var(--surface);padding:2px}
+.app-shell .brain-list-heading{padding:10px 14px;background:var(--surface);border:1px solid var(--line);border-bottom:0}
+.app-shell .card-heading{padding:16px;gap:12px}
+.app-shell .card-heading h2{font-size:14px;font-weight:500}
+.app-shell .section-kicker{font-size:9px;letter-spacing:.06em}
+.app-shell .section-sub{font-size:11px;line-height:17px;margin-top:4px}
+.app-shell :is(.knowledge-table,.source-table,.overview-table) th{background:var(--surface);font-size:9px;padding-block:11px;color:var(--muted);font-weight:400}
+.app-shell :is(.knowledge-table,.source-table,.overview-table) td{padding-block:12px;font-size:12px;border-color:var(--line-soft)}
+.app-shell :is(.knowledge-table,.source-table) thead{background:var(--surface)}
+.app-shell .preview-panel>header{min-height:44px;padding:12px 16px}
+.app-shell .preview-panel h2{font-size:13px;font-weight:500}
+.app-shell .preview-table-head{background:var(--surface);font-size:9px;padding-block:11px}
+.app-shell .preview-row{min-height:52px;padding:12px 16px}
+.app-shell[data-view="connectors"] .preview-toolbar .search-field{flex:0 1 240px;width:240px;min-width:200px;margin-left:auto}
+.app-shell .preview-toolbar .tabs{margin-bottom:0}
+.app-shell .preview-empty{min-height:280px}
+.app-shell .tabs{padding:3px;background:var(--surface);gap:2px}
+.app-shell .tabs button{padding:6px 10px;font-size:11px;box-shadow:none}
+.app-shell .tabs button.active,.app-shell .tabs button[aria-selected="true"]{background:var(--surface-soft);box-shadow:none;color:var(--ink)}
+/* Setup panel and real workspace summaries replace decorative dashboard cards. */
+.app-shell .workspace-brief{order:1;display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.4fr);gap:32px;padding:24px;border:1px solid var(--line);background:var(--surface-soft);align-items:center}
+.app-shell .workspace-brief-copy h2{font-size:20px;line-height:1.3;font-weight:500;letter-spacing:-.035em;margin:12px 0 8px}
+.app-shell .workspace-brief-copy p{font-size:12px;line-height:1.7;color:var(--muted);max-width:330px;margin:0 0 20px}
+.app-shell .workspace-brief .hero-actions{display:flex;flex-wrap:wrap;gap:8px}
+.app-shell .workspace-steps{border:1px solid var(--line);background:var(--canvas);min-width:0}
+.app-shell .workspace-steps>button{display:flex;align-items:center;gap:16px;width:100%;padding:16px;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);color:var(--ink)}
+.app-shell .workspace-steps>button:hover{background:var(--surface-hover)}
+.app-shell .workspace-steps>button>span{font:10px "IBM Plex Mono",monospace;color:var(--muted)}
+.app-shell .workspace-steps>button>div{display:grid;gap:5px;min-width:0;flex:1}
+.app-shell .workspace-steps strong{font-size:12px;font-weight:500}
+.app-shell .workspace-steps small{font-size:10px;color:var(--muted);line-height:1.5}
+.app-shell .workspace-steps svg{color:var(--muted)}
+.app-shell .workspace-engine{display:flex;align-items:center;gap:7px;padding:12px 16px;font-size:10px;line-height:1.5;color:var(--muted)}
+.app-shell .metric-strip{grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;background:transparent!important;border:0;order:2}
+.app-shell .metric-item{min-height:100px;padding:14px;display:block;box-shadow:none;border-color:var(--line);transform:none}
+.app-shell .metric-item:hover{transform:none;box-shadow:none}
+.app-shell .metric-item>.metric-icon{display:none}
+.app-shell .metric-item>div{display:grid;grid-template-rows:auto auto auto;gap:8px}
+.app-shell .metric-item:not(:has(.metric-share))>div::after{display:none}
+.app-shell .metric-value{font:500 24px/1 Inter,sans-serif;letter-spacing:-.04em}
+.app-shell .metric-label{font:9px/1.5 "IBM Plex Mono",monospace;letter-spacing:.04em}
+.app-shell .metric-foot{font-size:10px;line-height:1.5}
+.app-shell .metric-foot .status-dot{display:none}
+.app-shell .work-grid{order:3;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px}
+.app-shell .work-grid .overview-table-scroll{max-height:360px}
+.app-shell .work-grid :is(.queue-preview,.recent-preview){padding:0;gap:0}
+.app-shell .card-heading .section-kicker{margin:0 0 7px}
+:root[data-surface="console"] .primary-button,:root[data-surface="console"] .file-preview{background:var(--accent);border-color:var(--accent);color:var(--canvas)}
+:root[data-surface="console"] .primary-button:hover{background:var(--accent-dark);border-color:var(--accent-dark);color:var(--canvas)}
+/* Settings replaces the primary rail, matching the reference's secondary navigation. */
+.app-shell .sidebar>.console-settings-nav{gap:2px}
+.app-shell .console-settings-nav>button{display:flex;align-items:center;gap:8px;min-height:33px;padding:0 8px;width:100%;background:none;border:0;color:var(--sidebar-muted);font:400 12px Inter,sans-serif;text-align:left}
+.app-shell .console-settings-nav>button:hover{background:var(--sidebar-soft)}
+.app-shell .console-settings-nav>button.active{background:var(--blue-soft);color:var(--blue)}
+.app-shell .console-settings-nav>button small{font-size:8px;margin-left:auto;color:var(--muted)}
+.app-shell .console-settings-nav>.nav-label{margin-top:20px;margin-bottom:6px;padding:0 8px;font:9px "IBM Plex Mono",monospace;letter-spacing:.08em;color:var(--muted-soft);text-transform:uppercase}
+.app-shell .console-settings-nav>.settings-back{color:var(--ink);margin-bottom:5px}
+.app-shell .settings-back svg{transform:rotate(180deg)}
+@media(max-width:1200px){.app-shell .work-grid{grid-template-columns:1fr}}
+@media(max-width:880px){
+ .app-shell .sidebar{width:min(240px,82vw)}
+ .app-shell .sidebar-close{top:12px}
+ .app-shell .sidebar>.brand{padding-right:32px}
+ .app-shell .topbar{padding-inline:12px}
+ .app-shell .topbar-start{gap:8px}
+ .app-shell .topbar-crumbs{display:none}
+ .app-shell #main-content{padding:22px 16px 40px}
+ .app-shell .workspace-brief{grid-template-columns:1fr;padding:18px;gap:18px}
+ .app-shell .workspace-brief-copy p{max-width:560px}
+ .app-shell .metric-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .app-shell .brain-toolbar{padding:0 0 12px}
+}
+@media(max-width:520px){
+ .app-shell .workspace-switcher strong{max-width:120px;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+ .app-shell .workspace-mode,.app-shell .workspace-switcher>svg{display:none!important}
+ .app-shell .capture-button{width:30px;padding:0;font-size:0;justify-content:center}
+ .app-shell .capture-button svg{width:16px}
+ .app-shell .topbar-actions{gap:5px}
+ .app-shell .workspace-brief-copy h2{font-size:18px}
+ .app-shell .workspace-steps>button{padding:14px;gap:12px}
+}
+
+/* Subtle Supermemory console rounding; the outer workspace remains full-screen. */
+:root[data-surface="console"]{--radius:8px;--radius-card:var(--console-panel-radius);--radius-xs:var(--console-badge-radius);--radius-sm:var(--console-control-radius);--radius-lg:12px;--radius-pill:999px;--pill-radius:999px}
+:root[data-surface="console"] .app-shell :is(.workspace-brief,.workspace-steps,.panel-card,.preview-panel,.metric-item,.knowledge-table,.source-table,.answer-card,.source-card,.studio-card,.review-queue,.review-editor,.evidence-panel,.ask-composer,.graph-canvas){border-radius:var(--console-panel-radius);overflow:hidden}
+:root[data-surface="console"] .app-shell :is(button,input,textarea,select,.search-field,.segmented,.tabs,.preview-banner,.evidence-citation,.knowledge-evidence){border-radius:var(--console-control-radius)}
+:root[data-surface="console"] :is(dialog,.detail-drawer){border-radius:var(--console-panel-radius)}
+:root[data-surface="console"] .app-shell :is(.nav-group button,.console-settings-nav>button){border-radius:var(--console-nav-radius)}
+:root[data-surface="console"] .app-shell :is(.workspace-avatar,.workspace-mode,.type-chip,.status-pill,.nav-preview,kbd){border-radius:var(--console-badge-radius)}
+:root[data-surface="console"] .app-shell .workspace-steps>button{border-radius:0}
+:root[data-surface="console"] .app-shell .brain-list-heading{border-radius:var(--console-panel-radius) var(--console-panel-radius) 0 0}
+:root[data-surface="console"] .app-shell .knowledge-table{border-radius:0 0 var(--console-panel-radius) var(--console-panel-radius)}
+:root[data-surface="console"] .app-shell :is(.sidebar,.topbar,.main-column){border-radius:0}
+/* These small circles convey status rather than framing content or controls. */
+:root[data-surface="console"] .app-shell :is(.status-light,.status-dot,.signal-pill>span,.graph-legend i){border-radius:50%}
+@media(prefers-reduced-motion:reduce){.app-shell *{animation:none!important;transition:none!important;scroll-behavior:auto!important}}

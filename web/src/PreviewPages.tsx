@@ -5,7 +5,7 @@ import { Detail } from "./Detail";
 import GraphPreview from "./GraphPreview";
 import type { View } from "./routes";
 
-type Props = { view: View; demo: boolean; onNavigate: (view: View) => void; onImported?: () => Promise<void>; theme: "light" | "dark"; onTheme: (theme: "light" | "dark") => void };
+type Props = { view: View; demo: boolean; onNavigate: (view: View) => void; onImported?: () => Promise<void>; theme: "light" | "dark"; onTheme: (theme: "light" | "dark") => void; settingsSection?: string };
 const providers = [
   { name: "GitHub", kind: "Developer", detail: "Repository documentation and decisions", icon: "GH" },
   { name: "Google Drive", kind: "Workspace", detail: "Documents and shared files", icon: "GD" },
@@ -33,7 +33,7 @@ function Panel({ title, children, action }: { title: string; children: React.Rea
 
 function Row({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) { return <button type="button" className="preview-row" onClick={onClick}>{children}<ArrowRight size={16}/></button>; }
 
-function PreviewContent({ view, demo, onImported, theme, onTheme }: Props) {
+function PreviewContent({ view, demo, onImported, theme, onTheme, settingsSection = "General" }: Props) {
   const client = useBrainClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -90,7 +90,7 @@ function PreviewContent({ view, demo, onImported, theme, onTheme }: Props) {
 
   if (view === "proactivity") return <div className="preview-page narrow-page"><Banner demo={demo}>Policy controls are interactive locally only. Nothing is scheduled or saved to the server.</Banner><Panel title="Proactivity policy"><p className="panel-intro">Choose which kinds of suggestions a future Brain may offer.</p><label className="toggle-row"><span><strong>Knowledge recommendations</strong><small>Suggest connections and possible conflicts for review.</small></span><input type="checkbox" checked={policy.recommendations} onChange={e=>setPolicy({...policy,recommendations:e.target.checked})}/></label><label className="toggle-row"><span><strong>Review reminders</strong><small>Remind owners about proposals awaiting a decision.</small></span><input type="checkbox" checked={policy.reminders} onChange={e=>setPolicy({...policy,reminders:e.target.checked})}/></label><button className="secondary-button" onClick={()=>setNotice("Preview policy held in this browser only.")}>Review policy preview</button></Panel>{notice&&<p role="status" className="inline-notice">{notice}</p>}</div>;
 
-  if (view === "settings") return <div className="preview-page narrow-page"><div className="settings-layout"><nav className="settings-tabs" aria-label="Settings sections">{["General","Team","Usage","Advanced","Account"].map(x=><button className={tab===x||tab==="All"&&x==="General"?"active":""} key={x} onClick={()=>setTab(x)}>{x}</button>)}</nav><div><Banner demo={demo}>Appearance is saved in this browser. Administration controls are design previews.</Banner>{tab==="All"||tab==="General" ? <Panel title="General"><div className="setting-row"><div><strong>Appearance</strong><p>Choose a comfortable theme for the interface.</p></div><select aria-label="Appearance" value={theme} onChange={e=>onTheme(e.target.value as "light"|"dark")}><option value="dark">Dark</option><option value="light">Light</option></select></div><div className="setting-row"><div><strong>Organization context</strong><p>Future profile settings will live here.</p></div><span className="status-pill">Preview</span></div></Panel> : <Panel title={tab}><div className="preview-empty"><LockKeyhole size={26}/><h3>{tab} administration preview</h3><p>Settings for {tab.toLowerCase()} are not connected in this UI phase.</p></div></Panel>}</div></div></div>;
+  if (view === "settings") return <div className="preview-page narrow-page"><Banner demo={demo}>Appearance is saved in this browser. Administration controls are design previews.</Banner>{settingsSection === "General" ? <Panel title="Organization"><div className="setting-row"><div><strong>Appearance</strong><p>Choose a comfortable theme for the interface.</p></div><select aria-label="Appearance" value={theme} onChange={e=>onTheme(e.target.value as "light"|"dark")}><option value="dark">Dark</option><option value="light">Light</option></select></div><div className="setting-row"><div><strong>Organization context</strong><p>Future profile settings will live here.</p></div><span className="status-pill">Preview</span></div></Panel> : <Panel title={settingsSection}><div className="preview-empty"><LockKeyhole size={26}/><h3>{settingsSection} administration preview</h3><p>Settings for {settingsSection.toLowerCase()} are not connected in this UI phase.</p></div></Panel>}</div>;
 
   return null;
 }

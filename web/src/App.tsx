@@ -1,11 +1,11 @@
 import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, CaptureDialog } from "./LivePages";
-import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
-import { goTo, readRoute, SHOW_LANDING, type View } from "./routes";
+import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
 import { api, Draft, Integrity, InterviewSession, Knowledge, Overview, Proposal, Source, clearToken, getToken, hasToken, setToken, Unauthorized } from "./api";
 
 type NavItem = { id: View; label: string; icon: typeof Home; future?: boolean };
@@ -47,8 +47,8 @@ const navLabel = Object.fromEntries(
 
 const titleMap: Record<View, { title: string; description: string }> = {
   overview: {
-    title: "Good thinking should compound.",
-    description: "Turn raw expertise into approved, reusable company intelligence—without losing the evidence behind it.",
+    title: "Overview",
+    description: "Your sources, review queue, and approved knowledge at a glance.",
   },
   inbox: {
     title: "Review inbox",
@@ -141,8 +141,8 @@ type PaletteItem = {
   run: () => void;
 };
 
-function CommandPalette({ knowledge, sources, onNavigate, onClose }: {
-  knowledge: Knowledge[]; sources: Source[]; onNavigate: (view: View, record?: string) => void; onClose: () => void;
+function CommandPalette({ knowledge, sources, onNavigate, onClose, focusFallbackRef }: {
+  knowledge: Knowledge[]; sources: Source[]; onNavigate: (view: View, record?: string) => void; onClose: () => void; focusFallbackRef: RefObject<HTMLButtonElement | null>;
 }) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -152,11 +152,17 @@ function CommandPalette({ knowledge, sources, onNavigate, onClose }: {
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const fallback = focusFallbackRef.current;
     if (typeof dialog.showModal === "function") dialog.showModal();
     else dialog.setAttribute("open", "");
     inputRef.current?.focus();
-    return () => { if (dialog.open && typeof dialog.close === "function") dialog.close(); };
-  }, []);
+    return () => {
+      if (dialog.open && typeof dialog.close === "function") dialog.close();
+      if (previous?.isConnected && !previous.closest("[inert],[aria-hidden=true]")) previous.focus();
+      else fallback?.focus();
+    };
+  }, [focusFallbackRef]);
 
   const items = useMemo<PaletteItem[]>(() => {
     const needle = query.toLowerCase().trim();
@@ -317,7 +323,13 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: (token:
           </button>
           <span className="access-hint">No token? Ask whoever runs this Brain.</span>
         </div>
-        {SHOW_LANDING && <a className="access-back" href="#/">← Back to home</a>}
+        {SHOW_LANDING ? (
+          <a className="access-back" href="#/">← Back to home</a>
+        ) : (
+          <button className="access-back" type="button" onClick={() => openSiteHome()}>
+            ← Back to home
+          </button>
+        )}
       </form>
     </div>
   );
@@ -342,6 +354,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [showCapture, setShowCapture] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState("General");
   const [compact, setCompact] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 880px)").matches);
   const sidebarRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -505,28 +518,31 @@ export default function App() {
 
   const current = titleMap[view];
 
-  if (route.screen === "landing" && SHOW_LANDING) return <LandingPage />;
-  if (route.screen === "landing" || route.screen === "login" || (route.screen === "console" && tokenRequired)) {
-    return <AccessGate refused={tokenRefused} onUnlock={unlock} />;
-  }
+  // Console-first builds keep the public site off unless VITE_SHOW_LANDING=true.
+  if (route.screen === "landing") return SHOW_LANDING ? <LandingPage /> : <AccessGate refused={tokenRefused} onUnlock={unlock} />;
+  if (route.screen === "login" || (route.screen === "console" && tokenRequired)) return <AccessGate refused={tokenRefused} onUnlock={unlock} />;
 
   return (
-    <BrainClientContext.Provider value={client}><div className="app-shell">
+    <BrainClientContext.Provider value={client}><div className="app-shell" data-view={view}>
       <a className="skip-link" href="#main-content" onClick={e => { e.preventDefault(); document.getElementById("main-content")?.focus(); }}>Skip to content</a>
       <aside ref={sidebarRef} id="workspace-navigation" className={`sidebar ${menuOpen ? "sidebar--open" : ""}`} aria-label="Workspace navigation" role={compact ? "dialog" : undefined} aria-modal={compact && menuOpen ? true : undefined} aria-hidden={compact && !menuOpen ? true : undefined} inert={compact && !menuOpen}>
         <button className="sidebar-close" aria-label="Close navigation drawer" onClick={() => setMenuOpen(false)}><X size={18}/></button>
         <div className="brand">
-          <div className="brand-mark" aria-hidden="true"><Brain size={21} strokeWidth={2.1} /></div>
-          <div><strong>Open Brain</strong><span>Intelligence OS</span></div>
+          <Brain size={22} strokeWidth={1.8} aria-hidden="true" />
+          <strong>Open Brain</strong>
         </div>
-        <div className="workspace-switcher" aria-label="Current workspace: Personal Brain">
-          <span className="workspace-avatar">P</span>
-          <span><small>Workspace</small><strong>Personal Brain</strong></span>
-          <ChevronRight size={15} aria-hidden="true" />
-        </div>
-        <nav aria-label="Primary navigation">
+        <button className="command-button rail-command" aria-label="Search or jump to… ⌘K" aria-keyshortcuts="Meta+k Control+k" onClick={() => { setMenuOpen(false); setPaletteOpen(true); }}>
+          <Search size={15} aria-hidden="true" /><span>Search…</span><kbd>⌘K</kbd>
+        </button>
+        {view === "settings" ? <nav className="console-settings-nav" aria-label="Settings navigation">
+          <button className="settings-back" onClick={() => navigate("overview")}><ChevronRight size={14} aria-hidden="true"/><strong>Settings</strong></button>
+          <span className="nav-label">Organization</span>
+          {["General", "Team", "Usage", "Advanced"].map(section => <button key={section} className={settingsSection === section ? "active" : ""} aria-current={settingsSection === section ? "page" : undefined} onClick={() => setSettingsSection(section)}><span>{section}</span>{section !== "General" && <> <small>Preview</small></>}</button>)}
+          <span className="nav-label">Personal</span>
+          <button className={settingsSection === "Account" ? "active" : ""} aria-current={settingsSection === "Account" ? "page" : undefined} onClick={() => setSettingsSection("Account")}><span>Account</span> <small>Preview</small></button>
+        </nav> : <nav aria-label="Primary navigation">
           {navGroups.map(group => <AppNav key={group.label} label={group.label} items={group.items} view={view} proposalCount={loadedClient === client ? proposals.length : 0} onNavigate={navigate} />)}
-        </nav>
+        </nav>}
         <div className="sidebar-footer">
           <div className="rail-status">
             <span className="status-light" aria-hidden="true" />
@@ -539,7 +555,6 @@ export default function App() {
             {route.screen !== "demo" && <button className="rail-action" aria-label="Change access token" title="Change access token" onClick={()=>goTo("login")}><KeyRound size={15}/></button>}
             {route.screen !== "demo" && <button className="rail-action" onClick={handleExport} title="Export workspace" aria-label="Export workspace"><Download size={15} /></button>}
           </div>
-          <span className="version-label">Open Brain · v0.3 interface</span>
         </div>
       </aside>
 
@@ -549,26 +564,21 @@ export default function App() {
         <header className="topbar">
           <div className="topbar-start">
             <button ref={menuButtonRef} className="menu-button" onClick={() => setMenuOpen(true)} aria-label="Open navigation" aria-controls="workspace-navigation" aria-expanded={menuOpen}><Menu size={20} /></button>
-            <nav className="topbar-crumbs" aria-label="Breadcrumb">
-              <span>Personal Brain</span>
-              <ChevronRight size={13} aria-hidden="true" />
-              <strong>{navLabel[view]}</strong>
-            </nav>
+            <button className="workspace-switcher" aria-label="Current workspace: Personal Brain" onClick={() => navigate("workspaces")}>
+              <span className="workspace-avatar">P</span><strong>Personal Brain</strong><span className="workspace-mode">{route.screen === "demo" ? "Demo" : "Workspace"}</span><ChevronRight size={13} aria-hidden="true" />
+            </button>
+            <nav className="topbar-crumbs" aria-label="Breadcrumb"><ChevronRight size={12} aria-hidden="true"/><span>{view === "settings" ? settingsSection : navLabel[view]}</span></nav>
           </div>
           <div className="topbar-actions">
-            <button className="command-button" aria-label="Search or jump to… ⌘K" aria-keyshortcuts="Meta+k Control+k" onClick={() => setPaletteOpen(true)}>
-              <Search size={16} aria-hidden="true" />
-              <span>Search or jump to…</span>
-              <kbd>⌘K</kbd>
-            </button>
+            {compact && <button className="mobile-search-button" aria-label="Open search" onClick={() => setPaletteOpen(true)}><Search size={16} aria-hidden="true"/></button>}
             <button className="theme-button" type="button" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>{theme === "dark" ? "☀" : "☾"}</button>
             <button className="capture-button" onClick={() => route.screen === "demo" ? navigate("import") : setShowCapture(true)}><Plus size={17} /> Capture source</button>
           </div>
         </header>
 
-        <main id="main-content" tabIndex={-1}>
+        <main id="main-content" data-layout={["import", "connectors", "agents", "insights", "proactivity", "settings"].includes(view) ? "narrow" : "wide"} tabIndex={-1}>
           <header className="page-heading">
-            <div><h1>{current.title}</h1><p>{current.description}</p></div>
+            <div><h1>{view === "settings" ? settingsSection : current.title}</h1><p>{current.description}</p></div>
             {view === "brain" && <button className="secondary-button btn--pill" onClick={() => navigate("ask")}><MessageSquareText size={17} /> Ask the Brain</button>}
             {view === "sources" && <button className="primary-button btn--pill" onClick={() => route.screen === "demo" ? navigate("import") : setShowCapture(true)}><Plus size={17} /> Add source</button>}
             {view === "audit" && route.screen !== "demo" && <button className="secondary-button btn--pill" onClick={handleExport}><Download size={17} /> Export audit data</button>}
@@ -577,7 +587,7 @@ export default function App() {
           {error && <div className="alert alert--error" role="alert"><X size={18} /><span>{error}</span><button onClick={refresh}>Retry loading</button><button onClick={() => setError("")}>Dismiss</button></div>}
           {notice && <div className="alert alert--success" role="status"><Check size={18} /><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
-          {route.screen === "demo" && <div className="preview-banner"><Sparkles size={16}/><strong>Demo workspace</strong><span>Synthetic data. All interactions stay in this page; no production API or AI service is connected.</span></div>}
+          {route.screen === "demo" && ["overview", "inbox", "brain", "sources", "ask", "studio", "activate", "analytics", "audit"].includes(view) && <div className="preview-banner"><Sparkles size={16}/><strong>Demo workspace</strong><span>Synthetic data. All interactions stay in this page; no production API or AI service is connected.</span></div>}
           {(loading || loadedClient !== client) && !["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"].includes(view) ? error ? <EmptyState icon={<TriangleAlert />} title="Workspace unavailable">Loading failed. Use Retry loading above to try again. No sample data has replaced your workspace.</EmptyState> : <LoadingState /> : (
             <>
               {view === "overview" && overview && <OverviewView overview={overview} proposals={proposals} knowledge={knowledge} integrity={integrity} onNavigate={navigate} />}
@@ -589,7 +599,7 @@ export default function App() {
               {view === "activate" && <ActivateView knowledge={knowledge} onNavigate={navigate} onNotice={setNotice} />}
               {view === "analytics" && <AnalyticsPreview overview={overview} knowledge={knowledge} integrity={integrity} />}
               {view === "audit" && overview && <AuditView overview={overview} integrity={integrity} />}
-              {(["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} />}
+              {(["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>
           )}
         </main>
@@ -612,6 +622,7 @@ export default function App() {
           knowledge={loadedClient === client ? knowledge : []}
           sources={loadedClient === client ? sources : []}
           onNavigate={navigate}
+          focusFallbackRef={menuButtonRef}
           onClose={() => setPaletteOpen(false)}
         />
       )}

@@ -1,0 +1,9 @@
+/* Shared console appearance. Website artwork is decorative; UI surfaces stay opaque. */
+:root{
+ --console-dark-canvas:#0a0a0a;--console-dark-surface:#0c0c0c;
+ --console-dark-secondary:#141414;--console-dark-sidebar:#101010;
+ --console-dark-border:#ffffff14;--console-dark-muted:#a0a0a0;
+ --console-dark-blue:#83b6ff;--console-dark-active:#102031;
+ --console-panel-radius:10px;--console-control-radius:6px;
+ --console-nav-radius:7px;--console-badge-radius:4px;
+}
