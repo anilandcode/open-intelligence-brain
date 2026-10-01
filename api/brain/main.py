@@ -26,7 +26,14 @@ from .auth_api import router as auth_router
 from .config import get_settings
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
+from .mcp_hosted import install_hosted_mcp_routes
 from .mcp_http import router as mcp_http_router
+from .mcp_oauth import (  # noqa: F401 — register OAuth tables on Base.metadata
+    McpOAuthClient,
+    McpOAuthCode,
+    McpOAuthPending,
+    McpOAuthTokenRow,
+)
 from .migrate import (
     add_audit_actor_columns,
     add_engine_link_columns,
@@ -120,7 +127,7 @@ settings = get_settings()
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     # create_all does not alter existing tables, so an existing deployment needs
     # the columns added before any query that selects them.
@@ -179,7 +186,16 @@ async def lifespan(_: FastAPI):
         with SessionLocal() as db:
             workspace = ensure_default_workspace(db)
             seed_demo(db, workspace.id)
-    yield
+    mcp_manager = getattr(app.state, "mcp_session_manager", None)
+    # Hosted Streamable HTTP MCP needs the session manager task group for the
+    # life of the process. When hosting is disabled, skip it.
+    if mcp_manager is not None:
+        from .mcp_hosted import run_mcp_session_manager
+
+        async with run_mcp_session_manager(mcp_manager):
+            yield
+    else:
+        yield
 
 
 def _workspaces() -> list[str]:
@@ -196,13 +212,28 @@ app = FastAPI(
 app.include_router(mcp_http_router)
 app.include_router(studio_router)
 app.include_router(auth_router)
+
+# Hosted Streamable HTTP MCP at /mcp (+ OAuth authorize/token/register). Must
+# install before the SPA catch-all so /.well-known and /mcp are not HTML.
+if settings.mcp_hosted:
+    app.state.mcp_session_manager = install_hosted_mcp_routes(app)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_origin_regex=settings.cors_origin_regex or None,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "PUT"],
-    allow_headers=["Content-Type", "X-Brain-Token", "X-Brain-Workspace", "X-Brain-Session"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Brain-Token",
+        "X-Brain-Workspace",
+        "X-Brain-Session",
+        "Mcp-Session-Id",
+        "Last-Event-ID",
+        "MCP-Protocol-Version",
+    ],
 )
 
 
@@ -1235,6 +1266,18 @@ if frontend.exists():
         # index.html for it would answer a typo with 200 HTML and hide the
         # mistake from every API client that trusts status codes.
         if path.startswith("api/v1"):
+            raise HTTPException(status_code=404, detail="Unknown endpoint")
+        # Hosted MCP + OAuth must never fall through to index.html.
+        if path.startswith(
+            (
+                "mcp",
+                "authorize",
+                "token",
+                "register",
+                "revoke",
+                ".well-known",
+            )
+        ):
             raise HTTPException(status_code=404, detail="Unknown endpoint")
         requested = frontend / path
         # Starlette unquotes %2f AFTER routing, so `path` can contain ../

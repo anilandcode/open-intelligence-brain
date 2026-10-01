@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.1.1 — Hosted Streamable HTTP MCP
+
+First-party remote MCP comparable in *shape* to hosted MCP products (public
+`/mcp` URL + OAuth client connect), while keeping Open Brain invariants:
+read-only tools, human approval → canonical, no write-memory authority.
+
+### Hosted MCP
+
+- **`/mcp` Streamable HTTP** (`mcp_hosted.py`) — official MCP transport clients
+  can add as `{ "url": "https://<host>/mcp" }`.
+- **OAuth 2.1** (`mcp_oauth.py`) — dynamic client registration, authorize,
+  paste Brain machine token on consent, PKCE code + refresh. Access/refresh
+  tokens and clients stored in SQLAlchemy tables (survive Cloud Run cold starts).
+- **Dual Bearer auth** — OAuth-issued tokens **or** raw `brn_live_…` / owner
+  token as `Authorization: Bearer` (agents that set headers skip the browser).
+- Tools remain the same read-only set (`brain_status`, `search_brain`,
+  `ask_brain`, `list_pending_reviews`, `inspect_brain_integrity`), bound to the
+  **caller's** workspace/role — never owner-by-default.
+- Env: `BRAIN_MCP_HOSTED` (default true), `BRAIN_PUBLIC_BASE_URL` (issuer +
+  resource base; set to the Cloud Run HTTPS origin in production).
+- Stdio MCP and legacy `/api/v1/mcp/*` remain.
+
+### Docs / tests
+
+- `docs/agent-integrations.md` documents the three surfaces.
+- `api/tests/test_mcp_hosted.py` covers discovery, Bearer tools, and the full
+  register → authorize → consent → token exchange path.
+
 ## 1.1.0 — Human identity (v1.1, part 1)
 
 First commit of the identity milestone: a real human identity model and the

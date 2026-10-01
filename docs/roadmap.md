@@ -33,6 +33,9 @@
 - [ ] First-owner bootstrap: auto-membership for the first verified human, or
       an explicit invite flow, so Google sign-in is usable without a prior
       `workspace_members` row.
+- [x] Hosted Streamable HTTP MCP at `/mcp` with OAuth 2.1 paste-token consent
+      and dual Bearer (OAuth token or raw Brain API key). Read-only tools only;
+      approval stays in the console. `BRAIN_PUBLIC_BASE_URL` for issuer/resource.
 
 ## M1 — trusted thin slice (implemented)
 

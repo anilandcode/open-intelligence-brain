@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     identity_dev_claims: str = ""
     identity_firebase_project_id: str = ""
 
+    # Public origin of this deployment (no trailing slash). Used as the OAuth
+    # issuer and to advertise the hosted MCP URL `{public_base_url}/mcp`.
+    # Local default matches uvicorn; set BRAIN_PUBLIC_BASE_URL on Cloud Run to
+    # the service URL so Cursor/Claude can complete OAuth redirects.
+    public_base_url: str = "http://127.0.0.1:8000"
+
+    # When false, Streamable HTTP MCP + OAuth routes are not mounted. Stdio MCP
+    # and the legacy /api/v1/mcp adapter stay available either way.
+    mcp_hosted: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property

@@ -14,3 +14,6 @@ web/vite.config.js
 web/vite.config.d.ts
 coverage/
 playwright-report/
+
+# third-party reference clones — never part of this project
+/supermemoryai/
