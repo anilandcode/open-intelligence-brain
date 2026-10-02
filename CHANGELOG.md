@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — Knowledge graph (context-stack port, part 3 of 4)
+
+A read-only relationship graph over sources + approved knowledge, reusing the
+Supermemory `memory-graph` data contract (`GraphApiDocument`/`GraphApiEdge`),
+edge-derivation (`computeEdges`: document→memory + `memoryRelations`), and
+`lib/similarity.ts` cosine for the semantic `derives` edges. `GET /api/v1/graph`
+returns scope-narrowed documents + edges; the console **Brain Graph** view
+renders them (sources as hubs, edges coloured by type). Read-only — never
+proposals and never a canonical write.
+
 ## 1.2.0 — Hybrid retrieval (context-stack port, part 1 of 4)
 
 Filling Open Brain's roadmap gaps using the Supermemory stack as an infra

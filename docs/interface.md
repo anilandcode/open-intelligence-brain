@@ -31,7 +31,7 @@ The Caret landing uses lightweight synthetic React illustrations, Context/Eviden
 | Import: Files / URL | Explicit preview; no upload or web ingestion | Locally staged selection only |
 | Workspaces | Explicit preview entry | Sample browsing and detail; tags are not permissions |
 | Working Memory | Explicit preview entry | Search/status filters and source/approved relationships |
-| Brain Graph | Explicit preview entry | Sample graph, filters, zoom/pan, inspection and accessible list |
+| Brain Graph | Live entry (real `/api/v1/graph`) | Knowledge graph over sources + approved knowledge: hubs, edges by type, filters, zoom/pan, inspection, accessible list |
 | Connectors | Explicit preview entry | GitHub/Drive-first provider browsing and local configuration forms; no OAuth/sync |
 | API Keys | Explicit preview entry | Scope/expiry row creation/removal; no credential issued |
 | Agents & MCP | **Live** | Connected-apps registry: every MCP client that reached this workspace (OAuth or direct bearer) with principal, role, calls, last-seen and status. Read-only tools; approval stays in the console |
