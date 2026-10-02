@@ -24,10 +24,11 @@ FTS, kept working. Every `except` here rolls back before returning.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .models import Knowledge
@@ -457,3 +458,81 @@ def _search_sqlite_fts5(db: Session, query: str, limit: int) -> list[str]:
         db.rollback()
         log.warning("FTS query failed, falling back to ILIKE: %s", exc)
         return []
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    return sum(x * y for x, y in zip(a, b, strict=True))  # L2-normalised, so dot == cosine
+
+
+def vector_search(db: Session, query_vec: list[float], scope, limit: int = 20) -> list[str]:
+    """Rank knowledge ids by cosine similarity to query_vec, best first.
+
+    Only rows that carry an embedding, narrowed by the caller's ReadScope. Empty
+    when nothing is embedded yet, so the caller keeps the keyword path. Never
+    raises: a vector problem must not turn a read into a 500.
+    """
+    if not query_vec:
+        return []
+    try:
+        rows = list(
+            db.scalars(
+                scope.apply(
+                    select(Knowledge).where(Knowledge.status == "canonical"),
+                    Knowledge,
+                )
+            ).all()
+        )
+    except Exception as exc:
+        db.rollback()
+        log.warning("vector candidate load failed: %s", exc)
+        return []
+    scored: list[tuple[float, str]] = []
+    for item in rows:
+        if not item.embedding:
+            continue
+        try:
+            vec = json.loads(item.embedding)
+        except Exception:
+            continue
+        sim = _cosine(query_vec, vec)
+        if sim > 0:
+            scored.append((sim, item.id))
+    scored.sort(key=lambda row: row[0], reverse=True)
+    return [kid for _, kid in scored[:limit]]
+
+
+def _rrf(rankings: list[list[str]], limit: int, k: int = 60) -> list[str]:
+    """Reciprocal Rank Fusion across result lists.
+
+    score(id) = sum(1 / (k + rank)) over every list it appears in. Rank-based, so
+    it needs no score calibration between BM25 and cosine — the standard fusion
+    for hybrid retrieval.
+    """
+    scores: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, kid in enumerate(ranking, start=1):
+            scores[kid] = scores.get(kid, 0.0) + 1.0 / (k + rank)
+    ordered = sorted(scores, key=lambda kid: scores[kid], reverse=True)
+    return ordered[:limit]
+
+
+def hybrid_search(db: Session, scope, query: str, limit: int = 20) -> list[str]:
+    """Fuse keyword (FTS) and vector rankings with reciprocal-rank fusion.
+
+    Falls back to whichever single source answers, and to an empty list when
+    neither does (sending the caller to the ILIKE fallback). Never raises.
+    """
+    from .embeddings import get_embedder  # local import avoids a settings cycle
+
+    fts_ids = search_fts(db, query, limit=limit)
+    vec_ids: list[str] = []
+    embedder = get_embedder()
+    if embedder is not None:
+        qv = embedder.embed(query)
+        if qv:
+            vec_ids = vector_search(db, qv, scope, limit=limit)
+    if fts_ids and vec_ids:
+        return _rrf([fts_ids, vec_ids], limit)
+    return fts_ids or vec_ids

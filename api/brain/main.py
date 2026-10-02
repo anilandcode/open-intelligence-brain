@@ -39,6 +39,7 @@ from .migrate import (
     add_audit_actor_columns,
     add_engine_link_columns,
     add_grant_scope_and_expiry,
+    add_knowledge_embedding,
     add_nullable_evidence_span,
     add_workspace_columns,
 )
@@ -157,6 +158,11 @@ async def lifespan(app: FastAPI):
     attributed = add_audit_actor_columns()
     if attributed:
         logging.getLogger(__name__).info("Added audit actor columns: %s", ", ".join(attributed))
+    # Adds vector embedding columns to knowledge for hybrid retrieval. Nullable
+    # and additive, so existing rows are untouched (re-embedded on next rebuild).
+    embedded = add_knowledge_embedding()
+    if embedded:
+        logging.getLogger(__name__).info("Added embedding columns: %s", ", ".join(embedded))
     # Build the ranked full-text index for canonical knowledge. The backend
     # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
     # PostgreSQL. `ensure_fts` picks; we only log which one answered.

@@ -58,6 +58,33 @@ def add_engine_link_columns() -> list[str]:
     return added
 
 
+def add_knowledge_embedding() -> list[str]:
+    """Store a vector embedding on canonical knowledge for hybrid retrieval.
+
+    Additive and idempotent: nullable columns, no existing row read or rewritten.
+    `embedding` is a JSON array of floats; `embedding_model` records the provider
+    so a model change can trigger re-embedding on the next index rebuild.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    wanted: dict[str, list[tuple[str, str]]] = {
+        "knowledge": [
+            ("embedding", "TEXT"),
+            ("embedding_model", "VARCHAR(64)"),
+        ],
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            if table not in columns:
+                continue
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                added.append(f"{table}.{column}")
+    return added
+
+
 def add_nullable_evidence_span() -> list[str]:
     """Make `proposal_evidence.source_span_id` nullable for derived proposals.
 

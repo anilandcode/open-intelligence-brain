@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
 from .critic import assess_proposal
 from .database import SessionLocal
+from .embeddings import get_embedder
 from .engine import (
     ContainerTagRejected,
     container_tag_for,
@@ -30,7 +31,7 @@ from .models import (
     new_id,
 )
 from .retrieval import (
-    search_fts,
+    hybrid_search,
     sync_fts_insert,
     sync_fts_update,
 )
@@ -433,6 +434,14 @@ def approve_proposal(
         rationale=rationale if rationale is not None else proposal.rationale,
         source_excerpt=proposal.source_excerpt or version.content[:600],
     )
+    # Embed the approved wording for hybrid retrieval (statement + rationale).
+    # Best effort: an embedding failure never blocks a human's stored decision.
+    embedder = get_embedder()
+    if embedder is not None:
+        vec = embedder.embed(f"{canonical.statement} {canonical.rationale}")
+        if vec:
+            canonical.embedding = json.dumps(vec)
+            canonical.embedding_model = embedder.model
     proposal.status = "approved"
     db.add(canonical)
     db.flush()
@@ -465,6 +474,7 @@ def approve_proposal(
     try:
         with SessionLocal() as fts_db:
             sync_fts_insert(fts_db, canonical)
+            fts_db.commit()
     except Exception:
         pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return canonical
@@ -518,6 +528,7 @@ def supersede_knowledge(
     try:
         with SessionLocal() as fts_db:
             sync_fts_update(fts_db, item)
+            fts_db.commit()
     except Exception:
         pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return item
@@ -640,24 +651,25 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
     if not query.strip():
         return list(db.scalars(base.order_by(Knowledge.approved_at.desc()).limit(limit)).all())
 
-    # Try the dialect's ranked index first (FTS5/BM25 on SQLite, tsvector +
-    # ts_rank_cd on PostgreSQL).
-    fts_ids = search_fts(db, query, limit=limit)
-    if fts_ids:
-        # Preserve FTS ranking order; filter by scope
+    # Try hybrid retrieval first: reciprocal-rank fusion of the dialect's keyword
+    # index (FTS5/BM25 or ts_rank_cd) with the vector channel. When neither
+    # answers it returns [] and we fall through to ILIKE.
+    ranked_ids = hybrid_search(db, scope, query, limit=limit)
+    if ranked_ids:
+        # Preserve fused ranking order; filter by scope
         items = list(
             db.scalars(
                 scope.apply(
                     select(Knowledge).where(
-                        Knowledge.id.in_(fts_ids),
+                        Knowledge.id.in_(ranked_ids),
                         Knowledge.status == "canonical",
                     ),
                     Knowledge,
                 )
             ).all()
         )
-        # Re-order to match FTS ranking
-        id_order = {kid: i for i, kid in enumerate(fts_ids)}
+        # Re-order to match the fused ranking
+        id_order = {kid: i for i, kid in enumerate(ranked_ids)}
         items.sort(key=lambda item: id_order.get(item.id, 999))
         # Fall through to ILIKE when the ranked ids resolve to nothing. They
         # can: an id may point at a superseded or out-of-scope row, or — as

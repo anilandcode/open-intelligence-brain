@@ -224,6 +224,11 @@ class Knowledge(Base):
     rationale: Mapped[str] = mapped_column(Text, default="")
     source_excerpt: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(30), default="canonical", index=True)
+    # Vector embedding of the statement (+ rationale) for hybrid retrieval, stored
+    # as a JSON list of floats. Nullable: rows approved before embeddings existed
+    # are re-embedded by the search-index rebuild or lazily on read.
+    embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 

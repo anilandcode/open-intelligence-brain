@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.2.0 — Hybrid retrieval (context-stack port, part 1 of 4)
+
+Filling Open Brain's roadmap gaps using the Supermemory stack as an infra
+reference — porting retrieval/graph/connector/extraction patterns into the
+governed proposal→approve→canon model (never their auto-memory-write product),
+keeping Open Brain's UI and identity.
+
+### Hybrid retrieval (vector + keyword)
+
+- **`embeddings.py`** — pluggable embedders: `OpenAICompatibleEmbedder` (real
+  neural semantics via `/v1/embeddings`, configured with `EMBEDDING_BASE_URL`) and
+  `HashingEmbedder` (deterministic lexical, **test-only**). `get_embedder()`
+  returns the neural provider when configured, else **None** → keyword-only.
+- **Vector channel + reciprocal-rank fusion** (`retrieval.py`): `vector_search`
+  (cosine over stored knowledge embeddings) fused with the FTS keyword rank via
+  RRF (`_rrf`); `hybrid_search` wires it into `search_knowledge` / `ask_brain`.
+- **Embeddings on approval** (`services.py`): each approved statement is embedded
+  (statement + rationale) and stored on `knowledge` (`embedding`, `embedding_model`).
+- Migration `add_knowledge_embedding()` adds the nullable embedding columns.
+
+### Correctness (found and fixed)
+
+- **FTS sync never committed** its separate session, so the full-text index
+  silently lost every approval until the next `rebuild_fts` (masked by the ILIKE
+  fallback). Fixed: `sync_fts_insert`/`update` now commit.
+- **Abstention guard:** the lexical hashing embedder's hash collisions can
+  false-match unrelated text, which broke the abstention guarantee (a member got
+  a grounded answer to a private-only question). It is now **never** the retrieval
+  default — only an explicit test utility. Abstention restored.
+
+`api/tests/test_retrieval_hybrid.py` covers embedding-on-approval, vector
+ranking, RRF fusion, and the keyword-only fallback.
+
 ## 1.1.1 — Hosted Streamable HTTP MCP
 
 First-party remote MCP comparable in *shape* to hosted MCP products (public

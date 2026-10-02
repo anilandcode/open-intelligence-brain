@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # and the legacy /api/v1/mcp adapter stay available either way.
     mcp_hosted: bool = True
 
+    # Embeddings for hybrid (vector + keyword) retrieval. When `embedding_base_url`
+    # is set, neural embeddings give real semantic search; otherwise a built-in
+    # lexical (hashing) embedder keeps the vector channel live at zero cost. The
+    # vector path fuses with full-text via reciprocal-rank fusion either way.
+    embedding_base_url: str = ""  # e.g. https://api.openai.com — any /v1/embeddings
+    embedding_api_key: str = ""
+    embedding_model: str = "text-embedding-3-small"
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property
