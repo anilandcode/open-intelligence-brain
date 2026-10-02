@@ -94,8 +94,14 @@ COPY web/ ./
 # VITE_SITE_URL is the public Vercel origin so console login can link back home.
 ARG VITE_SHOW_LANDING=false
 ARG VITE_SITE_URL=
+# VITE_GOOGLE_CLIENT_ID is the public Google OAuth client id behind the Sign-in
+# button; identity.py verifies the returned ID token against the same value at
+# runtime. A client id is public by definition — it is in the browser bundle
+# regardless — so baking it is not the token leak the owner token would be.
+ARG VITE_GOOGLE_CLIENT_ID=
 ENV VITE_SHOW_LANDING=$VITE_SHOW_LANDING
 ENV VITE_SITE_URL=$VITE_SITE_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN npm run build
 
 # ------------------------------------------------------------ runtime stage

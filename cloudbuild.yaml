@@ -15,6 +15,8 @@ steps:
       - VITE_SHOW_LANDING=false
       - --build-arg
       - VITE_SITE_URL=${_SITE_URL}
+      - --build-arg
+      - VITE_GOOGLE_CLIENT_ID=${_GOOGLE_CLIENT_ID}
       - -t
       - ${_IMAGE}
       - .
@@ -23,6 +25,7 @@ images:
 substitutions:
   _IMAGE: ""
   _SITE_URL: "https://open-brain-bice.vercel.app"
+  _GOOGLE_CLIENT_ID: "168827050380-v913ch41efqsbu2nkjeealum1kf2doas.apps.googleusercontent.com"
 options:
   machineType: E2_HIGHCPU_8
 timeout: 1800s
