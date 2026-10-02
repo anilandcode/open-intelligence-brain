@@ -53,6 +53,9 @@ export function createDemoClient(): BrainClient {
       },
       memberships: [],
     }),
+    bootstrap: async () => {
+      throw new Error("Claim is not available in the sample workspace.");
+    },
     graph: async () => ({
       documents: [
         {

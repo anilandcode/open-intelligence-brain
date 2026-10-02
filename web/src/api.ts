@@ -372,6 +372,8 @@ export const api = {
     clearToken();
   },
   me: () => request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/me"),
+  bootstrap: () =>
+    request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/bootstrap", { method: "POST" }),
   mcpConnections: () => request<McpConnection[]>("/api/v1/mcp/connections"),
   graph: () => request<Graph>("/api/v1/graph"),
   overview: () => request<Overview>("/api/v1/overview"),

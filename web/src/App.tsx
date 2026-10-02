@@ -6,7 +6,7 @@ import { createDemoClient } from "./demo";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
-import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getToken, hasToken, setToken, Unauthorized } from "./api";
+import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, getToken, hasToken, setToken, Unauthorized } from "./api";
 
 type NavItem = { id: View; label: string; icon: typeof Home; future?: boolean };
 
@@ -454,6 +454,53 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
   );
 }
 
+/* The first-owner claim. A verified sign-in proves who someone is; reach still
+   needs a membership. When this Brain has no members yet, the signed-in person
+   claims ownership once — deliberately, and it stops working the moment anyone
+   else is a member (POST /auth/bootstrap fails closed). Mirrors the access-gate
+   look so the hand-off from sign-in is seamless. */
+function ClaimGate({ onClaimed }: { onClaimed: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
+  async function claim() {
+    if (busy) return;
+    setLocalError("");
+    setBusy(true);
+    try {
+      await api.bootstrap();
+      onClaimed();
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Could not claim this Brain.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="access-gate">
+      <div className="access-card panel-card">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true"><Brain size={20} strokeWidth={2.2} /></span>
+          <span className="eyebrow">Open Brain</span>
+        </div>
+        <h1 className="access-title">Claim this Brain.</h1>
+        <p className="access-copy">You're signed in, but this workspace has no members yet. Claim it once to become its owner — a deliberate step that stops working the moment anyone else is a member.</p>
+        {localError && (
+          <div className="alert alert--error" role="alert">
+            <TriangleAlert size={18} strokeWidth={2.1} />
+            <span>{localError}</span>
+          </div>
+        )}
+        <div className="access-actions">
+          <button className="primary-button" type="button" onClick={claim} disabled={busy}>
+            {busy ? "Claiming…" : "Claim this Brain"}
+          </button>
+          <span className="access-hint">Only works while the workspace is empty.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [route, setRoute] = useState(readRoute);
   const view = route.view;
@@ -507,6 +554,10 @@ export default function App() {
   // presents one. `tokenRefused` only distinguishes a wrong token from none.
   const [tokenRequired, setTokenRequired] = useState(!hasToken());
   const [tokenRefused, setTokenRefused] = useState(false);
+  // Signed in (a human session) but not yet a member of any workspace. The
+  // invariant is "sessions prove who, memberships grant reach", so this shows the
+  // explicit first-owner claim instead of an empty workspace that would 403.
+  const [needsMembership, setNeedsMembership] = useState(false);
 
   useEffect(() => {
     const sync = () => {
@@ -574,30 +625,55 @@ export default function App() {
   useEffect(() => {
     // Nothing is requested before a token is present: an unauthenticated page
     // load must not reach the API at all.
+    if (needsMembership) return; // claim first; there is no workspace to load yet
     if ((tokenRequired && route.screen !== "demo") || !["console", "demo"].includes(route.screen)) return;
     let active = true;
-    Promise.all([client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts(), client.mcpConnections()])
-      .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData, mcpConnectionData]) => {
-        if (!active) return;
-        setOverview(overviewData);
-        setSources(sourceData);
-        setProposals(proposalData);
-        setKnowledge(knowledgeData);
-        setIntegrity(integrityData);
-        setInterviews(interviewData);
-        setDrafts(draftData);
-        setMcpConnections(mcpConnectionData);
-        setLoadedClient(client);
-      })
-      .catch((requestError: unknown) => {
-        if (!active) return;
-        recordRequestError(requestError);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const loadWorkspace = () => {
+      Promise.all([client.overview(), client.sources(), client.proposals(), client.knowledge(), client.integrity(), client.interviews(), client.drafts(), client.mcpConnections()])
+        .then(([overviewData, sourceData, proposalData, knowledgeData, integrityData, interviewData, draftData, mcpConnectionData]) => {
+          if (!active) return;
+          setOverview(overviewData);
+          setSources(sourceData);
+          setProposals(proposalData);
+          setKnowledge(knowledgeData);
+          setIntegrity(integrityData);
+          setInterviews(interviewData);
+          setDrafts(draftData);
+          setMcpConnections(mcpConnectionData);
+          setLoadedClient(client);
+        })
+        .catch((requestError: unknown) => {
+          if (!active) return;
+          recordRequestError(requestError);
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+    // A human session proves who this is; reach still needs a membership. Check
+    // first so a signed-in stranger gets the explicit claim step rather than a
+    // workspace load that 403s. The machine-token and demo paths carry reach
+    // already, so they skip the check.
+    if (route.screen === "console" && getSession()) {
+      client.me()
+        .then((me) => {
+          if (!active) return;
+          if (me.memberships.length === 0) {
+            setNeedsMembership(true);
+            setLoading(false);
+            return;
+          }
+          setNeedsMembership(false);
+          loadWorkspace();
+        })
+        .catch(() => {
+          if (active) loadWorkspace();
+        });
+    } else {
+      loadWorkspace();
+    }
     return () => { active = false; };
-  }, [tokenRequired, route.screen, client]);
+  }, [tokenRequired, route.screen, client, needsMembership]);
 
   useEffect(() => {
     function handleCommandSearch(event: KeyboardEvent) {
@@ -642,6 +718,7 @@ export default function App() {
   // Console-first builds keep the public site off unless VITE_SHOW_LANDING=true.
   if (route.screen === "landing") return SHOW_LANDING ? <LandingPage /> : <AccessGate refused={tokenRefused} onUnlock={unlock} />;
   if (route.screen === "login" || (route.screen === "console" && tokenRequired)) return <AccessGate refused={tokenRefused} onUnlock={unlock} />;
+  if (route.screen === "console" && needsMembership) return <ClaimGate onClaimed={() => { setNeedsMembership(false); setLoading(true); }} />;
 
   return (
     <BrainClientContext.Provider value={client}><div className="app-shell" data-view={view}>

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { TOKEN_KEY } from "./api";
+import { SESSION_KEY, TOKEN_KEY } from "./api";
 
 const overview = {
   sources: 1,
@@ -280,6 +280,22 @@ describe("App", () => {
     fireEvent(search, new Event("cancel", {bubbles:true, cancelable:true}));
     expect(opener).toHaveFocus();
     expect(screen.queryByRole("dialog", {name:"Search and jump to"})).toBeNull();
+  });
+
+  it("offers the first-owner claim to a signed-in stranger with no membership", async () => {
+    // A human session (not a machine token) that is not yet a member of any
+    // workspace: a sign-in proves who, not reach, so the explicit claim step
+    // shows rather than an empty workspace that would 403.
+    window.sessionStorage.setItem(SESSION_KEY, "test-session");
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/me"))
+        return mockJson({ user: { id: "u1", provider: "google", email: "a@example.com", display_name: "A" }, memberships: [] });
+      return mockJson({});
+    });
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: /Claim this Brain/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Claim this Brain/i })).toBeInTheDocument();
   });
 
 });
