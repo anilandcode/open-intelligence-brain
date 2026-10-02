@@ -24,6 +24,7 @@ from .access import (
 )
 from .auth_api import router as auth_router
 from .config import get_settings
+from .connectors import ConnectorError, get_connector, ingest_fetched
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
 from .mcp_hosted import install_hosted_mcp_routes
@@ -62,6 +63,7 @@ from .schemas import (
     ApprovalRequest,
     ChatRequest,
     ChatResponse,
+    ConnectorIngestRequest,
     DeletionPreview,
     EventCreate,
     EventIntake,
@@ -666,6 +668,31 @@ def list_sources(scope: ReadScope = Depends(read_scope), db: Session = Depends(g
         .order_by(Source.created_at.desc())
     ).all()
     return [source_view(db, source, count) for source, count in rows]
+
+
+@app.post("/api/v1/connectors/{provider}/ingest", response_model=SourceRead, status_code=201)
+def connector_ingest(
+    provider: str,
+    payload: ConnectorIngestRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Fetch one document from a provider and ingest it for human review.
+
+    External content becomes a source + candidate proposals — never canonical.
+    The provider token is used for the read only and never stored; a provider
+    failure is a clean 502 and never blocks reads, review, or export.
+    """
+    require_scope(access, "sources:write")
+    try:
+        connector = get_connector(provider)
+        fetched = connector.fetch_document(payload.document_id, payload.access_token)
+        source = ingest_fetched(
+            db, access.workspace_id, fetched, sensitivity=payload.sensitivity, actor=access
+        )
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return source
 
 
 @app.post("/api/v1/sources", response_model=SourceRead, status_code=201)

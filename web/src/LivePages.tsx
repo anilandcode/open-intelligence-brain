@@ -1309,6 +1309,50 @@ export function AuditView({ overview, integrity }: { overview: Overview; integri
   );
 }
 
+export function ConnectorsView({ onChanged, onNotice, onError }: { onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+  const client = useBrainClient();
+  const [provider, setProvider] = useState("google-drive");
+  const [documentId, setDocumentId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function ingest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await client.connectorIngest(provider, { document_id: documentId, access_token: accessToken });
+      onNotice("Document ingested. Its proposals are in the Inbox for review — not yet canonical.");
+      setDocumentId("");
+      setAccessToken("");
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Connector fetch failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="panel-card">
+      <h2>Ingest from a provider</h2>
+      <p>Fetch one document from Google Drive, Notion, or OneDrive and bring it into the review queue. The provider token is used for the read only and never stored.</p>
+      <form onSubmit={ingest} className="ask-composer">
+        <div className="field-heading"><label htmlFor="connector-provider">Provider</label></div>
+        <select id="connector-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+          <option value="google-drive">Google Drive</option>
+          <option value="notion">Notion</option>
+          <option value="onedrive">OneDrive</option>
+        </select>
+        <div className="field-heading"><label htmlFor="connector-doc">Document ID</label></div>
+        <input id="connector-doc" value={documentId} onChange={(e) => setDocumentId(e.target.value)} required placeholder="Drive file id / Notion page id / OneDrive item id" />
+        <div className="field-heading"><label htmlFor="connector-token">Provider access token</label></div>
+        <input id="connector-token" type="password" value={accessToken} onChange={(e) => setAccessToken(e.target.value)} required placeholder="OAuth access token (read only, not stored)" />
+        <button className="primary-button" disabled={busy}>{busy ? "Fetching…" : "Fetch & ingest for review"}</button>
+      </form>
+    </div>
+  );
+}
+
 export function GraphView() {
   const client = useBrainClient();
   const [data, setData] = useState<Graph | null>(null);

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 — Content connectors (context-stack port, part 4 of 4)
+
+Fetch one document from Google Drive / Notion / OneDrive into the review queue
+(`connectors.py` + `POST /api/v1/connectors/{provider}/ingest` + console
+Connectors view). External content becomes a source + proposals for human
+review — never canonical. Ports Supermemory's provider boundary; the provider
+token is read-only and never stored. A provider outage is a clean 502 and never
+blocks reads, review, or export.
+
 ## 1.4.0 — Richer extraction (context-stack port, part 2 of 4)
 
 Proposals now carry a **summary + tags** — the shape the hosted Supermemory

@@ -12,6 +12,19 @@ class SourceCreate(BaseModel):
     content: str = Field(min_length=20, max_length=100_000)
 
 
+class ConnectorIngestRequest(BaseModel):
+    """Fetch one provider document and ingest it as a source + proposals.
+
+    `access_token` is the provider's OAuth/access token, used for the read only —
+    never stored, never logged, never echoed back.
+    """
+
+    document_id: str = Field(min_length=1, max_length=500)
+    access_token: str = Field(min_length=1, max_length=4000)
+    sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
+    kind: str = Field(default="research", pattern="^(note|research|interview|decision)$")
+
+
 class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

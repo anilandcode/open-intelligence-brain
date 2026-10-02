@@ -399,6 +399,8 @@ export const api = {
   integrity: () => request<Integrity>("/api/v1/integrity"),
   createSource: (payload: Pick<Source, "title" | "kind" | "sensitivity" | "content">) =>
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
+  connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
+    request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
   approveProposal: (id: string, statement: string, rationale: string) =>
     request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",

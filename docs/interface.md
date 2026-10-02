@@ -32,7 +32,7 @@ The Caret landing uses lightweight synthetic React illustrations, Context/Eviden
 | Workspaces | Explicit preview entry | Sample browsing and detail; tags are not permissions |
 | Working Memory | Explicit preview entry | Search/status filters and source/approved relationships |
 | Brain Graph | Live entry (real `/api/v1/graph`) | Knowledge graph over sources + approved knowledge: hubs, edges by type, filters, zoom/pan, inspection, accessible list |
-| Connectors | Explicit preview entry | GitHub/Drive-first provider browsing and local configuration forms; no OAuth/sync |
+| Connectors | **Live** (real `/api/v1/connectors/{provider}/ingest`) | Fetch one Google Drive / Notion / OneDrive document into the review queue (source + proposals, never canonical). Provider token read-only, not stored |
 | API Keys | Explicit preview entry | Scope/expiry row creation/removal; no credential issued |
 | Agents & MCP | **Live** | Connected-apps registry: every MCP client that reached this workspace (OAuth or direct bearer) with principal, role, calls, last-seen and status. Read-only tools; approval stays in the console |
 | Requests | Explicit preview entry | Synthetic operation/status/latency details, separate from domain Audit |
