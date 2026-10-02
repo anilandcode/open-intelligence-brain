@@ -5,7 +5,7 @@ A local-first, open-source workspace for turning source material into reviewed, 
 The project deliberately separates three layers:
 
 1. **Raw sources** — what a note, interview, or decision record literally contains.
-2. **Proposals** — what the extraction process thinks might be useful knowledge.
+2. **Proposals** — what the extraction process thinks might be useful knowledge, each carrying an extracted summary + tags and its exact source evidence.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
 - Version 1.0 — all milestones complete. Daily routines, usage tracking, held-out evaluation, Hermes messaging, and release packaging. The Brain is ready for personal beta across all your AI tools.

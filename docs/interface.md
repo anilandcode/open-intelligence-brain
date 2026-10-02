@@ -19,7 +19,7 @@ The Caret landing uses lightweight synthetic React illustrations, Context/Eviden
 | Surface | Live console | Demo / preview |
 |---|---|---|
 | Overview | Stored counts, pending reviews, recent knowledge, engine status | Synthetic health and review queue |
-| Inbox | Edit, approve, reject with exact evidence | Local sample approval/rejection |
+| Inbox | Edit, approve, reject with exact evidence; proposals carry an extracted summary + tags | Local sample approval/rejection |
 | Brain | Search, attention filters, sorting, evidence, revision history, superseding | Same page with local revisions |
 | Playground | Canonical retrieval and cited answers | Keyword retrieval from approved sample records, no model |
 | Studio | Interviews, questions, responses, completion, drafts and cited assembly | Same forms with local sample records |

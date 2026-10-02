@@ -146,6 +146,8 @@ export type Proposal = {
   source_excerpt: string;
   status: string;
   critic_notes: string;
+  summary?: string;
+  tags?: string;
   created_at: string;
 };
 

@@ -304,6 +304,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const [busy, setBusy] = useState(false);
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const tags = (() => { try { const parsed = JSON.parse(proposal.tags || "[]"); return Array.isArray(parsed) ? (parsed as string[]) : []; } catch { return []; } })();
 
   async function approve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -350,6 +351,8 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
               <div><dt>Source</dt><dd>{proposal.source_title}</dd></div>
               <div><dt>Captured</dt><dd>{timeAgo(proposal.created_at)}</dd></div>
               <div><dt>Integrity</dt><dd><span className="verified-dot" /> Original preserved</dd></div>
+              {proposal.summary ? <div><dt>Summary</dt><dd>{proposal.summary}</dd></div> : null}
+              {tags.length ? <div><dt>Tags</dt><dd>{tags.join(", ")}</dd></div> : null}
             </dl>
           </aside>
         </div>

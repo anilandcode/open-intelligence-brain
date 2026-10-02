@@ -40,6 +40,16 @@
       **Agents & MCP** view): see which clients reached a workspace across both
       auth shapes, with last-seen/status and no credential exposure.
 
+## v1.2 — context-stack port (Supermemory reference)
+
+Capability gaps filled by porting Supermemory's stack into the governed
+proposal→approve→canon model (never their auto-memory-write product):
+
+- Hybrid retrieval (vector + keyword, reciprocal-rank fusion) — done.
+- Knowledge graph (`GET /api/v1/graph` + console Brain Graph) — done.
+- Richer extraction (semantic chunking + summarize/tag on proposals) — done.
+- Connectors (Drive/Notion/OneDrive) — paused before starting.
+
 ## M1 — trusted thin slice (implemented)
 
 - Source capture.
