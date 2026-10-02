@@ -19,6 +19,7 @@ from .engine import (
     engine_status,
     get_engine,
 )
+from .extraction import extract_tags, summarize
 from .models import (
     AuditEvent,
     Knowledge,
@@ -189,6 +190,8 @@ def add_source_version(
                     "Review wording and evidence before approval."
                 ),
                 source_excerpt=text,
+                summary=summarize(statement),
+                tags=json.dumps(extract_tags(statement), ensure_ascii=False),
             )
             db.add(proposal)
             db.flush()

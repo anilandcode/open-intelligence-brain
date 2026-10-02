@@ -41,6 +41,7 @@ from .migrate import (
     add_grant_scope_and_expiry,
     add_knowledge_embedding,
     add_nullable_evidence_span,
+    add_proposal_summary_tags,
     add_workspace_columns,
 )
 from .models import (
@@ -163,6 +164,13 @@ async def lifespan(app: FastAPI):
     embedded = add_knowledge_embedding()
     if embedded:
         logging.getLogger(__name__).info("Added embedding columns: %s", ", ".join(embedded))
+    # Adds richer-extraction metadata (summary/tags) to proposals. Additive and
+    # idempotent: existing proposals are untouched and gain the columns only.
+    enriched = add_proposal_summary_tags()
+    if enriched:
+        logging.getLogger(__name__).info(
+            "Added proposal summary/tags columns: %s", ", ".join(enriched)
+        )
     # Build the ranked full-text index for canonical knowledge. The backend
     # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
     # PostgreSQL. `ensure_fts` picks; we only log which one answered.

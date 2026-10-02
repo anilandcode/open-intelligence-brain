@@ -85,6 +85,33 @@ def add_knowledge_embedding() -> list[str]:
     return added
 
 
+def add_proposal_summary_tags() -> list[str]:
+    """Store richer extraction (summarize/tag) on proposals.
+
+    Additive and idempotent: no existing row is read or rewritten. `summary` is
+    the engine-style one-liner; `tags` is a JSON list of salient key terms. Both
+    are proposal metadata for the human reviewer — never canonical truth.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    wanted: dict[str, list[tuple[str, str]]] = {
+        "proposals": [
+            ("summary", "TEXT"),
+            ("tags", "TEXT"),
+        ],
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            if table not in columns:
+                continue
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                added.append(f"{table}.{column}")
+    return added
+
+
 def add_nullable_evidence_span() -> list[str]:
     """Make `proposal_evidence.source_span_id` nullable for derived proposals.
 

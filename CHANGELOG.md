@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 — Richer extraction (context-stack port, part 2 of 4)
+
+Proposals now carry a **summary + tags** — the shape the hosted Supermemory
+engine derives, kept locally so the review queue is useful with no provider.
+`extraction.py` ports `code-chunk`'s `ChunkOptions` chunking strategy
+(boundary-respecting paragraph→sentence splits, size cap, overlap) plus
+summarize/tag fallbacks; `add_source_version` enriches every proposal with them.
+Everything is proposal metadata for the human reviewer — never canonical truth.
+
 ## 1.3.0 — Knowledge graph (context-stack port, part 3 of 4)
 
 A read-only relationship graph over sources + approved knowledge, reusing the

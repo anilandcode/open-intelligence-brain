@@ -55,6 +55,8 @@ class ProposalRead(BaseModel):
     source_excerpt: str
     status: str
     critic_notes: str = ""
+    summary: str = ""
+    tags: str = "[]"
     created_at: datetime
 
 
