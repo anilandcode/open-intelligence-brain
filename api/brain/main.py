@@ -632,6 +632,19 @@ def get_overview(scope: ReadScope = Depends(read_scope), db: Session = Depends(g
     return overview(db, scope)
 
 
+@app.get("/api/v1/graph")
+def get_graph(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
+    """Knowledge graph: sources + approved knowledge + edges. Read-only.
+
+    Node/edge shape follows the Supermemory memory-graph contract so a client can
+    render it (and later drop in their force engine). Scope-narrowed like every
+    other read; never returns proposals or anything above the caller's ceiling.
+    """
+    from .graph import build_graph
+
+    return build_graph(db, scope)
+
+
 @app.get("/api/v1/sources", response_model=list[SourceRead])
 def list_sources(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
     rows = db.execute(
