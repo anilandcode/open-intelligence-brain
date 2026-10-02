@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     identity_provider: str = ""
     identity_dev_claims: str = ""
     identity_firebase_project_id: str = ""
+    # Google Identity Services OAuth client id — the audience a Google ID token
+    # from the browser sign-in button is verified against (identity.py "google").
+    identity_google_client_id: str = ""
 
     # Public origin of this deployment (no trailing slash). Used as the OAuth
     # issuer and to advertise the hosted MCP URL `{public_base_url}/mcp`.

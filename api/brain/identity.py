@@ -153,6 +153,52 @@ class FirebaseIdentityProvider:
         )
 
 
+class GoogleIdentityProvider:
+    """Verify a Google ID token from Google Identity Services (GIS).
+
+    The credential is the ID token the browser's Google button produces. Google
+    ID tokens are OAuth2 ID tokens (audience = the OAuth **client id**, not a
+    Firebase project), so this verifies against `identity_google_client_id` and
+    keys the person on the Google `sub` — never the email. Failed, expired, or
+    wrong-audience tokens all collapse to one uninformative `IdentityError`.
+    """
+
+    name = "google"
+
+    def __init__(self, client_id: str) -> None:
+        if not client_id or not client_id.strip():
+            raise ValueError("identity_provider=google requires identity_google_client_id")
+        self.client_id = client_id.strip()
+
+    def verify(self, credential: str) -> VerifiedIdentity:
+        if not credential or not credential.strip():
+            raise IdentityError("Sign-in failed")
+        try:
+            from google.auth.transport import requests as google_requests
+            from google.oauth2 import id_token
+        except ImportError as exc:
+            raise IdentityError("Sign-in failed") from exc
+        try:
+            claims = id_token.verify_oauth2_token(
+                credential.strip(), google_requests.Request(), audience=self.client_id
+            )
+        except Exception as exc:  # noqa: BLE001 — one message for every failure
+            raise IdentityError("Sign-in failed") from exc
+        if not isinstance(claims, dict):
+            raise IdentityError("Sign-in failed")
+        if claims.get("email_verified") is False:
+            raise IdentityError("Sign-in failed")
+        subject = claims.get("sub")
+        if not subject or not isinstance(subject, str):
+            raise IdentityError("Sign-in failed")
+        return VerifiedIdentity(
+            provider=self.name,
+            subject=subject,
+            email=str(claims.get("email") or ""),
+            display_name=str(claims.get("name") or ""),
+        )
+
+
 def get_identity_provider(settings: Settings | None = None) -> IdentityProvider | None:
     """The configured provider, or None when identity is not in use.
 
@@ -183,6 +229,8 @@ def get_identity_provider(settings: Settings | None = None) -> IdentityProvider 
         return LocalIdentityProvider(claims)
     if name == "firebase":
         return FirebaseIdentityProvider(settings.identity_firebase_project_id)
+    if name == "google":
+        return GoogleIdentityProvider(settings.identity_google_client_id)
     raise ValueError(f"Unknown identity provider: {settings.identity_provider!r}")
 
 

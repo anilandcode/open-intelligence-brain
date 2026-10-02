@@ -120,6 +120,29 @@ def login(
         )
     except IdentityError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    # Login logging: the UserSession row already records who / when / from what
+    # client; this adds an audit-trail entry so sign-ins sit alongside every other
+    # operation. A login grants identity ONLY — reach stays with membership (the
+    # invariant: sessions prove who, memberships grant reach). The first owner is
+    # claimed explicitly via POST /auth/bootstrap, never granted by a login.
+    from .identity import membership_access
+    from .models import DEFAULT_WORKSPACE_ID, Workspace
+    from .services import audit
+
+    workspace = db.get(Workspace, DEFAULT_WORKSPACE_ID)
+    if workspace is not None:
+        access = membership_access(db, user, workspace)
+        audit(
+            db,
+            workspace.id,
+            "auth.login",
+            "user",
+            user.id,
+            f"Signed in as {user.email or user.display_name or user.id}",
+            actor=access,
+        )
+
     session_row = db.scalar(select(UserSession).where(UserSession.user_id == user.id))
     expires_at = session_row.expires_at.isoformat() if session_row else ""
     db.commit()
@@ -143,6 +166,66 @@ def logout(
     revoke_session(db, x_brain_session)
     db.commit()
     return None
+
+
+@router.post("/bootstrap", response_model=MeResponse)
+def bootstrap_first_owner(
+    x_brain_session: str = Header(default=""),
+    db: Session = Depends(get_db),
+):
+    """Claim first-owner of the default workspace — explicitly, and only once.
+
+    The chicken-and-egg of a new Brain: nobody can be invited before someone owns
+    it. This is the one bounded exception — the signed-in caller becomes owner
+    ONLY if the workspace still has zero members. It is a deliberate call (never
+    a login side-effect, never model output), and it fails closed the instant any
+    membership exists, so it can never seize a workspace that already has a home.
+    """
+    from .identity import add_member, membership_access
+    from .models import DEFAULT_WORKSPACE_ID, Workspace, WorkspaceMember
+    from .services import audit
+    from .sessions import resolve_session
+
+    row = resolve_session(db, x_brain_session)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign-in required")
+    user = db.get(User, row.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign-in required")
+    workspace = db.get(Workspace, DEFAULT_WORKSPACE_ID)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace to claim")
+    already = db.scalar(
+        select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace.id).limit(1)
+    )
+    if already is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This Brain already has a member. Ask an owner to invite you.",
+        )
+    add_member(db, workspace, user, role="owner")
+    access = membership_access(db, user, workspace)
+    audit(
+        db,
+        workspace.id,
+        "auth.bootstrap",
+        "user",
+        user.id,
+        f"Claimed first-owner as {user.email or user.display_name or user.id}",
+        actor=access,
+    )
+    db.commit()
+    return MeResponse(
+        user=UserRead.model_validate(user),
+        memberships=[
+            MembershipRead(
+                workspace_id=workspace.id,
+                workspace_slug=workspace.slug,
+                workspace_name=workspace.name,
+                role="owner",
+            )
+        ],
+    )
 
 
 @router.get("/me", response_model=MeResponse)

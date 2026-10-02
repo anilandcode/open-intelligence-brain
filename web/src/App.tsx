@@ -283,6 +283,12 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
   const [provider, setProvider] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
+  const googleBtnRef = useRef<HTMLDivElement | null>(null);
+  const onUnlockRef = useRef(onUnlock);
+  onUnlockRef.current = onUnlock;
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
+  const wantsGoogle =
+    signInAvailable && mode === "signin" && (provider === "google" || provider === "firebase") && !!googleClientId;
 
   useEffect(() => {
     let cancelled = false;
@@ -296,6 +302,38 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
       cancelled = true;
     };
   }, []);
+
+  /* Real Google sign-in (Google Identity Services). The button hands us a Google
+     ID token, which is posted to /auth/login as the provider credential; the
+     session comes back and is stored like any other sign-in. */
+  useEffect(() => {
+    if (!wantsGoogle || !googleBtnRef.current) return;
+    const win = window as any;
+    const start = () => {
+      if (!win.google?.accounts?.id || !googleBtnRef.current) return;
+      win.google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: (response: { credential: string }) => {
+          setLocalError("");
+          setBusy(true);
+          api.login(response.credential)
+            .then(() => onUnlockRef.current())
+            .catch((err) => setLocalError(err instanceof Error ? err.message : "Sign-in failed."))
+            .finally(() => setBusy(false));
+        },
+      });
+      win.google.accounts.id.renderButton(googleBtnRef.current, { theme: "outline", size: "large", width: 320 });
+    };
+    if (win.google?.accounts?.id) {
+      start();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.onload = start;
+    document.head.appendChild(script);
+  }, [wantsGoogle, googleClientId]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -372,6 +410,12 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
             <TriangleAlert size={18} strokeWidth={2.1} />
             <span>{localError || "That credential was refused. Check it and try again."}</span>
           </div>
+        )}
+        {wantsGoogle && (
+          <>
+            <div ref={googleBtnRef} className="google-signin" />
+            <div className="access-divider"><span>or use a credential below</span></div>
+          </>
         )}
         <div className="form-field">
           <label htmlFor="brain-token">{label}</label>
