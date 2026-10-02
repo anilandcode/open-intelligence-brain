@@ -160,7 +160,13 @@ unset BRAIN_STRICT_LOCAL
 
 cd "$APP_DIR"
 "$UVICORN" brain.main:app --host 0.0.0.0 --port "${APP_PORT}" & APP_PID=$!
-wait_for_port "$APP_PORT" "$APP_PID" "app" 300
+# 900 tries = 180s. The app's startup runs Base.metadata.create_all plus the
+# column migrations over Postgres (Neon), which on a cold pool can exceed the
+# 60s this used to allow — and a miss here is a crash-looping container, not a
+# slow one. 180s sits under Cloud Run's 240s startup-probe budget (the proxy +
+# engine take ~10s of it), so a slow-but-fine boot survives instead of being
+# killed mid-migration.
+wait_for_port "$APP_PORT" "$APP_PID" "app" 900
 echo "entrypoint: up — app on ${APP_PORT}, engine on ${ENGINE_PORT} (key from ${KEY_FILE})"
 
 trap 'kill -TERM "$APP_PID" "$ENGINE_PID" "$PROXY_PID" 2>/dev/null || true; wait; exit 0' TERM INT
