@@ -325,6 +325,11 @@ export type McpConnection = {
   status: string;
 };
 
+export type GraphMemory = { id: string; memory: string; content: string | null; version: number; memoryRelations: Record<string, string> };
+export type GraphDocument = { id: string; title: string; summary: string; documentType: string; createdAt: string; updatedAt: string; memories: GraphMemory[] };
+export type GraphEdge = { source: string; target: string; edgeType: string };
+export type Graph = { documents: GraphDocument[]; edges: GraphEdge[] };
+
 export type LoginResult = {
   session_token: string;
   expires_at: string;
@@ -366,6 +371,7 @@ export const api = {
   },
   me: () => request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/me"),
   mcpConnections: () => request<McpConnection[]>("/api/v1/mcp/connections"),
+  graph: () => request<Graph>("/api/v1/graph"),
   overview: () => request<Overview>("/api/v1/overview"),
   sources: () => request<Source[]>("/api/v1/sources"),
   sourceVersions: (id: string) => request<SourceVersion[]>(`/api/v1/sources/${id}/versions`),

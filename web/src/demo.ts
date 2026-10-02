@@ -53,6 +53,27 @@ export function createDemoClient(): BrainClient {
       },
       memberships: [],
     }),
+    graph: async () => ({
+      documents: [
+        {
+          id: "doc-demo-1",
+          title: "Research interview",
+          summary: "Original customer interview synthesis.",
+          documentType: "interview",
+          createdAt: "2026-09-28T10:00:00Z",
+          updatedAt: "2026-09-28T10:00:00Z",
+          memories: [
+            { id: "mem-demo-1", memory: "One named owner is required for account setup.", content: "Approved from the interview excerpt.", version: 1, memoryRelations: {} },
+            { id: "mem-demo-2", memory: "Setup handoff is the final activation step.", content: "Approved from the interview excerpt.", version: 1, memoryRelations: {} },
+          ],
+        },
+      ],
+      edges: [
+        { source: "doc-demo-1", target: "mem-demo-1", edgeType: "document" },
+        { source: "doc-demo-1", target: "mem-demo-2", edgeType: "document" },
+        { source: "mem-demo-1", target: "mem-demo-2", edgeType: "extends" },
+      ],
+    }),
     overview: async () => ({ sources: sources.length, proposals: proposals.length, canonical: knowledge.length, pending_reviews: proposals.filter(p => p.status === "proposed").length, recent_activity: copy(events), engine: { name: "Synthetic demo", available: false, detail: "Local examples only. No model or API is connected.", container_tag: "sample", degraded: false } }),
     sources: async () => copy(sources), proposals: async () => copy(proposals.filter(p => p.status === "proposed")), knowledge: async (q = "") => copy(knowledge.filter(k => k.statement.toLowerCase().includes(q.toLowerCase()))),
     integrity: async () => ({ stale_count: knowledge.filter(k => k.stale).length, conflict_count: 0, issues: knowledge.filter(k => k.stale).map(k => ({kind: "stale_source" as const, knowledge_id: k.id, related_id: null, detail: "Sample source has a newer version. Review its approved knowledge."})) }),

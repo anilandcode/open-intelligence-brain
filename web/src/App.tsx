@@ -1,4 +1,4 @@
-import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, CaptureDialog } from "./LivePages";
+import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
@@ -19,7 +19,7 @@ const workspaceNav: NavItem[] = [
 const knowledgeNav: NavItem[] = [
   { id: "brain", label: "Brain", icon: Brain },
   { id: "working-memory", label: "Working Memory", icon: Layers3, future: true },
-  { id: "graph", label: "Brain Graph", icon: GitBranch, future: true },
+  { id: "graph", label: "Brain Graph", icon: GitBranch },
   { id: "sources", label: "Sources", icon: Archive },
   { id: "import", label: "Import", icon: Plus },
 ];
@@ -677,7 +677,8 @@ export default function App() {
               {view === "analytics" && <AnalyticsPreview overview={overview} knowledge={knowledge} integrity={integrity} />}
               {view === "audit" && overview && <AuditView overview={overview} integrity={integrity} />}
               {view === "agents" && <AgentsView connections={mcpConnections} />}
-              {(["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
+              {view === "graph" && <GraphView />}
+              {(["import", "workspaces", "working-memory", "connectors", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>
           )}
         </main>

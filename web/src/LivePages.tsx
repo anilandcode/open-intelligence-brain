@@ -1,7 +1,7 @@
 import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ArrowRight, ArrowUpDown, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Layers3, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
-import type { ChatResult, Draft, DraftDetail, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion } from "./api";
+import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
+import type { ChatResult, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
@@ -1304,6 +1304,74 @@ export function AuditView({ overview, integrity }: { overview: Overview; integri
       {selectedEvent && <Detail title={selectedEvent.action.replaceAll(".", " ")} onClose={() => setSelectedId(null)}><p>{selectedEvent.detail}</p><div className="detail-stat"><span>Recorded</span><strong>{new Date(selectedEvent.created_at).toLocaleString()}</strong></div><div className="detail-stat"><span>Event ID</span><code>{selectedEvent.id}</code></div></Detail>}
     </div>
   );
+}
+
+export function GraphView() {
+  const client = useBrainClient();
+  const [data, setData] = useState<Graph | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [filter, setFilter] = useState("All");
+  const [list, setList] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [selected, setSelected] = useState<string | null>(null);
+  const drag = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
+  useEffect(() => {
+    client.graph().then(setData).catch(() => setFailed(true));
+  }, [client]);
+
+  // Sources are hubs; their approved knowledge fans out around them.
+  const nodes: { id: string; x: number; y: number; label: string; type: string; detail: string }[] = [];
+  const documents = data?.documents ?? [];
+  const cx = 380, cy = 215, hubR = 150, memR = 58;
+  documents.forEach((doc, i) => {
+    const angle = (i / Math.max(documents.length, 1)) * Math.PI * 2 - Math.PI / 2;
+    const hx = cx + hubR * Math.cos(angle), hy = cy + hubR * Math.sin(angle);
+    nodes.push({ id: doc.id, x: hx, y: hy, label: doc.title || "Source", type: "Source", detail: doc.summary || doc.documentType });
+    doc.memories.forEach((m, j) => {
+      const count = doc.memories.length;
+      const ma = angle + (j - (count - 1) / 2) * 0.55;
+      nodes.push({ id: m.id, x: hx + memR * Math.cos(ma), y: hy + memR * Math.sin(ma), label: m.memory.length > 34 ? `${m.memory.slice(0, 34)}…` : m.memory, type: "Approved", detail: m.memory });
+    });
+  });
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const edges = (data?.edges ?? []).filter((e) => byId.has(e.source) && byId.has(e.target));
+  const visible = nodes.filter((n) => filter === "All" || n.type === filter);
+  const selectedNode = nodes.find((n) => n.id === selected);
+  const move = (x: number, y: number) => setPan((p) => ({ x: p.x + x, y: p.y + y }));
+  const edgeColor = (t: string) => (t === "derives" ? "var(--amber)" : t === "extends" ? "var(--accent)" : "var(--line-strong)");
+
+  if (failed) return <EmptyState icon={<Network />} title="Graph unavailable">Loading failed. Retry from the header. No sample graph has replaced your workspace.</EmptyState>;
+  if (!data) return <LoadingState />;
+  if (!nodes.length) return <EmptyState icon={<Network />} title="Nothing to map yet">Approve knowledge and it appears here, linked to its source.</EmptyState>;
+
+  return <>
+    <div className="preview-toolbar">
+      <div className="tabs" role="group" aria-label="Filter graph nodes">{["All", "Source", "Approved"].map((x) => <button key={x} aria-pressed={filter === x} className={filter === x ? "active" : ""} onClick={() => setFilter(x)}>{x}</button>)}</div>
+      <button className="secondary-button" onClick={() => setList(!list)}>{list ? "Graph view" : "Accessible list"}</button>
+    </div>
+    <div className="graph-canvas" onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) return; drag.current = { x: e.clientX, y: e.clientY, originX: pan.x, originY: pan.y }; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (drag.current) setPan({ x: drag.current.originX + e.clientX - drag.current.x, y: drag.current.originY + e.clientY - drag.current.y }); }} onPointerUp={() => (drag.current = null)} onPointerCancel={() => (drag.current = null)}>
+      <div className="graph-controls">
+        <button aria-label="Zoom in" onClick={() => setZoom((z) => Math.min(2, z + 0.15))}><ZoomIn size={17} /></button>
+        <button aria-label="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, z - 0.15))}><ZoomOut size={17} /></button>
+        <button aria-label="Reset graph" onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }}><Maximize2 size={17} /></button>
+        <button aria-label="Pan left" onClick={() => move(-40, 0)}><ArrowLeft size={17} /></button>
+        <button aria-label="Pan right" onClick={() => move(40, 0)}><ArrowRight size={17} /></button>
+        <button aria-label="Pan up" onClick={() => move(0, -40)}><ArrowUp size={17} /></button>
+        <button aria-label="Pan down" onClick={() => move(0, 40)}><ArrowDown size={17} /></button>
+      </div>
+      {list ? (
+        <div className="graph-list"><h2>Knowledge relationships</h2>{visible.map((n) => <button className="preview-row" key={n.id} onClick={() => setSelected(n.id)}><strong>{n.label}</strong><span>{n.type}</span><ArrowRight size={16} /></button>)}</div>
+      ) : (
+        <div className="graph-inner" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
+          <svg viewBox="0 0 760 430" preserveAspectRatio="none" aria-hidden="true">{edges.filter((e) => visible.some((n) => n.id === e.source) && visible.some((n) => n.id === e.target)).map((e) => { const a = byId.get(e.source)!, b = byId.get(e.target)!; return <line key={e.source + e.target} x1={a.x} y1={a.y} x2={b.x} y2={b.y} style={{ stroke: edgeColor(e.edgeType) }} />; })}</svg>
+          {visible.map((n) => <button key={n.id} className={`graph-node node-${n.type.toLowerCase()}`} style={{ left: `${(n.x / 760) * 100}%`, top: `${(n.y / 430) * 100}%` }} onClick={() => setSelected(n.id)} aria-label={`${n.label}, ${n.type}`}>{n.label}</button>)}
+        </div>
+      )}
+      <div className="graph-legend"><strong>Legend</strong>{["Source", "Approved"].map((x) => <span key={x}><i />{x}</span>)}</div>
+    </div>
+    {selectedNode && <Detail title={selectedNode.label} onClose={() => setSelected(null)}><span className="status-pill">{selectedNode.type}</span><p>{selectedNode.detail}</p><h3>Connected records</h3>{edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id).map((e) => byId.get(e.source === selectedNode.id ? e.target : e.source)!).map((n) => <button key={n.id} className="preview-row" onClick={() => setSelected(n.id)}><span>{n.label}</span><ArrowRight size={16} /></button>)}</Detail>}
+  </>;
 }
 
 export function AgentsView({ connections }: { connections: McpConnection[] }) {

@@ -1,7 +1,7 @@
 import { hasToken } from "./api";
 
-export const liveViews = ["overview", "inbox", "brain", "ask", "studio", "activate", "sources", "analytics", "audit", "import"] as const;
-export const previewViews = ["workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as const;
+export const liveViews = ["overview", "inbox", "brain", "ask", "studio", "activate", "sources", "analytics", "audit", "import", "graph"] as const;
+export const previewViews = ["workspaces", "working-memory", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as const;
 export type View = typeof liveViews[number] | typeof previewViews[number];
 export type Screen = "landing" | "login" | "console" | "demo";
 export type Route = { screen: Screen; view: View; record?: string };
