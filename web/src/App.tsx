@@ -4,6 +4,10 @@ import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRig
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
+import { Alert } from "@/components/arc/alert/alert";
+import { Button } from "@/components/arc/button/button";
+import { Input } from "@/components/arc/input/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/arc/tabs/tabs";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
@@ -345,88 +349,74 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
           : "e.g. dev-alice"
       : "Paste the token you were given";
 
-  return (
-    <div className="access-gate">
-      <form className="access-card panel-card" onSubmit={submit}>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true"><Brain size={20} strokeWidth={2.2} /></span>
-          <span className="eyebrow">Open Brain</span>
-        </div>
-        <h1 className="access-title">{title}</h1>
-        <p className="access-copy">{copy}</p>
-        {signInAvailable && (
-          <div className="access-mode-tabs" role="tablist" aria-label="Sign-in method">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "signin"}
-              className={mode === "signin" ? "access-mode is-active" : "access-mode"}
-              onClick={() => { setMode("signin"); setLocalError(""); }}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mode === "token"}
-              className={mode === "token" ? "access-mode is-active" : "access-mode"}
-              onClick={() => { setMode("token"); setLocalError(""); }}
-            >
-              Access token
-            </button>
-          </div>
-        )}
-        {(refused || localError) && (
-          <div className="alert alert--error" role="alert">
-            <TriangleAlert size={18} strokeWidth={2.1} />
-            <span>{localError || "That credential was refused. Check it and try again."}</span>
-          </div>
-        )}
-        {wantsGoogle && (
-          <>
-            {/* Minted at click, not render (see google-signin.ts): the state/nonce
-                pair must survive untouched from click until the redirect returns. */}
-            <button
-              type="button"
-              className="primary-button google-redirect"
-              onClick={() => { window.location.assign(buildGoogleAuthUrl()); }}
-            >
-              Sign in with Google
-            </button>
-            <div className="access-divider"><span>or use a credential below</span></div>
-          </>
-        )}
-        <div className="form-field">
-          <label htmlFor="brain-token">{label}</label>
-          <input
-            id="brain-token"
-            className="input"
-            type="password"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            placeholder={placeholder}
-            autoComplete="off"
-            spellCheck={false}
-            autoFocus
-          />
-          <span className="field-help">Stored for this browser tab only. Close the tab to clear access.</span>
-        </div>
-        <div className="access-actions">
-          <button className="primary-button" type="submit" disabled={!value.trim() || busy}>
-            {busy ? "Opening…" : mode === "signin" ? "Sign in" : "Open the Brain"}
-          </button>
-          <span className="access-hint">
-            {mode === "signin"
-              ? "No membership yet? Ask an owner to invite you."
-              : "No token? Ask whoever runs this Brain."}
-          </span>
-        </div>
+  const panel = (
+    <>
+      {(refused || localError) && (
+        <Alert tone="danger" title={localError || "That credential was refused. Check it and try again."} />
+      )}
+      {wantsGoogle && (
+        <>
+          {/* Minted at click, not render (see google-signin.ts): the state/nonce
+              pair must survive untouched from click until the redirect returns. */}
+          <Button type="button" onClick={() => { window.location.assign(buildGoogleAuthUrl()); }}>
+            Sign in with Google
+          </Button>
+          <div className="gate-divider"><span>or use a credential below</span></div>
+        </>
+      )}
+      <Input
+        id="brain-token"
+        label={label}
+        type="password"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder={placeholder}
+        description="Stored for this browser tab only. Close the tab to clear access."
+        autoComplete="off"
+        spellCheck={false}
+        autoFocus
+      />
+      <div className="gate-actions">
+        <Button type="submit" loading={busy} disabled={!value.trim()}>
+          {mode === "signin" ? "Sign in" : "Open the Brain"}
+        </Button>
+        <span className="gate-hint">
+          {mode === "signin"
+            ? "No membership yet? Ask an owner to invite you."
+            : "No token? Ask whoever runs this Brain."}
+        </span>
         {SHOW_LANDING ? (
-          <a className="access-back" href="#/">← Back to home</a>
+          <a className="gate-back" href="#/">← Back to home</a>
         ) : (
-          <button className="access-back" type="button" onClick={() => openSiteHome()}>
+          <button className="gate-back" type="button" onClick={() => openSiteHome()}>
             ← Back to home
           </button>
+        )}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="gate-page">
+      <form className="gate-card" onSubmit={submit}>
+        <div className="gate-wordmark">
+          <Brain size={20} strokeWidth={2.2} aria-hidden="true" />
+          <span>Open Brain</span>
+        </div>
+        <h1 className="gate-title">{title}</h1>
+        <p className="gate-copy">{copy}</p>
+        {signInAvailable ? (
+          <Tabs value={mode} onValueChange={(next) => { setMode(next as "token" | "signin"); setLocalError(""); }}>
+            <TabsList aria-label="Sign-in method">
+              <TabsTrigger value="signin">Sign in</TabsTrigger>
+              <TabsTrigger value="token">Access token</TabsTrigger>
+            </TabsList>
+            <TabsContent value={mode}>
+              <div className="gate-panel">{panel}</div>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          <div className="gate-panel">{panel}</div>
         )}
       </form>
     </div>
@@ -455,25 +445,21 @@ function ClaimGate({ onClaimed }: { onClaimed: () => void }) {
     }
   }
   return (
-    <div className="access-gate">
-      <div className="access-card panel-card">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true"><Brain size={20} strokeWidth={2.2} /></span>
-          <span className="eyebrow">Open Brain</span>
+    <div className="gate-page">
+      <div className="gate-card">
+        <div className="gate-wordmark">
+          <Brain size={20} strokeWidth={2.2} aria-hidden="true" />
+          <span>Open Brain</span>
         </div>
-        <h1 className="access-title">Claim this Brain.</h1>
-        <p className="access-copy">You're signed in, but this workspace has no members yet. Claim it once to become its owner — a deliberate step that stops working the moment anyone else is a member.</p>
-        {localError && (
-          <div className="alert alert--error" role="alert">
-            <TriangleAlert size={18} strokeWidth={2.1} />
-            <span>{localError}</span>
-          </div>
-        )}
-        <div className="access-actions">
-          <button className="primary-button" type="button" onClick={claim} disabled={busy}>
-            {busy ? "Claiming…" : "Claim this Brain"}
-          </button>
-          <span className="access-hint">Only works while the workspace is empty.</span>
+        <h1 className="gate-title">Claim this Brain.</h1>
+        <p className="gate-copy">
+          You're signed in, but this workspace has no members yet. Claim it once to become its
+          owner. It is a deliberate step that stops working the moment anyone else is a member.
+        </p>
+        {localError && <Alert tone="danger" title={localError} />}
+        <div className="gate-actions">
+          <Button type="button" onClick={claim} loading={busy}>Claim this Brain</Button>
+          <span className="gate-hint">Only works while the workspace is empty.</span>
         </div>
       </div>
     </div>
@@ -550,6 +536,7 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = route.screen === "landing" || route.screen === "login" ? "light" : theme;
+    document.documentElement.dataset.accent = "blue";
     document.documentElement.dataset.surface = route.screen === "landing" || route.screen === "login" ? "public" : "console";
   }, [route.screen, theme]);
 

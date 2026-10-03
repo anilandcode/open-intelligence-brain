@@ -4,6 +4,8 @@ import App from "./App";
 import "@fontsource/figtree/latin-400.css";
 import "@fontsource/figtree/latin-500.css";
 import "@fontsource/figtree/latin-600.css";
+import "@fontsource/geist-sans/latin-400.css";
+import "@fontsource/geist-sans/latin-500.css";
 import "@fontsource/inter/latin-400.css";
 import "@fontsource/inter/latin-500.css";
 import "@fontsource/inter/latin-600.css";
@@ -23,6 +25,11 @@ import "./product.css";
 import "./console-theme.css";
 import "./caret.css";
 import "./landing.css";
+// Arc loads last so its semantic tokens win the few shared names, and its
+// glue maps the Geist/Inter faces every Arc item expects.
+import "./components/arc/foundation.css";
+import "./arc-theme.css";
+import "./gate.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -1,0 +1,107 @@
+/* Arc migration: the sign-in and claim gates.
+   Layout only. Every color, type size, radius, shadow and motion value comes
+   from Arc foundation tokens (components/arc/foundation.css). One panel card
+   per job (sign in, claim), a quiet status line under the actions. */
+
+.gate-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: var(--background);
+}
+
+.gate-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-8);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-md);
+}
+
+.gate-wordmark {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.gate-wordmark svg {
+  color: var(--accent);
+}
+
+.gate-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
+  font-weight: 500;
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--foreground);
+}
+
+.gate-copy {
+  margin: 0;
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  color: var(--text-secondary);
+}
+
+.gate-panel {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.gate-actions {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.gate-actions > button {
+  width: 100%;
+}
+
+.gate-hint {
+  font-size: var(--text-sm);
+  line-height: var(--leading-tight);
+  color: var(--text-muted);
+}
+
+.gate-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.gate-divider::before,
+.gate-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.gate-back {
+  justify-self: center;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.gate-back:hover {
+  color: var(--foreground);
+}

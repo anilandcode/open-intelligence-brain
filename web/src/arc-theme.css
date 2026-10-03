@@ -1,0 +1,19 @@
+/* Arc app glue.
+ *
+ * Arc (components/arc/foundation.css) is the design system: tokens, themes
+ * (`data-theme="dark"` on <html>), accents (`data-accent`). This file only
+ * supplies the two type faces Arc expects via --font-geist / --font-inter and
+ * makes Inter the body default. The old product/console CSS layers load BEFORE
+ * foundation so Arc's semantic names win wherever the two systems overlap
+ * (--surface, --surface-muted, --surface-raised); old-only names (--canvas,
+ * --ink, --line, --console-*) keep the not-yet-migrated views working. */
+:root {
+  --font-geist: "Geist", sans-serif;
+  --font-inter: "Inter", sans-serif;
+}
+
+html,
+body {
+  font-family: var(--font-body);
+  letter-spacing: var(--tracking-body);
+}
