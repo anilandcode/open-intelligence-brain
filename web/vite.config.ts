@@ -11,7 +11,11 @@ export default defineConfig({
     // The landing is a non-secret build flag (VITE_SHOW_LANDING). These tests
     // exercise both the public landing and the console, so it must be ON here —
     // otherwise every landing route falls through to the login gate and the
-    // landing tests only ever see the access gate.
-    env: { VITE_SHOW_LANDING: "true" },
+    // landing tests only ever see the access gate. VITE_GOOGLE_CLIENT_ID is the
+    // public OAuth client id (never a secret) so the sign-in link renders too.
+    env: {
+      VITE_SHOW_LANDING: "true",
+      VITE_GOOGLE_CLIENT_ID: "test-client-id.apps.googleusercontent.com",
+    },
   },
 });

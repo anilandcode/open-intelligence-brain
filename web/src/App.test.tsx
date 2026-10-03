@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { SESSION_KEY, TOKEN_KEY } from "./api";
+import { clearToken, SESSION_KEY, TOKEN_KEY } from "./api";
 
 const overview = {
   sources: 1,
@@ -296,6 +296,52 @@ describe("App", () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: /Claim this Brain/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Claim this Brain/i })).toBeInTheDocument();
+  });
+
+  it("offers a top-level Google sign-in link on the gate", async () => {
+    // clearToken() (not sessionStorage.clear()): the module keeps an in-memory
+    // credential fallback for private mode, and a bare storage wipe leaves that
+    // fallback holding an earlier test's token.
+    clearToken();
+    window.history.replaceState(null, "", "#/login");
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/status")) return mockJson({ sign_in_available: true, provider: "google" });
+      return mockJson({});
+    });
+    render(<App />);
+    const link = await screen.findByRole("link", { name: /Sign in with Google/i });
+    const href = link.getAttribute("href") || "";
+    expect(href).toContain("accounts.google.com/o/oauth2/v2/auth");
+    expect(href).toContain("response_type=id_token");
+    expect(href).toContain("test-client-id.apps.googleusercontent.com");
+  });
+
+  it("exchanges a Google redirect return for a session and offers the claim step", async () => {
+    // Returning from accounts.google.com: the ID token rides in the URL fragment
+    // and is exchanged once for a session (regression test: the embedded Google
+    // button is unreliable in some browsers, so this redirect path is the one
+    // that must never break). No token is held — that is the state a returning
+    // signer-in is in.
+    clearToken();
+    window.sessionStorage.setItem("brain.google.state", JSON.stringify({ state: "s1", nonce: "n1" }));
+    window.history.replaceState(null, "", "#id_token=fake-google-id-token&state=s1&nonce=n1");
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/auth/login"))
+        return mockJson({ session_token: "sess-abc", expires_at: new Date().toISOString(), user: { id: "u1", provider: "google", email: "a@example.com", display_name: "A" } });
+      if (url.includes("/auth/me"))
+        return mockJson({ user: { id: "u1", provider: "google", email: "a@example.com", display_name: "A" }, memberships: [] });
+      return mockJson({});
+    });
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: /Claim this Brain/i })).toBeInTheDocument();
+    const loginCall = vi.mocked(fetch).mock.calls.find((c) => String(c[0]).includes("/auth/login"));
+    expect(loginCall).toBeDefined();
+    expect(JSON.stringify(loginCall![1])).toContain("fake-google-id-token");
+    // the ID-token fragment must not linger (the app replaces it with its own
+    // console route as it unlocks)
+    expect(window.location.hash).not.toContain("id_token");
   });
 
 });

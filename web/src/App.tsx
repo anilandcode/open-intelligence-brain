@@ -3,6 +3,7 @@ import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, u
 import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
+import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
@@ -283,12 +284,8 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
   const [provider, setProvider] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState("");
-  const googleBtnRef = useRef<HTMLDivElement | null>(null);
-  const onUnlockRef = useRef(onUnlock);
-  onUnlockRef.current = onUnlock;
-  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
   const wantsGoogle =
-    signInAvailable && mode === "signin" && (provider === "google" || provider === "firebase") && !!googleClientId;
+    signInAvailable && mode === "signin" && provider === "google" && googleSignInAvailable();
 
   useEffect(() => {
     let cancelled = false;
@@ -303,37 +300,9 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
     };
   }, []);
 
-  /* Real Google sign-in (Google Identity Services). The button hands us a Google
-     ID token, which is posted to /auth/login as the provider credential; the
-     session comes back and is stored like any other sign-in. */
-  useEffect(() => {
-    if (!wantsGoogle || !googleBtnRef.current) return;
-    const win = window as any;
-    const start = () => {
-      if (!win.google?.accounts?.id || !googleBtnRef.current) return;
-      win.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: (response: { credential: string }) => {
-          setLocalError("");
-          setBusy(true);
-          api.login(response.credential)
-            .then(() => onUnlockRef.current())
-            .catch((err) => setLocalError(err instanceof Error ? err.message : "Sign-in failed."))
-            .finally(() => setBusy(false));
-        },
-      });
-      win.google.accounts.id.renderButton(googleBtnRef.current, { theme: "outline", size: "large", width: 320 });
-    };
-    if (win.google?.accounts?.id) {
-      start();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = start;
-    document.head.appendChild(script);
-  }, [wantsGoogle, googleClientId]);
+  /* Real Google sign-in goes through a top-level redirect (see google-signin.ts
+     for why the embedded button is not used); the ID-token exchange for a
+     session happens in App so a return lands correctly on any screen. */
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -356,14 +325,14 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
 
   const title =
     mode === "signin"
-      ? provider === "firebase"
+      ? provider === "firebase" || provider === "google"
         ? "Sign in to your Brain."
         : "Sign in with your identity credential."
       : "Welcome to your Brain.";
   const copy =
     mode === "signin"
-      ? provider === "firebase"
-        ? "Use the ID token from Google sign-in. Your membership still decides what you can reach."
+      ? provider === "firebase" || provider === "google"
+        ? "Use your Google account. Your membership still decides what you can reach."
         : "Enter the development identity credential provisioned for this Brain."
       : "Enter the access token from your Brain administrator to open the workspace.";
   const label = mode === "signin" ? "Sign-in credential" : "Access token";
@@ -371,7 +340,9 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
     mode === "signin"
       ? provider === "firebase"
         ? "Paste Firebase ID token"
-        : "e.g. dev-alice"
+        : provider === "google"
+          ? "Paste a Google ID token"
+          : "e.g. dev-alice"
       : "Paste the token you were given";
 
   return (
@@ -413,7 +384,9 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
         )}
         {wantsGoogle && (
           <>
-            <div ref={googleBtnRef} className="google-signin" />
+            <a className="primary-button google-redirect" href={buildGoogleAuthUrl()}>
+              Sign in with Google
+            </a>
             <div className="access-divider"><span>or use a credential below</span></div>
           </>
         )}
@@ -621,6 +594,27 @@ export default function App() {
     setRoute({ screen: "console", view: "overview" });
     goTo("console", "overview");
   }
+
+  /* Returning from a Google redirect sign-in: exchange the ID token from the
+     URL fragment for a session exactly once (the fragment is cleared as it is
+     consumed). Lives here rather than in the gate so a return is honoured on
+     every screen it can land on. */
+  useEffect(() => {
+    const result = consumeGoogleRedirect();
+    if (result.kind === "none") return;
+    if (result.kind === "error") {
+      setTokenRequired(true);
+      setTokenRefused(true);
+      return;
+    }
+    api.login(result.idToken)
+      .then(() => unlock())
+      .catch(() => {
+        setTokenRequired(true);
+        setTokenRefused(true);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     // Nothing is requested before a token is present: an unauthenticated page
