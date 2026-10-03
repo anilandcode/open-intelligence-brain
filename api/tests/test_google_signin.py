@@ -38,6 +38,59 @@ class TestGoogleProvider:
         with pytest.raises(IdentityError, match="Sign-in failed"):
             provider.verify("not-a-real-google-token")
 
+    def test_maps_real_google_claims(self, monkeypatch):
+        # Happy path with Google's real claims shape. Guard against the failure
+        # this suite once masked: `google-auth` is an optional extra, and without
+        # it the lazy import fails with the SAME message as a bad token, so the
+        # rejection tests above passed while every real sign-in 401'd. Importing
+        # the real module here turns a missing extra into a loud test failure.
+        from google.oauth2 import id_token as google_id_token
+
+        monkeypatch.setattr(
+            google_id_token,
+            "verify_oauth2_token",
+            lambda credential, request, audience: {
+                "iss": "https://accounts.google.com",
+                "aud": audience,
+                "sub": "google-sub-122883344",
+                "email": "anil.pervaiz01@gmail.com",
+                "email_verified": True,
+                "name": "Anil Pervaiz",
+            },
+        )
+        provider = GoogleIdentityProvider("cid.apps.googleusercontent.com")
+        identity = provider.verify("header.payload.signature")
+        assert identity.provider == "google"
+        assert identity.subject == "google-sub-122883344"
+        assert identity.email == "anil.pervaiz01@gmail.com"
+        assert identity.display_name == "Anil Pervaiz"
+
+    def test_rejects_unverified_email(self, monkeypatch):
+        from google.oauth2 import id_token as google_id_token
+
+        monkeypatch.setattr(
+            google_id_token,
+            "verify_oauth2_token",
+            lambda credential, request, audience: {"sub": "s1", "email_verified": False},
+        )
+        provider = GoogleIdentityProvider("cid.apps.googleusercontent.com")
+        with pytest.raises(IdentityError, match="Sign-in failed"):
+            provider.verify("header.payload.signature")
+
+    def test_rejects_claims_without_sub(self, monkeypatch):
+        # The Google sub is the identity key; a token without one must never
+        # fall back to the email (or anything else) as the key.
+        from google.oauth2 import id_token as google_id_token
+
+        monkeypatch.setattr(
+            google_id_token,
+            "verify_oauth2_token",
+            lambda credential, request, audience: {"email": "a@example.com"},
+        )
+        provider = GoogleIdentityProvider("cid.apps.googleusercontent.com")
+        with pytest.raises(IdentityError, match="Sign-in failed"):
+            provider.verify("header.payload.signature")
+
 
 def _sign_in(client, monkeypatch, credential, subject, name):
     monkeypatch.setattr(

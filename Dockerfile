@@ -120,7 +120,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv/api
 COPY api/pyproject.toml api/README-placeholder.md ./
 COPY api/brain ./brain
-RUN pip install --no-cache-dir .
+# The identity extra carries google-auth (Google ID-token verification). It is
+# optional in the package (a deployment may run machine-token-only) but this
+# deployment signs humans in with Google, so it is installed here — a plain
+# `pip install .` ships without it and every real sign-in 401s at the lazy
+# import, with the same uninformative message as a bad token.
+RUN pip install --no-cache-dir ".[identity]"
 # The app resolves its static directory as parents[2] / "web" / "dist" from
 # brain/main.py, so the image keeps the api/ and web/ layout instead of
 # flattening it — otherwise the frontend mounts at a path nothing looks in.

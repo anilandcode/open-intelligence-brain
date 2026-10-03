@@ -33,9 +33,13 @@ dev = [
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
 ]
-# Optional: Firebase ID-token verification for hosted human sign-in.
+# Optional: Google / Firebase ID-token verification for hosted human sign-in.
+# `requests` is not a google-auth dependency: `google.auth.transport.requests`
+# (the transport identity.py uses) needs it, and without it every verification
+# fails at import time with the same message as a bad token.
 identity = [
   "google-auth>=2.30,<3",
+  "requests>=2.32,<3",
 ]
 
 [tool.hatch.build.targets.wheel]
