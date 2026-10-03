@@ -19,7 +19,7 @@ from .engine import (
     engine_status,
     get_engine,
 )
-from .extraction import extract_tags, summarize
+from .extraction import extract_tags, is_task_fragment, summarize
 from .models import (
     AuditEvent,
     Knowledge,
@@ -126,7 +126,9 @@ def classify_statement(statement: str) -> str:
 
 def extract_candidates(content: str) -> list[tuple[str, str]]:
     candidates = [
-        re.sub(r"\s+", " ", text) for _, _, text in extract_spans(content) if 35 <= len(text) <= 600
+        re.sub(r"\s+", " ", text)
+        for _, _, text in extract_spans(content)
+        if 35 <= len(text) <= 600 and not is_task_fragment(text)
     ]
     unique = list(dict.fromkeys(candidates))
     return [(classify_statement(text), text) for text in unique[:8]]
@@ -177,7 +179,7 @@ def add_source_version(
         )
         db.add(span)
         db.flush()
-        if create_proposals and 35 <= len(text) <= 600:
+        if create_proposals and 35 <= len(text) <= 600 and not is_task_fragment(text):
             statement = re.sub(r"\s+", " ", text)
             proposal = Proposal(
                 id=new_id("prop"),

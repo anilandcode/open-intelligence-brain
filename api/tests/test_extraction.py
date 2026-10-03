@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from brain.extraction import chunk_content, extract_tags, summarize
+from brain.extraction import chunk_content, extract_tags, is_task_fragment, summarize
 
 
 class TestChunkContent:
@@ -74,3 +74,32 @@ class TestExtractionLandsOnProposals:
         assert proposal.get("summary"), "summary must be extracted"
         tags = _json.loads(proposal.get("tags") or "[]")
         assert isinstance(tags, list) and tags, "tags must be a non-empty JSON list"
+
+
+class TestTaskFragments:
+    """Checkbox/task lines never become proposals (the vault-import flood)."""
+
+    def test_checkbox_lines_are_note_scaffolding(self):
+        assert is_task_fragment("- [ ] Internal links and share links still resolve.")
+        assert is_task_fragment("- [x] Sitemap still contains all eight canonical article URLs.")
+        assert is_task_fragment("* [ ] Another checklist item that is quite long indeed here.")
+        assert is_task_fragment("1. [ ] Numbered task list item that is also fairly long here.")
+
+    def test_prose_bullets_stay_eligible(self):
+        assert not is_task_fragment(
+            "- A descriptive title written for the human decision, not an awkward keyword."
+        )
+        assert not is_task_fragment(
+            "We chose Postgres because it scales and stays boring under load."
+        )
+
+    def test_candidates_skip_task_lines_but_keep_prose(self):
+        from brain.services import extract_candidates
+
+        content = (
+            "- [ ] Internal links and share links still resolve.\n"
+            "We decided to keep one global domain for every region claim we make.\n"
+        )
+        texts = [text for _, text in extract_candidates(content)]
+        assert all("[ ]" not in text for text in texts)
+        assert any("global domain" in text for text in texts)

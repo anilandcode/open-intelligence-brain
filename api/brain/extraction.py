@@ -42,6 +42,21 @@ _STOPWORDS = frozenset(
 )
 
 
+_TASK_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s*\[[ xX]\]\s*")
+
+
+def is_task_fragment(text: str) -> bool:
+    """Checkbox / task-list lines are note scaffolding, never knowledge.
+
+    A vault import turns every ``- [ ] …`` checklist line into a proposal
+    otherwise (3,685 proposals from 35 notes, most of them QA checklists).
+    The line stays in the immutable source and remains an evidence span — it
+    just never becomes a proposal. Plain prose bullets are deliberately NOT
+    filtered: some carry real decisions and stay eligible.
+    """
+    return bool(_TASK_LINE.match(text.strip()))
+
+
 def chunk_content(content: str, max_chunk: int = MAX_CHUNK, overlap: int = OVERLAP) -> list[str]:
     """Split prose into coherent chunks (code-chunk ``ChunkOptions`` strategy).
 
