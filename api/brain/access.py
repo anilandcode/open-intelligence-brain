@@ -229,6 +229,41 @@ def ensure_default_workspace(db: Session) -> Workspace:
     return workspace
 
 
+def resolve_request_access(
+    db: Session,
+    x_brain_token: str,
+    x_brain_session: str,
+    x_brain_workspace: str | None,
+) -> WorkspaceAccess:
+    """Authenticate a request carrying exactly one credential class.
+
+    The single source of truth for the FastAPI surfaces (`main`, `studio_api`,
+    `mcp_http`): `X-Brain-Token` resolves a machine grant, `X-Brain-Session` a
+    human session. Neither is accepted where the other is expected, and sending
+    both is refused rather than silently picking one — a request whose actor is
+    ambiguous is exactly what the separation exists to prevent.
+
+    Routers that once kept token-only copies of this logic 401'd every valid
+    human session on their routes, and the console (which loads its whole
+    workspace in one batch) turned any such 401 into a logout.
+    """
+    if x_brain_token and x_brain_session:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Send exactly one credential"
+        )
+    if x_brain_session:
+        from .sessions import resolve_session_access
+
+        try:
+            return resolve_session_access(db, x_brain_session, x_brain_workspace)
+        except AccessDenied as exc:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    try:
+        return resolve_workspace(db, x_brain_token, x_brain_workspace)
+    except AccessDenied as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+
 def resolve_workspace(
     db: Session, token: str, requested_slug: str | None = None
 ) -> WorkspaceAccess:

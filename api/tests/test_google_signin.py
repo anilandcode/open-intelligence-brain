@@ -161,3 +161,39 @@ class TestBootstrapAndLogging:
             client.post("/api/v1/auth/bootstrap", headers={"X-Brain-Session": second}).status_code
             == 409
         )
+
+
+class TestSessionReachesEveryRouter:
+    """A human session must be accepted by every router's access dependency.
+
+    `studio_api` and `mcp_http` once kept token-only copies of the resolver and
+    401'd valid sessions. The console loads its whole workspace in one batch, so
+    a single such 401 wiped the session and bounced a signed-in owner back to
+    the sign-in gate with "That credential was refused".
+    """
+
+    ROUTES = (
+        "/api/v1/overview",
+        "/api/v1/studio/interviews",
+        "/api/v1/studio/drafts",
+        "/api/v1/mcp/tools",
+        "/api/v1/mcp/connections",
+    )
+
+    def test_session_reaches_every_router_after_claim(self, client, monkeypatch):
+        session = _sign_in(client, monkeypatch, "dev-ann", "ann-1", "Ann")
+        claim = client.post("/api/v1/auth/bootstrap", headers={"X-Brain-Session": session})
+        assert claim.status_code == 200, claim.text
+        for path in self.ROUTES:
+            response = client.get(path, headers={"X-Brain-Session": session})
+            assert response.status_code == 200, f"{path}: {response.status_code} {response.text}"
+
+    def test_both_credential_classes_are_refused_together(self, client, monkeypatch, headers):
+        # "Send exactly one credential" on EVERY router: a token-only router
+        # would happily have taken the machine token and ignored the session,
+        # silently attributing a human's request to the token.
+        session = _sign_in(client, monkeypatch, "dev-ann", "ann-1", "Ann")
+        client.post("/api/v1/auth/bootstrap", headers={"X-Brain-Session": session})
+        for path in self.ROUTES:
+            response = client.get(path, headers={**headers, "X-Brain-Session": session})
+            assert response.status_code == 401, f"{path} accepted two credential classes"

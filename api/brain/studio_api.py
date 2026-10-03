@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from .access import AccessDenied, ReadScope, WorkspaceAccess, resolve_workspace
+from .access import ReadScope, WorkspaceAccess, resolve_request_access
 from .database import get_db
 from .models import Knowledge, new_id
 from .schemas import SourceCreate
@@ -53,13 +53,14 @@ router = APIRouter(prefix="/api/v1/studio", tags=["Studio"])
 
 def _resolve_access(
     x_brain_token: str = Header(default=""),
+    x_brain_session: str = Header(default=""),
     x_brain_workspace: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> WorkspaceAccess:
-    try:
-        return resolve_workspace(db, x_brain_token, x_brain_workspace)
-    except AccessDenied as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    # Either credential class, exactly one — same rules as every other router
+    # (see access.resolve_request_access). This used to be a token-only copy,
+    # which 401'd every human session on /studio/* and logged the console out.
+    return resolve_request_access(db, x_brain_token, x_brain_session, x_brain_workspace)
 
 
 def _read_scope(access: WorkspaceAccess = Depends(_resolve_access)) -> ReadScope:

@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from . import turns as harness_turns
 from .access import (
-    AccessDenied,
     ReadScope,
     WorkspaceAccess,
     audit_access,
@@ -19,7 +18,7 @@ from .access import (
     grant_workspace,
     require_in_workspace,
     require_scope,
-    resolve_workspace,
+    resolve_request_access,
     token_preview,
 )
 from .auth_api import router as auth_router
@@ -282,17 +281,7 @@ def resolve_access(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Send exactly one credential"
         )
-    if x_brain_session:
-        from .sessions import resolve_session_access
-
-        try:
-            return resolve_session_access(db, x_brain_session, x_brain_workspace)
-        except AccessDenied as exc:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-    try:
-        return resolve_workspace(db, x_brain_token, x_brain_workspace)
-    except AccessDenied as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    return resolve_request_access(db, x_brain_token, x_brain_session, x_brain_workspace)
 
 
 def read_scope(access: WorkspaceAccess = Depends(resolve_access)) -> ReadScope:

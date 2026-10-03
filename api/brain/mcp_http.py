@@ -16,11 +16,11 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from .access import AccessDenied, WorkspaceAccess, resolve_workspace
+from .access import WorkspaceAccess, resolve_request_access
 from .database import get_db
 
 log = logging.getLogger(__name__)
@@ -30,14 +30,12 @@ router = APIRouter(prefix="/api/v1/mcp", tags=["MCP"])
 
 def _resolve_access(
     x_brain_token: str = Header(default=""),
+    x_brain_session: str = Header(default=""),
     x_brain_workspace: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> WorkspaceAccess:
-    """Authenticate the caller for MCP endpoints."""
-    try:
-        return resolve_workspace(db, x_brain_token, x_brain_workspace)
-    except AccessDenied as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+    """Authenticate the caller for MCP endpoints (either credential class)."""
+    return resolve_request_access(db, x_brain_token, x_brain_session, x_brain_workspace)
 
 
 # The MCP tool implementations take an explicit ReadScope, so the HTTP
