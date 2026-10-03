@@ -167,6 +167,18 @@
 .app-shell .topbar {
   background: var(--background);
   border-bottom: 1px solid var(--border);
+  gap: var(--space-3);
+}
+
+/* The actions at the right edge must never clip: let the middle compress. */
+.topbar-start {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.topbar-actions {
+  flex: 0 0 auto;
 }
 
 .workspace-switcher {
@@ -178,6 +190,23 @@
   color: var(--foreground);
   font-family: inherit;
   cursor: pointer;
+  max-width: 240px;
+}
+
+.workspace-switcher strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-crumbs {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .workspace-switcher:hover {
@@ -459,6 +488,16 @@
 .text-button:hover,
 .table-go:hover {
   background: var(--accent-subtle);
+}
+
+.overview-table-scroll {
+  overflow-x: auto;
+}
+
+.overview-table {
+  width: 100%;
+  min-width: 540px;
+  border-collapse: collapse;
 }
 
 .overview-table th {

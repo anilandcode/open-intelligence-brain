@@ -1,6 +1,6 @@
 import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X } from "lucide-react";
+import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
@@ -756,7 +756,7 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             {compact && <button className="mobile-search-button" aria-label="Open search" onClick={() => setPaletteOpen(true)}><Search size={16} aria-hidden="true"/></button>}
-            <button className="theme-button" type="button" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>{theme === "dark" ? "☀" : "☾"}</button>
+            <button className="theme-button" type="button" onClick={() => changeTheme(theme === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>
             <button className="capture-button" onClick={() => route.screen === "demo" ? navigate("import") : setShowCapture(true)}><Plus size={17} /> Capture source</button>
           </div>
         </header>

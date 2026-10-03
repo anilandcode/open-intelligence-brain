@@ -17,3 +17,27 @@ body {
   font-family: var(--font-body);
   letter-spacing: var(--tracking-body);
 }
+
+/* Arc owns the semantic surface names on migrated surfaces.
+   caret.css re-declares the --surface family under :root[data-surface=...]
+   (specificity 0,2,0, and its public block pins them to a dark zinc palette),
+   which outranks foundation's plain :root defaults in light mode. That mixed
+   caret-dark surfaces with Arc-light text (a dark gate card with near-black
+   headline text). Re-asserting the names ON the migrated elements wins over any
+   :root inheritance regardless of selector specificity, and leaves the landing
+   (not migrated, dark by design) untouched. Values mirror foundation exactly. */
+.gate-page,
+.app-shell {
+  --surface: var(--neutral-0);
+  --surface-raised: var(--neutral-0);
+  --surface-muted: var(--neutral-2);
+  --surface-skeleton: var(--neutral-3);
+}
+
+:root[data-theme="dark"] .gate-page,
+:root[data-theme="dark"] .app-shell {
+  --surface: oklch(21.5% 0 0);
+  --surface-raised: oklch(24% 0 0);
+  --surface-muted: oklch(26% 0 0);
+  --surface-skeleton: oklch(26% 0 0);
+}
