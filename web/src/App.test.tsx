@@ -326,7 +326,9 @@ describe("App", () => {
     // signer-in is in.
     clearToken();
     window.sessionStorage.setItem("brain.google.state", JSON.stringify({ state: "s1", nonce: "n1" }));
-    window.history.replaceState(null, "", "#id_token=fake-google-id-token&state=s1&nonce=n1");
+    // Google's real fragment echoes `state` but NOT `nonce` (the nonce rides in
+    // the ID token's claims) — mirror that exactly.
+    window.history.replaceState(null, "", "#id_token=fake-google-id-token&state=s1");
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/auth/login"))
@@ -343,6 +345,18 @@ describe("App", () => {
     // the ID-token fragment must not linger (the app replaces it with its own
     // console route as it unlocks)
     expect(window.location.hash).not.toContain("id_token");
+  });
+
+  it("never exchanges a Google return whose state does not match this tab's sign-in", async () => {
+    // The state round-trip is the CSRF binding: a response that does not carry
+    // this tab's state must be burned before any credential reaches the API.
+    clearToken();
+    window.sessionStorage.setItem("brain.google.state", JSON.stringify({ state: "s1", nonce: "n1" }));
+    window.history.replaceState(null, "", "#id_token=fake-google-id-token&state=ATTACKER-STATE");
+    vi.mocked(fetch).mockImplementation(() => mockJson({}));
+    render(<App />);
+    await waitFor(() => expect(window.sessionStorage.getItem("brain.google.state")).toBeNull());
+    expect(vi.mocked(fetch).mock.calls.some((c) => String(c[0]).includes("/auth/login"))).toBe(false);
   });
 
 });

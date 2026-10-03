@@ -8,8 +8,9 @@
  * to Google works in every browser and returns the very same Google ID token,
  * which is posted to `/api/v1/auth/login` and verified server-side against the
  * OAuth client id (identity.py). The response only ever lands on the registered
- * redirect URI (the console origin), and the state/nonce round-trip binds the
- * response to this tab's request.
+ * redirect URI (the console origin), and the `state` round-trip binds the
+ * response to this tab's request (the nonce travels inside the ID token's
+ * claims; Google does not echo it in the fragment).
  */
 const CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) ?? "";
 const REDIRECT_URI = typeof window === "undefined" ? "" : window.location.origin + "/";
@@ -28,10 +29,10 @@ function randomToken(): string {
 /** The URL to navigate to (top-level) to start a Google sign-in.
  *
  * Call this at ACTIVATION time (a click), never during render: it mints and
- * stores the state/nonce pair that `consumeGoogleRedirect` checks on return. A
- * render-time call would overwrite the pair of an in-flight sign-in the moment
- * the return page paints its gate — before the exchange effect runs — and every
- * return would fail its own round-trip check. */
+ * stores the state that `consumeGoogleRedirect` checks on return. A render-time
+ * call would overwrite the state of an in-flight sign-in the moment the return
+ * page paints its gate — before the exchange effect runs — and every return
+ * would fail its own round-trip check. */
 export function buildGoogleAuthUrl(): string {
   const state = randomToken();
   const nonce = randomToken();
@@ -73,10 +74,13 @@ export function consumeGoogleRedirect(): GoogleRedirectResult {
   }
   const idToken = params.get("id_token");
   if (!idToken) return { kind: "none" };
+  // `state` is the CSRF binding and Google echoes it in the fragment. The nonce
+  // is deliberately not compared here: it is not echoed in the fragment — it
+  // travels inside the ID token's own claims, which the backend verifies.
   try {
     const saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || "null");
     sessionStorage.removeItem(STATE_KEY);
-    if (!saved || saved.state !== params.get("state") || saved.nonce !== params.get("nonce")) {
+    if (!saved || saved.state !== params.get("state")) {
       return { kind: "error", message: "Sign-in could not be verified. Try again." };
     }
   } catch {
