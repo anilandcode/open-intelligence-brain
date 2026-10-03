@@ -298,7 +298,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /Claim this Brain/i })).toBeInTheDocument();
   });
 
-  it("offers a top-level Google sign-in link on the gate", async () => {
+  it("offers a top-level Google sign-in button on the gate", async () => {
     // clearToken() (not sessionStorage.clear()): the module keeps an in-memory
     // credential fallback for private mode, and a bare storage wipe leaves that
     // fallback holding an earlier test's token.
@@ -310,11 +310,12 @@ describe("App", () => {
       return mockJson({});
     });
     render(<App />);
-    const link = await screen.findByRole("link", { name: /Sign in with Google/i });
-    const href = link.getAttribute("href") || "";
-    expect(href).toContain("accounts.google.com/o/oauth2/v2/auth");
-    expect(href).toContain("response_type=id_token");
-    expect(href).toContain("test-client-id.apps.googleusercontent.com");
+    expect(await screen.findByRole("button", { name: /Sign in with Google/i })).toBeInTheDocument();
+    // Regression guard: the gate must not mint the sign-in state/nonce at
+    // render time. If it does, painting the gate on the return from Google
+    // overwrites the in-flight pair before the exchange runs and every return
+    // fails its own round-trip check. The pair is minted at click time only.
+    expect(window.sessionStorage.getItem("brain.google.state")).toBeNull();
   });
 
   it("exchanges a Google redirect return for a session and offers the claim step", async () => {

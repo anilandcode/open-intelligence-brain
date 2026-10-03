@@ -384,9 +384,15 @@ function AccessGate({ refused, onUnlock }: { refused: boolean; onUnlock: () => v
         )}
         {wantsGoogle && (
           <>
-            <a className="primary-button google-redirect" href={buildGoogleAuthUrl()}>
+            {/* Minted at click, not render (see google-signin.ts): the state/nonce
+                pair must survive untouched from click until the redirect returns. */}
+            <button
+              type="button"
+              className="primary-button google-redirect"
+              onClick={() => { window.location.assign(buildGoogleAuthUrl()); }}
+            >
               Sign in with Google
-            </a>
+            </button>
             <div className="access-divider"><span>or use a credential below</span></div>
           </>
         )}

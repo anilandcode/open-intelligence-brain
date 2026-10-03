@@ -25,7 +25,13 @@ function randomToken(): string {
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-/** The URL to navigate to (top-level) to start a Google sign-in. */
+/** The URL to navigate to (top-level) to start a Google sign-in.
+ *
+ * Call this at ACTIVATION time (a click), never during render: it mints and
+ * stores the state/nonce pair that `consumeGoogleRedirect` checks on return. A
+ * render-time call would overwrite the pair of an in-flight sign-in the moment
+ * the return page paints its gate — before the exchange effect runs — and every
+ * return would fail its own round-trip check. */
 export function buildGoogleAuthUrl(): string {
   const state = randomToken();
   const nonce = randomToken();
