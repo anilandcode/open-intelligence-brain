@@ -30,6 +30,7 @@ import "./landing.css";
 import "./components/arc/foundation.css";
 import "./arc-theme.css";
 import "./gate.css";
+import "./console-arc.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

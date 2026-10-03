@@ -5,6 +5,8 @@ import type { ChatResult, Draft, DraftDetail, Graph, Integrity, InterviewSession
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
+import { Button } from "@/components/arc/button/button";
+import { MetricCard } from "@/components/arc/metric-card/metric-card";
 
 type BrainSort = "recent" | "revisions" | "attention" | "alpha";
 
@@ -99,8 +101,8 @@ export function OverviewView({
           <h2>{overview.sources ? "Keep your knowledge moving." : "Build your first memory."}</h2>
           <p>Capture an original source, review the proposed meaning, then reuse approved knowledge with its evidence.</p>
           <div className="hero-actions">
-            <button className="primary-button" onClick={() => onNavigate(proposals.length ? "inbox" : "import")}>{proposals.length ? "Review next proposal" : "Capture your first source"}<ArrowRight size={14}/></button>
-            <button className="secondary-button" onClick={() => onNavigate("ask")}><MessageSquareText size={14}/>Ask the Brain</button>
+            <Button onClick={() => onNavigate(proposals.length ? "inbox" : "import")}>{proposals.length ? "Review next proposal" : "Capture your first source"}<ArrowRight size={14}/></Button>
+            <Button variant="secondary" onClick={() => onNavigate("ask")}><MessageSquareText size={14}/>Ask the Brain</Button>
           </div>
         </div>
         <div className="workspace-steps">
@@ -111,14 +113,14 @@ export function OverviewView({
         </div>
       </section>
       <section className="metric-strip" aria-label="Workspace summary">
-        <Metric label="Approved knowledge" value={overview.canonical} detail="Ready to reuse" icon={<CheckCircle2/>} tone=""/>
-        <Metric label="Waiting for review" value={overview.pending_reviews} detail="Human approval required" icon={<Clock3/>} tone=""/>
-        <Metric label="Source material" value={overview.sources} detail="Originals preserved" icon={<Boxes/>} tone=""/>
-        <Metric label="Integrity signals" value={attentionCount} detail={integrity ? attentionCount ? "Needs attention" : "No issues found" : "Status unavailable"} icon={<ShieldCheck/>} tone=""/>
+        <MetricCard label="Approved knowledge" value={overview.canonical} context="Ready to reuse" />
+        <MetricCard label="Waiting for review" value={overview.pending_reviews} context="Human approval required" />
+        <MetricCard label="Source material" value={overview.sources} context="Originals preserved" />
+        <MetricCard label="Integrity signals" value={attentionCount} context={integrity ? attentionCount ? "Needs attention" : "No issues found" : "Status unavailable"} />
       </section>
       <section className="work-grid">
         <div className="panel-card queue-preview">
-          <div className="card-heading"><div><span className="section-kicker">Needs judgement</span><h2>Review queue</h2><p className="section-sub">Nothing enters the canon until a person approves the exact wording.</p></div><button className="text-button" onClick={() => onNavigate("inbox")}>Open inbox <ArrowRight size={15} /></button></div>
+          <div className="card-heading"><div><span className="section-kicker">Needs judgement</span><h2>Review queue</h2><p className="section-sub">Nothing enters the canon until a person approves the exact wording.</p></div><Button variant="ghost" size="sm" onClick={() => onNavigate("inbox")}>Open inbox <ArrowRight size={15} /></Button></div>
           {proposals.length ? (
             <div className="overview-table-scroll">
               <table className="overview-table">
@@ -141,7 +143,7 @@ export function OverviewView({
                       <td className="overview-table-source" title={proposal.source_title}>{proposal.source_title}</td>
                       <td className="num overview-table-age">{timeAgo(proposal.created_at)}</td>
                       <td className="num">
-                        <button className="table-go" onClick={() => onNavigate("inbox")} aria-label={`Review proposal: ${proposal.statement}`}>Review<ArrowRight size={14} /></button>
+                        <Button variant="ghost" size="sm" onClick={() => onNavigate("inbox")} aria-label={`Review proposal: ${proposal.statement}`}>Review<ArrowRight size={14} /></Button>
                       </td>
                     </tr>
                   ))}
@@ -152,7 +154,7 @@ export function OverviewView({
         </div>
 
         <div className="panel-card recent-preview">
-          <div className="card-heading"><div><span className="section-kicker">Current canon</span><h2>Recently approved</h2><p className="section-sub">The positions your team and agents can safely reuse today.</p></div><button className="text-button" onClick={() => onNavigate("brain")}>View Brain <ArrowRight size={15} /></button></div>
+          <div className="card-heading"><div><span className="section-kicker">Current canon</span><h2>Recently approved</h2><p className="section-sub">The positions your team and agents can safely reuse today.</p></div><Button variant="ghost" size="sm" onClick={() => onNavigate("brain")}>View Brain <ArrowRight size={15} /></Button></div>
           {knowledge.length ? (
             <div className="overview-table-scroll">
               <table className="overview-table overview-table--canon">
