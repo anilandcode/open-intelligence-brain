@@ -831,6 +831,14 @@
   font-weight: 500 !important;
 }
 
+/* The only non-semantic elements above 500: two plain chip spans
+   (`span.status-pill`, `span.nav-preview` at 560 in refine.css). Kept out of
+   the element clamp on purpose: body-copy spans must stay 400. */
+.app-shell.app-shell span.status-pill,
+.app-shell.app-shell span.nav-preview {
+  font-weight: 500 !important;
+}
+
 /* Placeholders everywhere read "dark grey on dark grey". */
 .app-shell input::placeholder,
 .app-shell textarea::placeholder,
