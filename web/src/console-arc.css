@@ -801,15 +801,15 @@
 
 /* Specificity bridge v2: typography clamp.
    The old layers set 560-700 weights and uppercase labels through
-   .app-shell-prefixed and deep descendant selectors (e.g. `.sidebar>.brand
-   strong{font-weight:600}`). Arc allows only 400/500 and sentence case, so
-   re-assert at matching-or-higher scope (the doubled class raises
-   specificity without touching their files; ties win by load order). */
+   .app-shell-prefixed deep selectors (e.g. `.app-shell .sidebar>.brand strong
+   {font-weight:600}` at 3-4 levels). Arc allows only 400/500 and sentence
+   case, everywhere, no exceptions, so this is the sanctioned case for a hard
+   clamp: it is a type-system reset, not a one-off override. */
 .app-shell.app-shell,
 .app-shell.app-shell *,
 .gate-page.gate-page,
 .gate-page.gate-page * {
-  text-transform: none;
+  text-transform: none !important;
 }
 
 .app-shell.app-shell h1,
@@ -828,7 +828,7 @@
 .gate-page.gate-page h1,
 .gate-page.gate-page strong,
 .gate-page.gate-page button {
-  font-weight: 500;
+  font-weight: 500 !important;
 }
 
 /* Placeholders everywhere read "dark grey on dark grey". */
