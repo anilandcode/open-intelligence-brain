@@ -839,6 +839,13 @@
   font-weight: 500 !important;
 }
 
+/* Links are the one semantic element the element clamp missed; refine's
+   `.text-button` ships 560. */
+.app-shell.app-shell a,
+.app-shell.app-shell .text-button {
+  font-weight: 500 !important;
+}
+
 /* Placeholders everywhere read "dark grey on dark grey". */
 .app-shell input::placeholder,
 .app-shell textarea::placeholder,
