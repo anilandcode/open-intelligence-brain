@@ -866,6 +866,28 @@
   color: var(--text-secondary);
 }
 
+/* One accent action color across both button systems.
+   Arc's neutral primary inverts on purpose (fill: var(--foreground)), which
+   reads white in dark mode and fights the accent used by selection, active
+   nav and the capture action (the review flagged exactly this). Repoint every
+   primary fill to the accent through the hashed module class (CSS Modules
+   names variants `_<variant>_<hash>`), without touching Arc's source. */
+.app-shell button[class*="primary"],
+.gate-page button[class*="primary"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .app-shell button[class*="primary"]:hover:not(:disabled),
+  .gate-page button[class*="primary"]:hover:not(:disabled) {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: var(--accent-foreground);
+  }
+}
+
 /* Source library hero: label and value ran together on one line. */
 .library-summary > div {
   display: flex;
@@ -942,10 +964,14 @@
 }
 
 /* Preview rows (turns, requests, keys, memory): timestamps clipped at the
-   right edge and wrapped mid-string; icons sat higher than row text. */
-.preview-row {
+   right edge and wrapped mid-string; icons sat higher than row text. The old
+   layer fixed these rows as narrow grids, so force the flex layout here. */
+.app-shell .preview-row {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
+  min-height: 52px;
+  padding: 12px 16px;
 }
 
 .preview-row > svg {
