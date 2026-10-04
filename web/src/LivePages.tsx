@@ -1,12 +1,15 @@
 import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { ChatResult, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
 import { Button } from "@/components/arc/button/button";
 import { MetricCard } from "@/components/arc/metric-card/metric-card";
+import { Badge } from "@/components/arc/badge/badge";
+import { Input } from "@/components/arc/input/input";
+import { Textarea } from "@/components/arc/textarea/textarea";
 
 type BrainSort = "recent" | "revisions" | "attention" | "alpha";
 
@@ -336,15 +339,13 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
     <article className="review-editor">
       <form onSubmit={approve}>
         <header className="review-editor-header">
-          <div><span className="type-chip">{proposal.type}</span><span className="status-chip"><CircleDot size={11} /> Proposed</span></div>
+          <div><Badge>{proposal.type}</Badge><Badge tone="info" icon={<CircleDot size={11} />}>Proposed</Badge></div>
           <span className="source-reference"><FileText size={15} /> {proposal.source_title}</span>
         </header>
         <div className="editor-body">
           <section className="canonical-editor">
-            <div className="field-heading"><label htmlFor={`statement-${proposal.id}`}>Canonical statement</label><span>Editable before approval</span></div>
-            <textarea id={`statement-${proposal.id}`} value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
-            <div className="field-heading"><label htmlFor={`rationale-${proposal.id}`}>Why we believe this</label><span>Internal reasoning</span></div>
-            <textarea id={`rationale-${proposal.id}`} value={rationale} onChange={(event) => setRationale(event.target.value)} rows={4} />
+            <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
+            <Textarea id={`rationale-${proposal.id}`} label="Why we believe this" description="Internal reasoning" value={rationale} onChange={(event) => setRationale(event.target.value)} rows={4} />
           </section>
           <aside className="evidence-panel">
             <div className="evidence-heading"><span><Fingerprint size={15} /> Exact evidence</span><ShieldCheck size={16} /></div>
@@ -368,7 +369,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
                 <ul>
                   {notes.map((note: {severity: string; category: string; message: string}, i: number) => (
                     <li key={i} className={`critic-note critic-note--${note.severity}`}>
-                      <span className="critic-icon">{note.severity === "strong" ? "🔴" : note.severity === "warning" ? "⚠" : "ℹ"}</span>
+                      <span className="critic-icon" title={note.severity}>{note.severity === "strong" ? <CircleAlert size={14} aria-hidden="true" /> : note.severity === "warning" ? <TriangleAlert size={14} aria-hidden="true" /> : <Info size={14} aria-hidden="true" />}</span>
                       <span>{note.message}</span>
                     </li>
                   ))}
@@ -379,15 +380,14 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
         })()}
         {rejectMode && (
           <div className="reject-panel">
-            <div><label htmlFor={`reject-reason-${proposal.id}`}>Why should this proposal be rejected?</label><span id={`reject-help-${proposal.id}`}>The source remains unchanged and the reason is kept in the audit trail.</span></div>
-            <input id={`reject-reason-${proposal.id}`} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} minLength={3} required autoFocus aria-describedby={`reject-help-${proposal.id}`} placeholder="Not useful, duplicate, or inaccurate…" />
-            <button className="danger-button" type="button" disabled={busy || rejectReason.trim().length < 3} onClick={reject}>Confirm reject</button>
-            <button className="secondary-button" type="button" disabled={busy} onClick={() => { setRejectMode(false); setRejectReason(""); }}>Cancel</button>
+            <Input id={`reject-reason-${proposal.id}`} label="Why should this proposal be rejected?" description="The source remains unchanged and the reason is kept in the audit trail." value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} minLength={3} required autoFocus placeholder="Not useful, duplicate, or inaccurate…" />
+            <Button variant="danger" type="button" disabled={busy || rejectReason.trim().length < 3} onClick={reject}>Confirm reject</Button>
+            <Button variant="secondary" type="button" disabled={busy} onClick={() => { setRejectMode(false); setRejectReason(""); }}>Cancel</Button>
           </div>
         )}
         <footer className="review-actions">
           <p><ShieldCheck size={15} /> Approval creates an immutable first revision.</p>
-          <div><button className="danger-button" type="button" disabled={busy} onClick={() => setRejectMode(true)}>Reject</button><button className="primary-button" type="submit" disabled={busy}><Check size={17} /> {busy ? "Saving…" : "Approve to Brain"}</button></div>
+          <div><Button variant="danger" type="button" disabled={busy} onClick={() => setRejectMode(true)}>Reject</Button><Button type="submit" loading={busy}><Check size={17} /> Approve to Brain</Button></div>
         </footer>
       </form>
     </article>
