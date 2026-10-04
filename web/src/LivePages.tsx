@@ -269,7 +269,7 @@ function Metric({ label, value, detail, icon, tone, share, shareNote }: {
         <span className="metric-foot"><span className={`status-dot status-dot--${tone}`} aria-hidden="true" />{detail}</span>
         {pct !== null && (
           <span className="metric-share">
-            <span className="bar bar--accent" role="img" aria-label={`${pct}% — ${shareNote ?? detail}`}><span style={{ width: `${pct}%` }} /></span>
+            <span className="bar bar--accent" role="img" aria-label={`${pct}%: ${shareNote ?? detail}`}><span style={{ width: `${pct}%` }} /></span>
             {shareNote && <small>{shareNote}</small>}
           </span>
         )}
@@ -425,7 +425,7 @@ export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, on
       </div>
       <div className="brain-list-heading"><span>{filtered.length} canonical {filtered.length === 1 ? "item" : "items"}</span><span><ShieldCheck size={14} /> Approved revisions only</span></div>
       <div className="knowledge-list knowledge-table">
-        <div className="knowledge-table-head"><span>APPROVED KNOWLEDGE</span><span>TYPE</span><span>SOURCE</span><span>REVISIONS</span></div>
+        <div className="knowledge-table-head"><span>Approved knowledge</span><span>Type</span><span>Source</span><span>Revisions</span></div>
         {filtered.map((item) => <button className="knowledge-table-row" key={item.id} onClick={() => onSelect(item.id)}><strong>{item.statement}</strong><span>{item.type}</span><span>{item.source_title}</span><span>v{item.version} · {item.revision_count}</span><ChevronRight size={16}/></button>)}
         {filtered.length === 0 && <EmptyState icon={<Search />} title="No approved matches">Try a broader phrase or change the current filter.</EmptyState>}
       </div>
@@ -774,7 +774,7 @@ function NewInterviewDialog({ onClose, onCreated, onError }: { onClose: () => vo
     <dialog ref={dialogRef} className="capture-dialog" onCancel={(e) => { e.preventDefault(); onClose(); }}>
       <header><div><span className="eyebrow">New interview</span><h1>Start a guided conversation</h1></div><button className="ghost-icon" aria-label="Close dialog" onClick={onClose}><X size={20} /></button></header>
       <form onSubmit={submit}>
-        <div className="form-field"><label htmlFor="int-title">Title</label><input id="int-title" name="title" required minLength={3} maxLength={240} autoFocus placeholder="e.g. Founder interview — product vision" /></div>
+        <div className="form-field"><label htmlFor="int-title">Title</label><input id="int-title" name="title" required minLength={3} maxLength={240} autoFocus placeholder="e.g. Founder interview, product vision" /></div>
         <div className="form-field"><label htmlFor="int-topic">Topic</label><input id="int-topic" name="topic" maxLength={2000} placeholder="What area to explore" /></div>
         <div className="form-row">
           <div className="form-field"><label htmlFor="int-person">Person</label><input id="int-person" name="person" maxLength={160} placeholder="Who is being interviewed" /></div>
@@ -1006,7 +1006,7 @@ function buildPack(intent: PackIntentId, audience: string, cited: boolean, atoms
   const meta = PACK_INTENTS.find((option) => option.id === intent) ?? PACK_INTENTS[0];
   const sourceCount = new Set(atoms.map((item) => item.source_title)).size;
   const lines = [
-    `# Context pack — ${meta.label}`,
+    `# Context pack: ${meta.label}`,
     `Audience: ${audience.trim() || "not specified"}`,
     `Scope: ${atoms.length} approved ${atoms.length === 1 ? "atom" : "atoms"} from ${sourceCount} ${sourceCount === 1 ? "source" : "sources"}`,
     `Evidence policy: ${cited ? "canonical statement + source excerpt" : "canonical statement only"}`,
@@ -1060,7 +1060,7 @@ export function ActivateView({ knowledge, onNavigate, onNotice }: {
       onNotice("Context pack copied to the clipboard.");
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      onNotice("The browser blocked clipboard access — download the pack instead.");
+      onNotice("The browser blocked clipboard access. Download the pack instead.");
     }
   }
 
@@ -1081,14 +1081,14 @@ export function ActivateView({ knowledge, onNavigate, onNotice }: {
         <header className="composer-head">
           <span className="section-kicker">Context builder</span>
           <h2>Assemble the right intelligence for the job.</h2>
-          <p className="composer-sub">Choose an outcome, then select the approved atoms it may draw on. The pack is assembled from stored records with their citations intact — no text is generated.</p>
+          <p className="composer-sub">Choose an outcome, then select the approved atoms it may draw on. The pack is assembled from stored records with their citations intact. No text is generated.</p>
         </header>
 
         {knowledge.length === 0 ? (
           <div className="activate-empty">
             <span className="preview-hero-icon"><Layers3 size={24} /></span>
             <h3>No approved knowledge yet</h3>
-            <p>A context pack can only draw on approved atoms. Capture a source, review the proposals it produces, and approve the ones worth keeping — then come back and assemble the pack.</p>
+            <p>A context pack can only draw on approved atoms. Capture a source, review the proposals it produces, and approve the ones worth keeping. Then come back and assemble the pack.</p>
             <div className="hero-actions">
               <button className="primary-button btn--pill" onClick={() => onNavigate("sources")}><Plus size={17} /> Capture your first source</button>
               <button className="secondary-button btn--pill" onClick={() => onNavigate("inbox")}><Inbox size={17} /> Open the review inbox</button>
@@ -1122,7 +1122,7 @@ export function ActivateView({ knowledge, onNavigate, onNotice }: {
               <button type="button" role="radio" aria-checked={!cited}
                 className={cited ? "policy-chip" : "policy-chip is-on"} onClick={() => setCited(false)}>Canonical only</button>
             </div>
-            <span className="field-help">{cited ? "Every claim carries the exact source excerpt it came from." : "Quotes are dropped — claims keep their source title and version."}</span>
+            <span className="field-help">{cited ? "Every claim carries the exact source excerpt it came from." : "Quotes are dropped. Claims keep their source title and version."}</span>
           </div>
         </div>
 
@@ -1230,7 +1230,7 @@ export function AnalyticsPreview({ overview, knowledge, integrity }: { overview:
                     <td className="num">{stage.value.toLocaleString()}</td>
                     <td className="share-col">
                       <span className="share-cell">
-                        <span className={`bar ${stage.tone}`} role="img" aria-label={`${stage.value} of ${peak} — largest stage`}><span style={{ width: `${pct}%` }} /></span>
+                        <span className={`bar ${stage.tone}`} role="img" aria-label={`${stage.value} of ${peak}: largest stage`}><span style={{ width: `${pct}%` }} /></span>
                         <span className="share-value">{stage.value} / {peak}</span>
                       </span>
                     </td>
@@ -1272,7 +1272,7 @@ export function AnalyticsPreview({ overview, knowledge, integrity }: { overview:
         </article>
       </section>
 
-      <p className="preview-footnote">Reuse and outcome attribution are not measured yet: the Brain records provenance and revisions, not downstream usage. Every figure on this page is counted from stored records — none are estimated.</p>
+      <p className="preview-footnote">Reuse and outcome attribution are not measured yet: the Brain records provenance and revisions, not downstream usage. Every figure on this page is counted from stored records. None are estimated.</p>
     </div>
   );
 }
@@ -1323,7 +1323,7 @@ export function ConnectorsView({ onChanged, onNotice, onError }: { onChanged: ()
     setBusy(true);
     try {
       await client.connectorIngest(provider, { document_id: documentId, access_token: accessToken });
-      onNotice("Document ingested. Its proposals are in the Inbox for review — not yet canonical.");
+      onNotice("Document ingested. Its proposals are in the Inbox for review. Not yet canonical.");
       setDocumentId("");
       setAccessToken("");
       await onChanged();
@@ -1433,7 +1433,7 @@ export function AgentsView({ connections }: { connections: McpConnection[] }) {
         <div>
           <span className="section-kicker">Connected apps</span>
           <h2>MCP clients</h2>
-          <p className="section-sub">Agents that have reached this Brain. Tools are read-only — approval stays here in the console.</p>
+          <p className="section-sub">Agents that have reached this Brain. Tools are read-only. Approval stays here in the console.</p>
         </div>
         <Brain size={21} />
       </div>
@@ -1519,7 +1519,7 @@ export function CaptureDialog({ onClose, onCreated, onError }: { onClose: () => 
     <dialog ref={dialogRef} className="capture-dialog" aria-labelledby="capture-title" onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <header><div><span className="eyebrow">New source</span><h1 id="capture-title">Capture original material</h1><p>Original content is preserved before extraction begins.</p></div><button className="ghost-icon" type="button" onClick={onClose} aria-label="Close capture form"><X size={20} /></button></header>
       <form action="/api/v1/sources" method="post" onSubmit={submit}>
-        <div className="form-field"><label htmlFor="source-title">Title</label><input id="source-title" name="title" required minLength={3} maxLength={240} autoFocus placeholder="e.g. Founder interview — September" /></div>
+        <div className="form-field"><label htmlFor="source-title">Title</label><input id="source-title" name="title" required minLength={3} maxLength={240} autoFocus placeholder="e.g. Founder interview, September" /></div>
         <div className="form-row">
           <div className="form-field"><label htmlFor="source-kind">Source type</label><select id="source-kind" name="kind" defaultValue="note"><option value="note">Note</option><option value="research">Research</option><option value="interview">Interview</option><option value="decision">Decision</option></select></div>
           <div className="form-field"><label htmlFor="source-sensitivity">Visibility</label><select id="source-sensitivity" name="sensitivity" defaultValue="private"><option value="private">Private</option><option value="internal">Internal</option><option value="public">Public</option></select></div>
