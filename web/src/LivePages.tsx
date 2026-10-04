@@ -557,7 +557,7 @@ export function SourcesView({ recordId, onSelect, sources, onChanged, onNotice, 
             </div>
           </div>
           <div className="source-grid source-table">
-            <div className="source-table-head"><span>SOURCE</span><span>TYPE</span><span>VISIBILITY</span><span>VERSION</span></div>
+            <div className="source-table-head"><span>Source</span><span>Type</span><span>Visibility</span><span>Version</span></div>
             {visible.map((source) => <button className="source-table-row" key={source.id} onClick={() => onSelect(source.id)}><strong>{source.title}</strong><span>{source.kind}</span><span>{source.sensitivity}</span><span>v{source.current_version}</span><ChevronRight size={16}/></button>)}
             {visible.length === 0 && <section className="panel-card"><EmptyState icon={<Archive />} title="No sources of this kind">Pick another kind, or reset the filter to all kinds.</EmptyState></section>}
           </div>
@@ -699,11 +699,11 @@ export function StudioView({
             <div className="studio-grid">
               {interviews.map((s) => (
                 <article key={s.id} className="panel-card studio-card" role="button" tabIndex={0} onKeyDown={e=>{if(e.key === "Enter" || e.key === " "){e.preventDefault();setSelectedInterview(s.id);}}} onClick={() => setSelectedInterview(s.id)}>
-                  <header><span className={`status-chip status-chip--${s.status}`}>{s.status}</span><span>{s.question_count} questions</span></header>
+                  <header><span className={`status-chip status-chip--${s.status}`}>{s.status}</span><span>{s.question_count} question{s.question_count === 1 ? "" : "s"}</span></header>
                   <h3>{s.title}</h3>
                   {s.person && <p className="studio-meta">{s.person}{s.topic && ` · ${s.topic}`}</p>}
                   <footer>
-                    <span>{s.response_count} responses</span>
+                    <span>{s.response_count} response{s.response_count === 1 ? "" : "s"}</span>
                     {s.extracted_count > 0 && <span>{s.extracted_count} extracted</span>}
                     <time>{timeAgo(s.created_at)}</time>
                   </footer>
@@ -1338,7 +1338,7 @@ export function ConnectorsView({ onChanged, onNotice, onError }: { onChanged: ()
     <div className="panel-card">
       <h2>Ingest from a provider</h2>
       <p>Fetch one document from Google Drive, Notion, or OneDrive and bring it into the review queue. The provider token is used for the read only and never stored.</p>
-      <form onSubmit={ingest} className="ask-composer">
+      <form onSubmit={ingest} className="ingest-form">
         <div className="field-heading"><label htmlFor="connector-provider">Provider</label></div>
         <select id="connector-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
           <option value="google-drive">Google Drive</option>
@@ -1369,17 +1369,20 @@ export function GraphView() {
     client.graph().then(setData).catch(() => setFailed(true));
   }, [client]);
 
-  // Sources are hubs; their approved knowledge fans out around them.
+  // Sources are hubs; their approved knowledge fans out around them. The fan
+  // must be wide enough for the rendered pill width (nodes are centered on
+  // their anchor via .graph-node translate, so edges meet their midpoints).
   const nodes: { id: string; x: number; y: number; label: string; type: string; detail: string }[] = [];
   const documents = data?.documents ?? [];
-  const cx = 380, cy = 215, hubR = 150, memR = 58;
+  const cx = 380, cy = 215, hubR = 130, memR = 165;
   documents.forEach((doc, i) => {
     const angle = (i / Math.max(documents.length, 1)) * Math.PI * 2 - Math.PI / 2;
     const hx = cx + hubR * Math.cos(angle), hy = cy + hubR * Math.sin(angle);
     nodes.push({ id: doc.id, x: hx, y: hy, label: doc.title || "Source", type: "Source", detail: doc.summary || doc.documentType });
     doc.memories.forEach((m, j) => {
       const count = doc.memories.length;
-      const ma = angle + (j - (count - 1) / 2) * 0.55;
+      const spread = Math.min(Math.PI, 1.6 * count);
+      const ma = angle + (count > 1 ? (j - (count - 1) / 2) * (spread / (count - 1)) : 0);
       nodes.push({ id: m.id, x: hx + memR * Math.cos(ma), y: hy + memR * Math.sin(ma), label: m.memory.length > 34 ? `${m.memory.slice(0, 34)}…` : m.memory, type: "Approved", detail: m.memory });
     });
   });

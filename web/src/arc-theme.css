@@ -40,4 +40,13 @@ body {
   --surface-raised: oklch(24% 0 0);
   --surface-muted: oklch(26% 0 0);
   --surface-skeleton: oklch(26% 0 0);
+  /* Design QA (2026-10-04): every screen flagged muted text as "dark grey on
+     dark grey". The dark text ramp sat near AA at 11-13px; lift it and the
+     control borders so fields and panels read as finished. Old caret names
+     get the same lift for the not-yet-migrated views. */
+  --text-secondary: oklch(84% 0 0);
+  --text-muted: oklch(74% 0 0);
+  --border: oklch(33% 0 0);
+  --muted: #c6c6ca;
+  --muted-soft: #b6b6ba;
 }
