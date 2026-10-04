@@ -848,8 +848,10 @@
 
 /* Last two: the overview statement cell (520) and system.css `.type-chip`
    (600). Chips carry emphasis = 500; the statement cell is the row's title.
-   Covers the `--soft` variant (a separate class in system.css). */
+   `td.num` / `td.strong` are class names on cells (system.css 560/620). */
 .app-shell.app-shell td.overview-table-statement,
+.app-shell.app-shell td.num,
+.app-shell.app-shell td.strong,
 .app-shell.app-shell span[class*="type-chip"] {
   font-weight: 500 !important;
 }
