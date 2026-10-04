@@ -799,6 +799,38 @@
 
 /* ---- design QA pass (2026-10-04 review, 7 screens) ---- */
 
+/* Specificity bridge v2: typography clamp.
+   The old layers set 560-700 weights and uppercase labels through
+   .app-shell-prefixed and deep descendant selectors (e.g. `.sidebar>.brand
+   strong{font-weight:600}`). Arc allows only 400/500 and sentence case, so
+   re-assert at matching-or-higher scope (the doubled class raises
+   specificity without touching their files; ties win by load order). */
+.app-shell.app-shell,
+.app-shell.app-shell *,
+.gate-page.gate-page,
+.gate-page.gate-page * {
+  text-transform: none;
+}
+
+.app-shell.app-shell h1,
+.app-shell.app-shell h2,
+.app-shell.app-shell h3,
+.app-shell.app-shell h4,
+.app-shell.app-shell h5,
+.app-shell.app-shell strong,
+.app-shell.app-shell b,
+.app-shell.app-shell th,
+.app-shell.app-shell dt,
+.app-shell.app-shell label,
+.app-shell.app-shell summary,
+.app-shell.app-shell small,
+.app-shell.app-shell button,
+.gate-page.gate-page h1,
+.gate-page.gate-page strong,
+.gate-page.gate-page button {
+  font-weight: 500;
+}
+
 /* Placeholders everywhere read "dark grey on dark grey". */
 .app-shell input::placeholder,
 .app-shell textarea::placeholder,
