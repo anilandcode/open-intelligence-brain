@@ -14,7 +14,7 @@ Updated 1 October 2026. Preserve this structure when extending the accepted desi
 | 6 | `SectionFrame`, `TrustDiagram`, 2×2 human-control grid | `provenance` | Dot gutters; approval, exact evidence, immutable source versions and revisions |
 | 7 | Rectangular final CTA, faded lettering, footer | `landing-main` back-to-top link | Build on what you know; Open Brain / Explore demo; concise footer |
 
-The navigation maps Inside the console → `product`, How it works → `how-it-works`, Our principles → `provenance`. Preserve existing anchors even when changing copy. The standalone FAQ and oversized hero console are removed; do not restore them through a generic template.
+The navigation maps Inside the console → `product`, How it works → `how-it-works`, Our principles → `provenance`, Architecture → `#/architecture` (public `ArchitecturePage.tsx`, reachable without a credential in both site and console builds). Preserve existing anchors even when changing copy. The standalone FAQ and oversized hero console are removed; do not restore them through a generic template.
 
 ## Geometry
 
