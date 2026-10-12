@@ -8,6 +8,7 @@ import { Alert } from "@/components/arc/alert/alert";
 import { Button } from "@/components/arc/button/button";
 import { Input } from "@/components/arc/input/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/arc/tabs/tabs";
+import ArchitecturePage from "./ArchitecturePage";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
@@ -704,6 +705,8 @@ export default function App() {
 
   // Console-first builds keep the public site off unless VITE_SHOW_LANDING=true.
   if (route.screen === "landing") return SHOW_LANDING ? <LandingPage /> : <AccessGate refused={tokenRefused} onUnlock={unlock} />;
+  // Architecture is always public (no credential) so the live site can document the trust model.
+  if (route.screen === "architecture") return <ArchitecturePage />;
   if (route.screen === "login" || (route.screen === "console" && tokenRequired)) return <AccessGate refused={tokenRefused} onUnlock={unlock} />;
   if (route.screen === "console" && needsMembership) return <ClaimGate onClaimed={() => { setNeedsMembership(false); setLoading(true); }} />;
 

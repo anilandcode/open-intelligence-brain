@@ -6,7 +6,7 @@ import { goTo, openConsole } from "./routes";
 const excerpt = "Our best launches had a single person who owned the first customer week.";
 const statement = "Assign one named owner for a customer’s first week.";
 const samplePack = `# Customer onboarding\n\n${statement} [1]\n\n[1] Sample research interview, v1: ${excerpt}\n\nSynthetic example. Not connected to your workspace.`;
-const sections = [["product", "Inside the console"], ["how-it-works", "How it works"], ["provenance", "Our principles"]] as const;
+const sections = [["product", "Inside the console"], ["how-it-works", "How it works"], ["provenance", "Our principles"], ["/architecture", "Architecture"]] as const;
 const recallExamples = [
   {label:"Context", title:"One owner. A better first week.", statement, source:"Customer research · v1", excerpt},
   {label:"Evidence", title:"Keep the reason with the decision.", statement:"Record the rationale behind each product decision.", source:"Product decisions · v1", excerpt:"We saved the decision, but not why we made it. The next team had to ask again."},
@@ -125,6 +125,6 @@ export default function LandingPage() {
       ].map(s=><article key={s.kind}><h3>{s.title}</h3><p>{s.text}</p><TrustDiagram kind={s.kind}/></article>)}</div></div></div></SectionFrame>
       <section className="site-final-section"><div className="site-inner"><div className="site-final-card"><h2>Build on what you know.</h2><p>A little less lost context. A clearer place to think.</p><div className="site-actions"><button className="site-primary" onClick={()=>openConsole()}>Open your Brain <ArrowUpRight size={13}/></button><button className="site-secondary" onClick={()=>goTo("demo","brain")}>Explore the demo <ArrowRight size={13}/></button></div></div><div className="site-footer-word" aria-hidden="true">Open Brain</div></div></section>
     </main>
-    <footer className="site-footer"><div className="site-inner"><p>Open Brain<br/>Sources → review → approved knowledge</p><div className="site-footer-bottom"><span>© 2026 Open Brain</span><a href="https://github.com/anilandcode/open-intelligence-brain">Source code <ArrowUpRight size={12}/></a><a href="#landing-main">Back to top ↑</a></div></div></footer>
+    <footer className="site-footer"><div className="site-inner"><p>Open Brain<br/>Sources → review → approved knowledge</p><div className="site-footer-bottom"><span>© 2026 Open Brain</span><a href="https://github.com/anilandcode/open-intelligence-brain">Source code <ArrowUpRight size={12}/></a><a href="#/architecture">Architecture</a><a href="#landing-main">Back to top ↑</a></div></div></footer>
   </div>;
 }

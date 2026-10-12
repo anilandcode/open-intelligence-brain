@@ -3,7 +3,7 @@ import { hasToken } from "./api";
 export const liveViews = ["overview", "inbox", "brain", "ask", "studio", "activate", "sources", "analytics", "audit", "import", "graph", "connectors"] as const;
 export const previewViews = ["workspaces", "working-memory", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as const;
 export type View = typeof liveViews[number] | typeof previewViews[number];
-export type Screen = "landing" | "login" | "console" | "demo";
+export type Screen = "landing" | "login" | "console" | "demo" | "architecture";
 export type Route = { screen: Screen; view: View; record?: string };
 
 /** Non-secret build flag. Console release keeps landing off; website release sets VITE_SHOW_LANDING=true. */
@@ -51,6 +51,9 @@ export function readRoute(): Route {
   if (landingHashes.has(hash)) {
     return { screen: SHOW_LANDING ? "landing" : "login", view: "overview" };
   }
+  if (hash === "#/architecture" || hash === "#architecture") {
+    return { screen: "architecture", view: "overview" };
+  }
   if (hash === "#/login") return { screen: "login", view: "overview" };
   if (hash.startsWith("#/console/")) {
     const requested = hash.slice("#/console/".length) as View;
@@ -74,5 +77,7 @@ export function goTo(screen: Screen, view: View = "overview", record?: string) {
       ? "#/"
       : screen === "login"
         ? "#/login"
-        : `#/${screen}/${view}${record ? `?record=${encodeURIComponent(record)}` : ""}`;
+        : screen === "architecture"
+          ? "#/architecture"
+          : `#/${screen}/${view}${record ? `?record=${encodeURIComponent(record)}` : ""}`;
 }
