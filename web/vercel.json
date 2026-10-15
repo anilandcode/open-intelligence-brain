@@ -5,7 +5,7 @@
   "build": {
     "env": {
       "VITE_SHOW_LANDING": "true",
-      "VITE_CONSOLE_URL": "https://digital-brain-168827050380.us-central1.run.app"
+      "VITE_CONSOLE_URL": "https://brain-129-158-45-154.sslip.io"
     }
   },
   "rewrites": [
