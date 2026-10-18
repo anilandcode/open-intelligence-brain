@@ -63,7 +63,12 @@ export function readRoute(): Route {
     const requested = hash.slice("#/demo/".length) as View;
     return { screen: "demo", view: [...liveViews, ...previewViews].includes(requested) ? requested : "overview", record };
   }
-  if (hasToken()) return { screen: "console", view: "overview" };
+  if (hasToken()) {
+    // A broker verification return carries ?session_uri=; land on the
+    // connections view so it is redeemed exactly once, on screen.
+    const verifying = window.location.search.includes("session_uri=");
+    return { screen: "console", view: verifying ? "connections" : "overview" };
+  }
   return { screen: SHOW_LANDING ? "landing" : "login", view: "overview" };
 }
 
