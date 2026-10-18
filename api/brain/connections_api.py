@@ -129,7 +129,10 @@ def start_link(
 ) -> LinkStartRead:
     require_scope(access, "connections:write")
     settings = get_settings()
-    redirect_uri = f"{settings.public_base_url.rstrip('/')}/api/v1/oauth/callback"
+    # The provider must send the browser to the BROKER's callback: the broker
+    # exchanges the code and then redirects to Open Brain's verifier with the
+    # single-use session_uri.
+    redirect_uri = f"{settings.mab_bridge_url.rstrip('/')}/oauth/callback"
     try:
         bridge = get_bridge()
         result = bridge.start_link(
