@@ -54,6 +54,12 @@ export function createDemoClient(): BrainClient {
     ],
     startConnectionLink: async () => ({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" }),
     renameConnection: async (accountId: string, alias: string) => ({ connected_account_id: accountId, alias }),
+    setAppCredentials: async (toolkitSlug: string, clientId: string) => ({
+      toolkit_slug: toolkitSlug,
+      client_id: clientId,
+      environment: "production",
+      saved: true,
+    }),
     verifyOAuthSession: async () => ({ connected_account_id: "sample-account-1", status: "ACTIVE" }),
     stagedActions: async () => [
       {

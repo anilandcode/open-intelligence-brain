@@ -1364,6 +1364,10 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
   const [stageTool, setStageTool] = useState("X_CREATE_POST");
   const [stageAlias, setStageAlias] = useState("");
   const [stageText, setStageText] = useState("");
+  const [appToolkit, setAppToolkit] = useState("x");
+  const [appEnv, setAppEnv] = useState("production");
+  const [appClientId, setAppClientId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -1455,6 +1459,20 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
     }
   }
 
+  async function saveApp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await client.setAppCredentials(appToolkit, appClientId, appSecret || null, appEnv);
+      onNotice("App credentials saved. Connect account now runs through your own app.");
+      setAppSecret("");
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "The app credentials could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function rename(account: ConnectedAccount, next: string) {
     try {
       await client.renameConnection(account.connected_account_id, next);
@@ -1536,6 +1554,33 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
           <div className="field-heading"><label htmlFor="stage-text">Text</label></div>
           <input id="stage-text" value={stageText} onChange={(e) => setStageText(e.target.value)} required placeholder="Post text" />
           <button className="primary-button" disabled={busy || !stageAlias}>{busy ? "Staging…" : "Stage for approval"}</button>
+        </form>
+      </div>
+
+      <div className="panel-card">
+        <h2>Developer app credentials</h2>
+        <p>
+          Use your own X or LinkedIn developer app so your agents act through your real account.
+          The client secret goes straight into the broker's encrypted vault and never returns.
+          In the X developer portal, set the app to OAuth 2.0 with Read and write permissions and
+          the callback URL https://bridge-129-158-45-154.sslip.io/oauth/callback.
+        </p>
+        <form onSubmit={saveApp} className="ingest-form">
+          <div className="field-heading"><label htmlFor="app-toolkit">Toolkit</label></div>
+          <select id="app-toolkit" value={appToolkit} onChange={(e) => setAppToolkit(e.target.value)}>
+            <option value="x">X</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+          <div className="field-heading"><label htmlFor="app-env">Environment</label></div>
+          <select id="app-env" value={appEnv} onChange={(e) => setAppEnv(e.target.value)}>
+            <option value="production">Production (real provider)</option>
+            <option value="sandbox">Sandbox (test provider)</option>
+          </select>
+          <div className="field-heading"><label htmlFor="app-client-id">Client ID</label></div>
+          <input id="app-client-id" value={appClientId} onChange={(e) => setAppClientId(e.target.value)} required placeholder="OAuth client id from your developer portal" />
+          <div className="field-heading"><label htmlFor="app-secret">Client secret</label></div>
+          <input id="app-secret" type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="OAuth client secret (stored encrypted)" />
+          <button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save app credentials"}</button>
         </form>
       </div>
     </div>

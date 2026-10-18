@@ -50,6 +50,7 @@ describe("App", () => {
       if (url.includes("/studio/drafts")) return mockJson([]);
       if (url.includes("/connectors/ingest")) return mockJson(source);
       if (url.includes("/mcp/connections")) return mockJson([]);
+      if (url.includes("/connections/app-credentials")) return mockJson({ toolkit_slug: "x", client_id: "cid", environment: "production", saved: true });
       if (url.includes("/connections/link")) return mockJson({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" });
       if (url.includes("/oauth/verify")) return mockJson({ connected_account_id: "cac_sample", status: "ACTIVE" });
       if (url.includes("/api/v1/connections/")) return mockJson({ connected_account_id: "cac_sample", alias: "work-x" });
@@ -162,6 +163,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Connections" }));
     expect(screen.getByRole("heading", { name: "Connected accounts" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Staged actions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Developer app credentials" })).toBeInTheDocument();
   });
   it("renders a broker collision as a friendly message, not a dead end", async () => {
     window.history.replaceState(null, "", "/?error=ACCOUNT_ALREADY_CONNECTED_AS_ALIAS&existing_alias=personal-x");

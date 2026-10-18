@@ -35,6 +35,13 @@ class LinkStartRequest(BaseModel):
     )
 
 
+class AppCredentialsUpdate(BaseModel):
+    toolkit_slug: str = Field(max_length=32, pattern=r"^(x|linkedin)$")
+    client_id: str = Field(min_length=1, max_length=256)
+    client_secret: str | None = Field(default=None, max_length=512)
+    environment: str = Field(default="production", pattern=r"^(production|sandbox)$")
+
+
 class VerifyRequest(BaseModel):
     session_uri: str = Field(min_length=1)
 

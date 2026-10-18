@@ -32,6 +32,7 @@ from .config import get_settings
 from .connections import StagedAction
 from .connections_schemas import (
     AliasUpdate,
+    AppCredentialsUpdate,
     ConnectionRead,
     LinkStartRead,
     LinkStartRequest,
@@ -149,6 +150,36 @@ def start_link(
         authorization_url=str(result.get("authorization_url", "")),
         session_uri=str(result.get("session_uri", "")),
     )
+
+
+@router.put("/connections/app-credentials")
+def set_app_credentials(
+    body: AppCredentialsUpdate,
+    access: WorkspaceAccess = Depends(_resolve_access),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Save a user-supplied developer app (Composio-style own credentials)."""
+    require_scope(access, "connections:write")
+    try:
+        bridge = get_bridge()
+        result = bridge.set_app_credentials(
+            toolkit_slug=body.toolkit_slug,
+            client_id=body.client_id,
+            client_secret=body.client_secret,
+            environment=body.environment,
+        )
+    except BridgeNotConfigured:
+        raise HTTPException(503, "bridge_not_configured") from None
+    except BridgeError as exc:
+        if exc.status == 404:
+            raise HTTPException(404, "not_found") from None
+        raise HTTPException(502, exc.code) from exc
+    return {
+        "toolkit_slug": str(result.get("toolkit_slug", body.toolkit_slug)),
+        "client_id": str(result.get("client_id", body.client_id)),
+        "environment": str(result.get("environment", body.environment)),
+        "saved": True,
+    }
 
 
 @router.patch("/connections/{account_id}")

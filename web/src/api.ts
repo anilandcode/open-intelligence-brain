@@ -326,6 +326,13 @@ export type ConnectedAccount = {
 
 export type LinkStart = { authorization_url: string; session_uri: string };
 
+export type AppCredentialsResult = {
+  toolkit_slug: string;
+  client_id: string;
+  environment: string;
+  saved: boolean;
+};
+
 export type StagedAction = {
   id: string;
   tool_name: string;
@@ -410,6 +417,11 @@ export const api = {
     request<{ connected_account_id: string; alias: string }>(`/api/v1/connections/${accountId}`, {
       method: "PATCH",
       body: JSON.stringify({ alias }),
+    }),
+  setAppCredentials: (toolkitSlug: string, clientId: string, clientSecret: string | null, environment: string) =>
+    request<AppCredentialsResult>("/api/v1/connections/app-credentials", {
+      method: "PUT",
+      body: JSON.stringify({ toolkit_slug: toolkitSlug, client_id: clientId, client_secret: clientSecret, environment }),
     }),
   verifyOAuthSession: (sessionUri: string) =>
     request<{ connected_account_id: string; status: string }>("/api/v1/oauth/verify", {

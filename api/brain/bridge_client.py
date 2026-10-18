@@ -78,6 +78,25 @@ class BridgeClient:
         )
         return dict(result)
 
+    def set_app_credentials(
+        self,
+        *,
+        toolkit_slug: str,
+        client_id: str,
+        client_secret: str | None,
+        environment: str,
+    ) -> dict[str, Any]:
+        """Register the user's own developer app with the broker.
+
+        The secret travels one way: into the broker's encrypted vault. The
+        response never contains it.
+        """
+        payload: dict[str, Any] = {"client_id": client_id, "environment": environment}
+        if client_secret is not None:
+            payload["client_secret"] = client_secret
+        result = self._call("PUT", f"/v1/auth_configs/{toolkit_slug}", json=payload)
+        return dict(result)
+
     def rename_alias(self, account_id: str, alias: str) -> None:
         self._call("PATCH", f"/v1/connected_accounts/{account_id}", json={"alias": alias})
 

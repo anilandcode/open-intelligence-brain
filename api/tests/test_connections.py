@@ -43,6 +43,15 @@ class FakeBridge:
     def rename_alias(self, account_id: str, alias: str) -> None:
         self.calls.append(("rename", {"account_id": account_id, "alias": alias}))
 
+    def set_app_credentials(self, **kwargs: Any) -> dict[str, Any]:
+        self.calls.append(("set_app_credentials", kwargs))
+        return {
+            "toolkit_slug": kwargs["toolkit_slug"],
+            "client_id": kwargs["client_id"],
+            "environment": kwargs.get("environment", "production"),
+            "saved": True,
+        }
+
     def call_tool(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(("call_tool", kwargs))
         return {
@@ -151,6 +160,26 @@ def test_unknown_action_is_404_never_403(client, headers, monkeypatch) -> None: 
     _use_fake(monkeypatch)
     response = client.post("/api/v1/staged-actions/sta_missing/approve", headers=headers)
     assert response.status_code == 404
+
+
+def test_app_credentials_save_never_echoes_the_secret(client, headers, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    fake = _use_fake(monkeypatch)
+    response = client.put(
+        "/api/v1/connections/app-credentials",
+        headers=headers,
+        json={
+            "toolkit_slug": "x",
+            "client_id": "real-x-client",
+            "client_secret": "shh-secret",
+            "environment": "production",
+        },
+    )
+    assert response.status_code == 200
+    assert "shh-secret" not in response.text
+    call = fake.calls[-1]
+    assert call[0] == "set_app_credentials"
+    assert call[1]["client_id"] == "real-x-client"
+    assert call[1]["environment"] == "production"
 
 
 def test_unknown_tool_is_not_staged(client, headers, monkeypatch) -> None:  # type: ignore[no-untyped-def]
