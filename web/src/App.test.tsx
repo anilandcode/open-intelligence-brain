@@ -63,6 +63,7 @@ describe("App", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/");
   });
 
   it("loads the dashboard and navigates to approved knowledge", async () => {
@@ -161,6 +162,12 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: "Connections" }));
     expect(screen.getByRole("heading", { name: "Connected accounts" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Staged actions" })).toBeInTheDocument();
+  });
+  it("renders a broker collision as a friendly message, not a dead end", async () => {
+    window.history.replaceState(null, "", "/?error=ACCOUNT_ALREADY_CONNECTED_AS_ALIAS&existing_alias=personal-x");
+    render(<App />);
+    await screen.findByRole("heading", { name: "Connected accounts" });
+    expect(await screen.findByText(/already connected as personal-x/)).toBeInTheDocument();
   });
   it("runs the real demo layouts without requesting the authenticated workspace", async () => {
     window.history.replaceState(null, "", "#/demo/inbox");

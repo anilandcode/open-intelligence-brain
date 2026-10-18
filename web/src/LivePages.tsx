@@ -1380,9 +1380,23 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
   }, [client, stageAlias]);
 
   useEffect(() => {
-    // The bridge redirects the browser here with ?session_uri= after the
-    // provider round-trip; redeem it once as the signed-in user.
+    // The bridge redirects the browser here after the provider round-trip:
+    // ?session_uri= to redeem, or ?error= with the structured reason.
     const params = new URLSearchParams(window.location.search);
+    const flowError = params.get("error");
+    if (flowError) {
+      const existing = params.get("existing_alias") ?? "";
+      window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+      queueMicrotask(() => {
+        if (flowError === "ACCOUNT_ALREADY_CONNECTED_AS_ALIAS") {
+          onError(`That account is already connected as ${existing || "another alias"}. Rename or remove it, then try again.`);
+        } else {
+          onError(`The connection could not be completed (${flowError}).`);
+        }
+        void load();
+      });
+      return;
+    }
     const sessionUri = params.get("session_uri");
     if (!sessionUri) {
       // Deferred so the effect body never reaches setState synchronously.

@@ -66,7 +66,7 @@ export function readRoute(): Route {
   if (hasToken()) {
     // A broker verification return carries ?session_uri=; land on the
     // connections view so it is redeemed exactly once, on screen.
-    const verifying = window.location.search.includes("session_uri=");
+    const verifying = window.location.search.includes("session_uri=") || window.location.search.includes("error=");
     return { screen: "console", view: verifying ? "connections" : "overview" };
   }
   return { screen: SHOW_LANDING ? "landing" : "login", view: "overview" };
