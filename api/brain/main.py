@@ -23,6 +23,7 @@ from .access import (
 )
 from .auth_api import router as auth_router
 from .config import get_settings
+from .connections_api import router as connections_router
 from .connectors import ConnectorError, get_connector, ingest_fetched
 from .database import Base, SessionLocal, engine, get_db
 from .harness import Turn as TurnRow
@@ -229,6 +230,7 @@ app = FastAPI(
 app.include_router(mcp_http_router)
 app.include_router(studio_router)
 app.include_router(auth_router)
+app.include_router(connections_router)
 
 # Hosted Streamable HTTP MCP at /mcp (+ OAuth authorize/token/register). Must
 # install before the SPA catch-all so /.well-known and /mcp are not HTML.

@@ -71,6 +71,18 @@ BRAIN_DATABASE_URL=sqlite:///brain.db .venv/bin/open-brain-mcp
 
 It exposes read tools `brain_status`, `search_brain`, `ask_brain`, `list_pending_reviews`, and `inspect_brain_integrity`, plus a proposal-only intake tool `capture_source` (files source + candidates for human review; never approves or writes canonical). See [docs/agent-integrations.md](docs/agent-integrations.md) for the portable host configuration and security boundary.
 
+### mcp-auth-bridge integration
+
+`GET /api/v1/connections` (masked account list), `POST /api/v1/connections/link`
+(start an OAuth connect flow), `PATCH /api/v1/connections/{id}` (alias edit),
+`POST /api/v1/oauth/verify` (redeem the broker's session), and the staged
+action queue `GET/POST /api/v1/staged-actions` + `{id}/approve|reject`.
+Mutating tool calls are staged first and executed exactly once on approval
+with the provider's post URN recorded on the row. Configure
+`BRAIN_MAB_BRIDGE_URL` + `BRAIN_MAB_SERVICE_TOKEN` (empty keeps the surfaces
+offline). New modules: `bridge_client.py`, `connections.py`,
+`connections_schemas.py`, `connections_api.py`, `api/tests/test_connections.py`.
+
 ## API workflow
 
 All application endpoints require an `X-Brain-Token` header.

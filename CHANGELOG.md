@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — mcp-auth-bridge integration (connections + staged actions)
+
+Open Brain becomes the human control plane for the OAuth/tool broker:
+`bridge_client.py` talks to the mcp-auth-bridge control plane, the Connections
+hub lists connected LinkedIn/X accounts (credentials stay masked end to end),
+`/api/v1/oauth/verify` redeems the broker's single-use session_uri as the
+signed-in caller, and a staged action queue gates every mutating tool call
+behind an explicit Approve that executes exactly once and records the returned
+post URN. Bridge not configured means 503 and nothing else changes.
+
 ## 1.5.0 — Content connectors (context-stack port, part 4 of 4)
 
 Fetch one document from Google Drive / Notion / OneDrive into the review queue

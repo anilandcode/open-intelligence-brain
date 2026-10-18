@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # from the browser sign-in button is verified against (identity.py "google").
     identity_google_client_id: str = ""
 
+    # mcp-auth-bridge control plane (the OAuth/tool broker). Empty keeps the
+    # connections surfaces offline (they answer 503 instead of reaching out).
+    mab_bridge_url: str = ""
+    mab_service_token: str = ""
+
     # Public origin of this deployment (no trailing slash). Used as the OAuth
     # issuer and to advertise the hosted MCP URL `{public_base_url}/mcp`.
     # Local default matches uvicorn; set BRAIN_PUBLIC_BASE_URL on Cloud Run to

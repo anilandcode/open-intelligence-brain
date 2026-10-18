@@ -88,6 +88,17 @@ into the caller's.
 - Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
 - Self-hosted LLM proxy (`engine/`) for optional engine deployment.
 
+### mcp-auth-bridge control plane
+
+Open Brain drives a separate OAuth/tool broker (`mcp-auth-bridge`) over a
+first-party service credential: `bridge_client.py` starts connect flows, redeems
+the broker's single-use session as the signed-in user, lists connected accounts
+(the broker masks all credential material), and executes staged tool calls
+inside pinned MCP sessions. Approval is the only path to a write: a staged
+action moves PENDING to EXECUTING by atomic conditional update, so a
+double-clicked Approve is a 409, never a duplicate post. The integration is
+optional and offline by default (`BRAIN_MAB_BRIDGE_URL` empty means 503).
+
 ## Invariants
 
 1. Raw sources, proposals, and canonical knowledge use different tables.

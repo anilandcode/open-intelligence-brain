@@ -459,7 +459,7 @@ class TestGinIndexIsActuallyUsed:
             id_prefix = "prop_" if table == "proposals" else "know_"
             cols = (
                 "id, workspace_id, source_id, type, statement, rationale, "
-                "source_excerpt, status, critic_notes, engine_memory_id, created_at"
+                "source_excerpt, status, critic_notes, engine_memory_id, created_at, summary, tags"
                 if table == "proposals"
                 else "id, workspace_id, proposal_id, source_id, type, statement, "
                 "rationale, source_excerpt, status, version, approved_at"
@@ -469,7 +469,7 @@ class TestGinIndexIsActuallyUsed:
                 f"CASE WHEN mod(g,300)=0 THEN 'enterprise customers pay an annual fee to avoid churn' "
                 f"ELSE 'unrelated operational note ' || g || ' about logistics and staffing' END, "
                 f"CASE WHEN mod(g,300)=0 THEN 'monthly billing caused churn' ELSE 'facilities note ' || g END, "
-                f"'excerpt ' || g, 'approved', '', '', now()"
+                f"'excerpt ' || g, 'approved', '', '', now(), '', '[]'"
                 if table == "proposals"
                 else f"'{id_prefix}' || lpad(g::text, 24, '0'), :ws, "
                 f"'prop_' || lpad(g::text, 24, '0'), :src, 'decision', "

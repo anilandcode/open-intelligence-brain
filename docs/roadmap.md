@@ -126,6 +126,11 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - [x] Enforce machine-credential scopes via `require_scope` on hashed
       `api_credentials` (legacy free-form `workspace_grants.scope` still
       stored for listing only).
+- [x] mcp-auth-bridge integration: connections hub API, OAuth verifier,
+      staged action queue with exactly-once approval and recorded post URNs.
+- [ ] Connections + staged actions console UI (Arc).
+- [ ] End-to-end launch test: sign in, connect an account, stage and approve a
+      cross-account post through Open Brain.
 - [ ] Four-week personal usage study.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.
