@@ -313,6 +313,31 @@ export type AuthUser = {
   display_name: string;
 };
 
+export type ConnectedAccount = {
+  connected_account_id: string;
+  toolkit_slug: string;
+  alias: string;
+  provider_account_id: string;
+  display_name: string;
+  status: string;
+  expires_at: string | null;
+  credential_state: string;
+};
+
+export type LinkStart = { authorization_url: string; session_uri: string };
+
+export type StagedAction = {
+  id: string;
+  tool_name: string;
+  account_alias: string;
+  payload: Record<string, unknown>;
+  status: string;
+  result_urn: string;
+  error: string;
+  created_at: string;
+  decided_at: string | null;
+};
+
 export type McpConnection = {
   id: string;
   client_id: string;
@@ -375,6 +400,32 @@ export const api = {
   bootstrap: () =>
     request<{ user: AuthUser; memberships: unknown[] }>("/api/v1/auth/bootstrap", { method: "POST" }),
   mcpConnections: () => request<McpConnection[]>("/api/v1/mcp/connections"),
+  connectedAccounts: () => request<ConnectedAccount[]>("/api/v1/connections"),
+  startConnectionLink: (toolkitSlug: string, alias: string) =>
+    request<LinkStart>("/api/v1/connections/link", {
+      method: "POST",
+      body: JSON.stringify({ toolkit_slug: toolkitSlug, alias }),
+    }),
+  renameConnection: (accountId: string, alias: string) =>
+    request<{ connected_account_id: string; alias: string }>(`/api/v1/connections/${accountId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ alias }),
+    }),
+  verifyOAuthSession: (sessionUri: string) =>
+    request<{ connected_account_id: string; status: string }>("/api/v1/oauth/verify", {
+      method: "POST",
+      body: JSON.stringify({ session_uri: sessionUri }),
+    }),
+  stagedActions: () => request<StagedAction[]>("/api/v1/staged-actions"),
+  stageAction: (toolName: string, accountAlias: string, payload: Record<string, unknown>) =>
+    request<StagedAction>("/api/v1/staged-actions", {
+      method: "POST",
+      body: JSON.stringify({ tool_name: toolName, account_alias: accountAlias, payload }),
+    }),
+  approveStagedAction: (id: string) =>
+    request<StagedAction>(`/api/v1/staged-actions/${id}/approve`, { method: "POST" }),
+  rejectStagedAction: (id: string) =>
+    request<StagedAction>(`/api/v1/staged-actions/${id}/reject`, { method: "POST" }),
   graph: () => request<Graph>("/api/v1/graph"),
   overview: () => request<Overview>("/api/v1/overview"),
   sources: () => request<Source[]>("/api/v1/sources"),

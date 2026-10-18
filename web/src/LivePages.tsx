@@ -1,7 +1,7 @@
 import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Boxes, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
-import type { ChatResult, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion } from "./api";
+import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, KeyRound, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
+import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion, StagedAction } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
@@ -1352,6 +1352,190 @@ export function ConnectorsView({ onChanged, onNotice, onError }: { onChanged: ()
         <button className="primary-button" disabled={busy}>{busy ? "Fetching…" : "Fetch & ingest for review"}</button>
       </form>
     </div>
+  );
+}
+
+export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+  const client = useBrainClient();
+  const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [actions, setActions] = useState<StagedAction[]>([]);
+  const [toolkit, setToolkit] = useState("x");
+  const [alias, setAlias] = useState("personal-x");
+  const [stageTool, setStageTool] = useState("X_CREATE_POST");
+  const [stageAlias, setStageAlias] = useState("");
+  const [stageText, setStageText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [accountRows, actionRows] = await Promise.all([client.connectedAccounts(), client.stagedActions()]);
+      setAccounts(accountRows);
+      setActions(actionRows);
+      if (!stageAlias && accountRows.length) setStageAlias(accountRows[0].alias);
+      setFailed(false);
+    } catch {
+      setFailed(true);
+    }
+  }, [client, stageAlias]);
+
+  useEffect(() => {
+    // The bridge redirects the browser here with ?session_uri= after the
+    // provider round-trip; redeem it once as the signed-in user.
+    const params = new URLSearchParams(window.location.search);
+    const sessionUri = params.get("session_uri");
+    if (!sessionUri) {
+      // Deferred so the effect body never reaches setState synchronously.
+      queueMicrotask(() => void load());
+      return;
+    }
+    params.delete("session_uri");
+    const search = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+    client
+      .verifyOAuthSession(sessionUri)
+      .then(() => onNotice("Account connected. It is ready for staged actions."))
+      .catch((requestError) => onError(requestError instanceof Error ? requestError.message : "Could not verify the connection."))
+      .finally(() => void load());
+  }, [client, load, onError, onNotice]);
+
+  async function connect(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const start = await client.startConnectionLink(toolkit, alias);
+      window.location.assign(start.authorization_url);
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Could not start the connection.");
+      setBusy(false);
+    }
+  }
+
+  async function stage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await client.stageAction(stageTool, stageAlias, { text: stageText });
+      onNotice("Staged for approval. Nothing was published yet.");
+      setStageText("");
+      await load();
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Could not stage the action.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decide(action: StagedAction, approve: boolean) {
+    setBusy(true);
+    try {
+      const updated = approve ? await client.approveStagedAction(action.id) : await client.rejectStagedAction(action.id);
+      onNotice(approve ? (updated.result_urn ? `Published. Recorded ${updated.result_urn}.` : "Approved.") : "Rejected. Nothing was published.");
+      await load();
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "The decision could not be recorded.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function rename(account: ConnectedAccount, next: string) {
+    try {
+      await client.renameConnection(account.connected_account_id, next);
+      onNotice("Alias updated.");
+      await load();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "The alias could not be changed.");
+    }
+  }
+
+  return (
+    <div>
+      <div className="panel-card">
+        <h2>Connected accounts</h2>
+        <p>Accounts your agents can act through. Credentials stay inside the broker and never reach this page.</p>
+        {failed ? <EmptyState icon={<TriangleAlert />} title="Connections unavailable">The account broker did not answer. Nothing was changed.</EmptyState> : accounts.length === 0 ? (
+          <EmptyState icon={<KeyRound />} title="No connected accounts">Connect a LinkedIn or X account to stage actions through it.</EmptyState>
+        ) : (
+          <ul className="connection-list">
+            {accounts.map((account) => (
+              <li key={account.connected_account_id} className="connection-row">
+                <span className="connection-alias">{account.alias}</span>
+                <span className="connection-meta">{account.toolkit_slug} · {account.display_name || account.provider_account_id}</span>
+                <span className={`status-pill status-${account.status.toLowerCase()}`}>{account.status}</span>
+                <RenameField initial={account.alias} onSave={(next) => rename(account, next)} />
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={connect} className="ingest-form">
+          <div className="field-heading"><label htmlFor="connect-toolkit">Toolkit</label></div>
+          <select id="connect-toolkit" value={toolkit} onChange={(e) => setToolkit(e.target.value)}>
+            <option value="x">X</option>
+            <option value="linkedin">LinkedIn</option>
+          </select>
+          <div className="field-heading"><label htmlFor="connect-alias">Alias</label></div>
+          <input id="connect-alias" value={alias} onChange={(e) => setAlias(e.target.value)} required placeholder="personal-x" />
+          <button className="primary-button" disabled={busy}>{busy ? "Opening the provider…" : "Connect account"}</button>
+        </form>
+      </div>
+
+      <div className="panel-card">
+        <h2>Staged actions</h2>
+        <p>Mutating tool calls wait here. Only an approval publishes, and it happens exactly once.</p>
+        {actions.length === 0 ? (
+          <EmptyState icon={<ShieldCheck />} title="Nothing staged">Stage a post below when an account is connected.</EmptyState>
+        ) : (
+          <ul className="connection-list">
+            {actions.map((action) => (
+              <li key={action.id} className="connection-row">
+                <span className="connection-alias">{action.tool_name}</span>
+                <span className="connection-meta">{action.account_alias}{typeof action.payload.text === "string" ? ` · ${action.payload.text}` : ""}</span>
+                <span className={`status-pill status-${action.status.toLowerCase()}`}>{action.status}</span>
+                {action.result_urn ? <span className="connection-meta">{action.result_urn}</span> : null}
+                {action.status === "PENDING" ? (
+                  <>
+                    <button className="primary-button" disabled={busy} onClick={() => decide(action, true)}>Approve & publish</button>
+                    <button className="text-button" disabled={busy} onClick={() => decide(action, false)}>Reject</button>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={stage} className="ingest-form">
+          <div className="field-heading"><label htmlFor="stage-tool">Tool</label></div>
+          <select id="stage-tool" value={stageTool} onChange={(e) => setStageTool(e.target.value)}>
+            <option value="X_CREATE_POST">X_CREATE_POST</option>
+            <option value="LINKEDIN_CREATE_POST">LINKEDIN_CREATE_POST</option>
+            <option value="X_DELETE_POST">X_DELETE_POST</option>
+            <option value="LINKEDIN_DELETE_POST">LINKEDIN_DELETE_POST</option>
+          </select>
+          <div className="field-heading"><label htmlFor="stage-alias">Account</label></div>
+          <select id="stage-alias" value={stageAlias} onChange={(e) => setStageAlias(e.target.value)}>
+            {accounts.map((account) => (
+              <option key={account.connected_account_id} value={account.alias}>{account.alias}</option>
+            ))}
+          </select>
+          <div className="field-heading"><label htmlFor="stage-text">Text</label></div>
+          <input id="stage-text" value={stageText} onChange={(e) => setStageText(e.target.value)} required placeholder="Post text" />
+          <button className="primary-button" disabled={busy || !stageAlias}>{busy ? "Staging…" : "Stage for approval"}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function RenameField({ initial, onSave }: { initial: string; onSave: (next: string) => Promise<void> }) {
+  const [value, setValue] = useState(initial);
+  if (value === initial) return null;
+  return (
+    <>
+      <input aria-label="New alias" value={value} onChange={(e) => setValue(e.target.value)} />
+      <button className="text-button" onClick={() => void onSave(value)}>Save alias</button>
+    </>
   );
 }
 

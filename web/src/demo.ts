@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection } from "./api";
+import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -40,6 +40,67 @@ export function createDemoClient(): BrainClient {
   }
       return {
     authStatus: async () => ({ sign_in_available: false, provider: null }),
+    connectedAccounts: async () => [
+      {
+        connected_account_id: "sample-account-1",
+        toolkit_slug: "x",
+        alias: "personal-x",
+        provider_account_id: "sample-x-user",
+        display_name: "Sample account",
+        status: "ACTIVE",
+        expires_at: null,
+        credential_state: "present",
+      } satisfies ConnectedAccount,
+    ],
+    startConnectionLink: async () => ({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" }),
+    renameConnection: async (accountId: string, alias: string) => ({ connected_account_id: accountId, alias }),
+    verifyOAuthSession: async () => ({ connected_account_id: "sample-account-1", status: "ACTIVE" }),
+    stagedActions: async () => [
+      {
+        id: "sample-action-1",
+        tool_name: "X_CREATE_POST",
+        account_alias: "personal-x",
+        payload: { text: "Sample staged post" },
+        status: "PENDING",
+        result_urn: "",
+        error: "",
+        created_at: date(),
+        decided_at: null,
+      } satisfies StagedAction,
+    ],
+    stageAction: async (toolName: string, accountAlias: string, payload: Record<string, unknown>) => ({
+      id: "sample-action-2",
+      tool_name: toolName,
+      account_alias: accountAlias,
+      payload,
+      status: "PENDING",
+      result_urn: "",
+      error: "",
+      created_at: date(),
+      decided_at: null,
+    }),
+    approveStagedAction: async (id: string) => ({
+      id,
+      tool_name: "X_CREATE_POST",
+      account_alias: "personal-x",
+      payload: {},
+      status: "EXECUTED",
+      result_urn: "urn:sample:post-1",
+      error: "",
+      created_at: date(),
+      decided_at: date(),
+    }),
+    rejectStagedAction: async (id: string) => ({
+      id,
+      tool_name: "X_CREATE_POST",
+      account_alias: "personal-x",
+      payload: {},
+      status: "REJECTED",
+      result_urn: "",
+      error: "",
+      created_at: date(),
+      decided_at: date(),
+    }),
     login: async () => {
       throw new Error("Sign-in is not available in the sample workspace.");
     },

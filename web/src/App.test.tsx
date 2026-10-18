@@ -50,6 +50,12 @@ describe("App", () => {
       if (url.includes("/studio/drafts")) return mockJson([]);
       if (url.includes("/connectors/ingest")) return mockJson(source);
       if (url.includes("/mcp/connections")) return mockJson([]);
+      if (url.includes("/connections/link")) return mockJson({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" });
+      if (url.includes("/oauth/verify")) return mockJson({ connected_account_id: "cac_sample", status: "ACTIVE" });
+      if (url.includes("/api/v1/connections/")) return mockJson({ connected_account_id: "cac_sample", alias: "work-x" });
+      if (url.includes("/api/v1/connections")) return mockJson([{ connected_account_id: "cac_sample", toolkit_slug: "x", alias: "personal-x", provider_account_id: "x-user-1", display_name: "anil", status: "ACTIVE", expires_at: null, credential_state: "present" }]);
+      if (url.includes("/staged-actions/")) return mockJson({ id: "sta_sample", tool_name: "X_CREATE_POST", account_alias: "personal-x", payload: { text: "hi" }, status: "EXECUTED", result_urn: "urn:sample:1", error: "", created_at: "2026-10-18T00:00:00Z", decided_at: null });
+      if (url.includes("/staged-actions")) return mockJson([{ id: "sta_sample", tool_name: "X_CREATE_POST", account_alias: "personal-x", payload: { text: "hi" }, status: "PENDING", result_urn: "", error: "", created_at: "2026-10-18T00:00:00Z", decided_at: null }]);
       return mockJson({});
     }));
   });
@@ -147,6 +153,14 @@ describe("App", () => {
     // Studio now has live interview and draft tabs
     expect(screen.getByText("Interviews")).toBeInTheDocument();
     expect(screen.getByText("Drafts")).toBeInTheDocument();
+  });
+  it("opens the connections hub with accounts and staged actions", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("Recently approved");
+    await user.click(screen.getByRole("button", { name: "Connections" }));
+    expect(screen.getByRole("heading", { name: "Connected accounts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Staged actions" })).toBeInTheDocument();
   });
   it("runs the real demo layouts without requesting the authenticated workspace", async () => {
     window.history.replaceState(null, "", "#/demo/inbox");

@@ -1,6 +1,6 @@
-import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, CaptureDialog } from "./LivePages";
+import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, ConnectionsView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, X } from "lucide-react";
+import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
@@ -39,6 +39,7 @@ const operationsNav: NavItem[] = [
 ];
 const developerNav: NavItem[] = [
   { id: "connectors", label: "Connectors", icon: Boxes },
+  { id: "connections", label: "Connections", icon: Link2 },
   { id: "api-keys", label: "API Keys", icon: KeyRound, future: true },
   { id: "agents", label: "Agents & MCP", icon: Brain },
   { id: "requests", label: "Requests", icon: Activity, future: true },
@@ -93,6 +94,7 @@ const titleMap: Record<View, { title: string; description: string }> = {
   "working-memory": { title: "Working Memory", description: "Explore interpretations and their links to original sources and approved knowledge." },
   graph: { title: "Brain Graph", description: "Explore the relationships between evidence, proposals, memory, and approved knowledge." },
   connectors: { title: "Connectors", description: "See providers that may bring content into the Brain." },
+  connections: { title: "Connections", description: "Connected LinkedIn and X accounts, with staged actions awaiting approval." },
   "api-keys": { title: "API Keys", description: "Inspect how scoped, expiring access will be managed." },
   agents: { title: "Agents & MCP", description: "Connect coding tools to your own Brain deployment." },
   requests: { title: "Requests", description: "Inspect API operations and latency separately from domain events." },
@@ -764,7 +766,7 @@ export default function App() {
           </div>
         </header>
 
-        <main id="main-content" data-layout={["import", "connectors", "agents", "insights", "proactivity", "settings"].includes(view) ? "narrow" : "wide"} tabIndex={-1}>
+        <main id="main-content" data-layout={["import", "connectors", "connections", "agents", "insights", "proactivity", "settings"].includes(view) ? "narrow" : "wide"} tabIndex={-1}>
           <header className="page-heading">
             <div><h1>{view === "settings" ? settingsSection : current.title}</h1><p>{current.description}</p></div>
             {view === "brain" && <button className="secondary-button btn--pill" onClick={() => navigate("ask")}><MessageSquareText size={17} /> Ask the Brain</button>}
@@ -776,7 +778,7 @@ export default function App() {
           {notice && <div className="alert alert--success" role="status"><Check size={18} /><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
           {route.screen === "demo" && ["overview", "inbox", "brain", "sources", "ask", "studio", "activate", "analytics", "audit"].includes(view) && <div className="preview-banner"><Sparkles size={16}/><strong>Demo workspace</strong><span>Synthetic data. All interactions stay in this page; no production API or AI service is connected.</span></div>}
-          {(loading || loadedClient !== client) && !["import", "workspaces", "working-memory", "graph", "connectors", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"].includes(view) ? error ? <EmptyState icon={<TriangleAlert />} title="Workspace unavailable">Loading failed. Use Retry loading above to try again. No sample data has replaced your workspace.</EmptyState> : <LoadingState /> : (
+          {(loading || loadedClient !== client) && !["import", "workspaces", "working-memory", "graph", "connectors", "connections", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"].includes(view) ? error ? <EmptyState icon={<TriangleAlert />} title="Workspace unavailable">Loading failed. Use Retry loading above to try again. No sample data has replaced your workspace.</EmptyState> : <LoadingState /> : (
             <>
               {view === "overview" && overview && <OverviewView overview={overview} proposals={proposals} knowledge={knowledge} integrity={integrity} onNavigate={navigate} />}
               {view === "inbox" && <InboxView proposals={proposals} onChanged={refresh} onNotice={setNotice} onError={setError} />}
@@ -790,6 +792,7 @@ export default function App() {
               {view === "agents" && <AgentsView connections={mcpConnections} />}
               {view === "graph" && <GraphView />}
               {view === "connectors" && <ConnectorsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
+              {view === "connections" && <ConnectionsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {(["import", "workspaces", "working-memory", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>
           )}

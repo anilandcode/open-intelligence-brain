@@ -948,3 +948,9 @@
 .critic-note--warning { color: #f59e0b; background: color-mix(in srgb, #f59e0b 8%, transparent); }
 .critic-note--strong { color: #ef4444; background: color-mix(in srgb, #ef4444 8%, transparent); }
 .critic-icon { flex-shrink: 0; font-size: 0.8rem; }
+
+/* Connections hub (mcp-auth-bridge integration) */
+.connection-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.connection-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border, #e5e5e5); border-radius: 10px; }
+.connection-alias { font-weight: 500; }
+.connection-meta { color: var(--muted-foreground, #6b7280); font-size: 13px; }
