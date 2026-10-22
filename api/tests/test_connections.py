@@ -172,6 +172,7 @@ def test_app_credentials_save_never_echoes_the_secret(client, headers, monkeypat
             "client_id": "real-x-client",
             "client_secret": "shh-secret",
             "environment": "production",
+            "scopes": "tweet.read tweet.write",
         },
     )
     assert response.status_code == 200
@@ -180,6 +181,13 @@ def test_app_credentials_save_never_echoes_the_secret(client, headers, monkeypat
     assert call[0] == "set_app_credentials"
     assert call[1]["client_id"] == "real-x-client"
     assert call[1]["environment"] == "production"
+    assert call[1]["scopes"] == "tweet.read tweet.write"
+
+
+def test_app_config_returns_the_broker_redirect_uri(client, headers) -> None:  # type: ignore[no-untyped-def]
+    response = client.get("/api/v1/connections/app-config", headers=headers)
+    assert response.status_code == 200
+    assert response.json()["redirect_uri"].endswith("/oauth/callback")
 
 
 def test_unknown_tool_is_not_staged(client, headers, monkeypatch) -> None:  # type: ignore[no-untyped-def]

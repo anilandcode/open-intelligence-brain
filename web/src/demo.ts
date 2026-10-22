@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction } from "./api";
+import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, AppConfig, AppCredentialsResult } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -54,10 +54,12 @@ export function createDemoClient(): BrainClient {
     ],
     startConnectionLink: async () => ({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" }),
     renameConnection: async (accountId: string, alias: string) => ({ connected_account_id: accountId, alias }),
-    setAppCredentials: async (toolkitSlug: string, clientId: string) => ({
+    appConfig: async () => ({ redirect_uri: "https://bridge-129-158-45-154.sslip.io/oauth/callback" }),
+    setAppCredentials: async (toolkitSlug: string, clientId: string, _secret: string | null, environment: string, scopes: string | null) => ({
       toolkit_slug: toolkitSlug,
       client_id: clientId,
-      environment: "production",
+      environment,
+      scopes,
       saved: true,
     }),
     verifyOAuthSession: async () => ({ connected_account_id: "sample-account-1", status: "ACTIVE" }),

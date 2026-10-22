@@ -40,6 +40,7 @@ class AppCredentialsUpdate(BaseModel):
     client_id: str = Field(min_length=1, max_length=256)
     client_secret: str | None = Field(default=None, max_length=512)
     environment: str = Field(default="production", pattern=r"^(production|sandbox)$")
+    scopes: str | None = Field(default=None, max_length=512)
 
 
 class VerifyRequest(BaseModel):

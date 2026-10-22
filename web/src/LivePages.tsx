@@ -1355,6 +1355,18 @@ export function ConnectorsView({ onChanged, onNotice, onError }: { onChanged: ()
   );
 }
 
+const TOOL_LABELS: Record<string, string> = {
+  X_CREATE_POST: "Create a post (X)",
+  X_DELETE_POST: "Delete a post (X)",
+  LINKEDIN_CREATE_POST: "Create a LinkedIn post",
+  LINKEDIN_DELETE_POST: "Delete a LinkedIn post",
+};
+
+const SCOPE_PRESETS: Record<string, string> = {
+  x: "tweet.read tweet.write users.read offline.access",
+  linkedin: "openid profile w_member_social",
+};
+
 export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   const client = useBrainClient();
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -1368,14 +1380,23 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
   const [appEnv, setAppEnv] = useState("production");
   const [appClientId, setAppClientId] = useState("");
   const [appSecret, setAppSecret] = useState("");
+  const [appScopes, setAppScopes] = useState(SCOPE_PRESETS.x);
+  const [orgScope, setOrgScope] = useState(false);
+  const [redirectUri, setRedirectUri] = useState("");
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [accountRows, actionRows] = await Promise.all([client.connectedAccounts(), client.stagedActions()]);
+      const [accountRows, actionRows, config] = await Promise.all([
+        client.connectedAccounts(),
+        client.stagedActions(),
+        client.appConfig(),
+      ]);
       setAccounts(accountRows);
       setActions(actionRows);
+      setRedirectUri(config.redirect_uri);
       if (!stageAlias && accountRows.length) setStageAlias(accountRows[0].alias);
       setFailed(false);
     } catch {
@@ -1459,11 +1480,21 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
     }
   }
 
+  async function copyRedirect() {
+    try {
+      await navigator.clipboard.writeText(redirectUri);
+      setCopied(true);
+    } catch {
+      onError("Copy failed. Select the URL and copy it manually.");
+    }
+  }
+
   async function saveApp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
-      await client.setAppCredentials(appToolkit, appClientId, appSecret || null, appEnv);
+      const composed = appScopes + (orgScope ? " w_organization_social" : "");
+      await client.setAppCredentials(appToolkit, appClientId, appSecret || null, appEnv, composed.trim() || null);
       onNotice("App credentials saved. Connect account now runs through your own app.");
       setAppSecret("");
     } catch (requestError) {
@@ -1523,7 +1554,7 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
           <ul className="connection-list">
             {actions.map((action) => (
               <li key={action.id} className="connection-row">
-                <span className="connection-alias">{action.tool_name}</span>
+                <span className="connection-alias" title={action.tool_name}>{TOOL_LABELS[action.tool_name] ?? action.tool_name}</span>
                 <span className="connection-meta">{action.account_alias}{typeof action.payload.text === "string" ? ` · ${action.payload.text}` : ""}</span>
                 <span className={`status-pill status-${action.status.toLowerCase()}`}>{action.status}</span>
                 {action.result_urn ? <span className="connection-meta">{action.result_urn}</span> : null}
@@ -1540,11 +1571,11 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
         <form onSubmit={stage} className="ingest-form">
           <div className="field-heading"><label htmlFor="stage-tool">Tool</label></div>
           <select id="stage-tool" value={stageTool} onChange={(e) => setStageTool(e.target.value)}>
-            <option value="X_CREATE_POST">X_CREATE_POST</option>
-            <option value="LINKEDIN_CREATE_POST">LINKEDIN_CREATE_POST</option>
-            <option value="X_DELETE_POST">X_DELETE_POST</option>
-            <option value="LINKEDIN_DELETE_POST">LINKEDIN_DELETE_POST</option>
+            {Object.entries(TOOL_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
           </select>
+          <p className="connection-meta">{Object.keys(TOOL_LABELS).length} publishing tools available (X: 2, LinkedIn: 2). Every one is staged and approved before it fires.</p>
           <div className="field-heading"><label htmlFor="stage-alias">Account</label></div>
           <select id="stage-alias" value={stageAlias} onChange={(e) => setStageAlias(e.target.value)}>
             {accounts.map((account) => (
@@ -1562,12 +1593,14 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
         <p>
           Use your own X or LinkedIn developer app so your agents act through your real account.
           The client secret goes straight into the broker's encrypted vault and never returns.
-          In the X developer portal, set the app to OAuth 2.0 with Read and write permissions and
-          the callback URL https://bridge-129-158-45-154.sslip.io/oauth/callback.
         </p>
         <form onSubmit={saveApp} className="ingest-form">
           <div className="field-heading"><label htmlFor="app-toolkit">Toolkit</label></div>
-          <select id="app-toolkit" value={appToolkit} onChange={(e) => setAppToolkit(e.target.value)}>
+          <select id="app-toolkit" value={appToolkit} onChange={(e) => {
+            setAppToolkit(e.target.value);
+            setAppScopes(SCOPE_PRESETS[e.target.value] ?? "");
+            setOrgScope(false);
+          }}>
             <option value="x">X</option>
             <option value="linkedin">LinkedIn</option>
           </select>
@@ -1578,8 +1611,34 @@ export function ConnectionsView({ onChanged, onNotice, onError }: { onChanged: (
           </select>
           <div className="field-heading"><label htmlFor="app-client-id">Client ID</label></div>
           <input id="app-client-id" value={appClientId} onChange={(e) => setAppClientId(e.target.value)} required placeholder="OAuth client id from your developer portal" />
+          <p className="connection-meta">
+            From your developer portal. X: console.x.com, your app, Keys and tokens. LinkedIn: developer.linkedin.com, your app, Auth.
+            Connect account cannot run through your app without it.
+          </p>
           <div className="field-heading"><label htmlFor="app-secret">Client secret</label></div>
           <input id="app-secret" type="password" value={appSecret} onChange={(e) => setAppSecret(e.target.value)} placeholder="OAuth client secret (stored encrypted)" />
+          <p className="connection-meta">From the same screen. Leave empty for a public (PKCE-only) client. Stored encrypted, never returned.</p>
+          <div className="field-heading"><label htmlFor="app-scopes">Scopes</label></div>
+          <input id="app-scopes" value={appScopes} onChange={(e) => setAppScopes(e.target.value)} placeholder="Scopes to request at sign-in" />
+          <p className="connection-meta">
+            The connect request asks for exactly these scopes. Remove any you do not need. An unapproved scope can make LinkedIn refuse the whole authorization.
+          </p>
+          {appToolkit === "linkedin" ? (
+            <label className="connection-row">
+              <input type="checkbox" checked={orgScope} onChange={(e) => setOrgScope(e.target.checked)} />
+              <span className="connection-meta">Include w_organization_social for company pages. LinkedIn only grants it after Community Management approval.</span>
+            </label>
+          ) : (
+            <p className="connection-meta">
+              Everything your Brain does today runs on OAuth alone. An Application Bearer Token is only needed for app-only tools such as search and compliance, which are not enabled.
+            </p>
+          )}
+          <div className="field-heading"><label htmlFor="app-redirect">Redirect URL</label></div>
+          <input id="app-redirect" readOnly value={redirectUri} placeholder="Broker callback URL" />
+          <button className="secondary-button" type="button" onClick={copyRedirect}>{copied ? "Copied" : "Copy"}</button>
+          <p className="connection-meta">
+            Add this URL to your app's OAuth allow list. X calls it Callback URI. LinkedIn lists it under Authorized redirect URLs.
+          </p>
           <button className="primary-button" disabled={busy}>{busy ? "Saving…" : "Save app credentials"}</button>
         </form>
       </div>

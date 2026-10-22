@@ -152,6 +152,16 @@ def start_link(
     )
 
 
+@router.get("/connections/app-config")
+def app_config(
+    access: WorkspaceAccess = Depends(_resolve_access),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Where the provider must send the browser back after authorization."""
+    settings = get_settings()
+    return {"redirect_uri": f"{settings.mab_bridge_url.rstrip('/')}/oauth/callback"}
+
+
 @router.put("/connections/app-credentials")
 def set_app_credentials(
     body: AppCredentialsUpdate,
@@ -167,6 +177,7 @@ def set_app_credentials(
             client_id=body.client_id,
             client_secret=body.client_secret,
             environment=body.environment,
+            scopes=body.scopes,
         )
     except BridgeNotConfigured:
         raise HTTPException(503, "bridge_not_configured") from None
@@ -178,6 +189,7 @@ def set_app_credentials(
         "toolkit_slug": str(result.get("toolkit_slug", body.toolkit_slug)),
         "client_id": str(result.get("client_id", body.client_id)),
         "environment": str(result.get("environment", body.environment)),
+        "scopes": result.get("scopes", body.scopes),
         "saved": True,
     }
 

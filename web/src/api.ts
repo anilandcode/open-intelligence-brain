@@ -330,8 +330,11 @@ export type AppCredentialsResult = {
   toolkit_slug: string;
   client_id: string;
   environment: string;
+  scopes: string | null;
   saved: boolean;
 };
+
+export type AppConfig = { redirect_uri: string };
 
 export type StagedAction = {
   id: string;
@@ -418,10 +421,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ alias }),
     }),
-  setAppCredentials: (toolkitSlug: string, clientId: string, clientSecret: string | null, environment: string) =>
+  appConfig: () => request<AppConfig>("/api/v1/connections/app-config"),
+  setAppCredentials: (toolkitSlug: string, clientId: string, clientSecret: string | null, environment: string, scopes: string | null) =>
     request<AppCredentialsResult>("/api/v1/connections/app-credentials", {
       method: "PUT",
-      body: JSON.stringify({ toolkit_slug: toolkitSlug, client_id: clientId, client_secret: clientSecret, environment }),
+      body: JSON.stringify({ toolkit_slug: toolkitSlug, client_id: clientId, client_secret: clientSecret, environment, scopes }),
     }),
   verifyOAuthSession: (sessionUri: string) =>
     request<{ connected_account_id: string; status: string }>("/api/v1/oauth/verify", {

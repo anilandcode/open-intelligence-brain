@@ -85,6 +85,7 @@ class BridgeClient:
         client_id: str,
         client_secret: str | None,
         environment: str,
+        scopes: str | None = None,
     ) -> dict[str, Any]:
         """Register the user's own developer app with the broker.
 
@@ -94,6 +95,8 @@ class BridgeClient:
         payload: dict[str, Any] = {"client_id": client_id, "environment": environment}
         if client_secret is not None:
             payload["client_secret"] = client_secret
+        if scopes is not None:
+            payload["scopes"] = scopes
         result = self._call("PUT", f"/v1/auth_configs/{toolkit_slug}", json=payload)
         return dict(result)
 
