@@ -87,6 +87,7 @@ from .models import (
     Source,
     SourceSpan,
     SourceVersion,
+    UnansweredQuestion,
     Workspace,
     WorkspaceGrant,
     new_id,
@@ -149,6 +150,7 @@ from .schemas import (
     SupersedeRequest,
     SuspendRequest,
     TimeframeUpdate,
+    TodayRead,
     TokenCreate,
     TokenListRead,
     TokenRead,
@@ -156,6 +158,7 @@ from .schemas import (
     TurnDetail,
     TurnRead,
     TurnStepRead,
+    UnansweredRead,
     WorkspaceCreate,
     WorkspacePolicyRead,
     WorkspacePolicyUpdate,
@@ -202,6 +205,11 @@ from .services import (
     update_workspace_policy,
 )
 from .studio_api import router as studio_router
+from .unanswered import build_today, list_unanswered, record_answer
+
+# Imported at module level on purpose: UsageEvent must be registered on Base
+# before lifespan's create_all runs, or usage_events never exists on a fresh
+# database and every /api/v1/usage* route 500s. Do not make this lazy.
 from .usage import top_used, track_batch, unused_knowledge, usage_summary
 from .vectors import ensure_pgvector
 
@@ -1719,6 +1727,7 @@ def chat(
 ):
     require_scope(access, "brain:ask")
     result = answer_question(db, scope, payload.question)
+    record_answer(db, scope.workspace_id, payload.question, result, via="console")
     # Track which knowledge atoms were cited
     if result.citations:
         track_batch(
@@ -2161,6 +2170,61 @@ def _eval_question_view(row: EvalQuestion) -> EvalQuestionRead:
         note=row.note or "",
         created_at=row.created_at,
     )
+
+
+def _unanswered_view(row: UnansweredQuestion) -> UnansweredRead:
+    return UnansweredRead(
+        id=row.id,
+        question=row.question,
+        times_asked=row.times_asked,
+        via=row.via,
+        near_ids=json.loads(row.near_ids or "[]"),
+        status=row.status,
+        first_asked_at=row.first_asked_at,
+        last_asked_at=row.last_asked_at,
+        resolved_at=row.resolved_at,
+    )
+
+
+@app.get("/api/v1/unanswered", response_model=list[UnansweredRead])
+def list_unanswered_questions(
+    status: str = Query(default="open", pattern="^(open|answered|dismissed|all)$"),
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Questions the Brain declined, most asked first. Owners and admins only."""
+    _require_admin(access)
+    return [
+        _unanswered_view(row)
+        for row in list_unanswered(db, access.workspace_id, status=status, limit=200)
+    ]
+
+
+@app.post("/api/v1/unanswered/{question_id}/dismiss", response_model=UnansweredRead)
+def dismiss_unanswered_question(
+    question_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Take a question off the list (it reopens if someone asks it again)."""
+    _require_admin(access)
+    row = db.get(UnansweredQuestion, question_id)
+    if row is None or row.workspace_id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Question not found")
+    row.status = "dismissed"
+    row.resolved_at = datetime.now(UTC)
+    db.commit()
+    return _unanswered_view(row)
+
+
+@app.get("/api/v1/today", response_model=TodayRead)
+def today_summary(
+    access: WorkspaceAccess = Depends(resolve_access),
+    scope: ReadScope = Depends(read_scope),
+    db: Session = Depends(get_db),
+):
+    """What needs a person today, each item naming the console view that handles it."""
+    return build_today(db, scope, can_administer=access.can_administer).to_dict()
 
 
 @app.get("/api/v1/eval/questions", response_model=list[EvalQuestionRead])

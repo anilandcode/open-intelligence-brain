@@ -47,6 +47,7 @@ from .services import (
     propose_knowledge_update,
     search_knowledge,
 )
+from .unanswered import record_answer
 from .usage import track_batch
 
 # The MCP server is a local read-only client of one Brain, so it authenticates
@@ -417,6 +418,7 @@ def entity_profile_scoped(name: str, limit: int, scope: ReadScope) -> EntityProf
 def ask_brain_scoped(question: str, scope: ReadScope) -> GroundedAnswer:
     with SessionLocal() as db:
         result = answer_question(db, scope, question)
+        record_answer(db, scope.workspace_id, question, result, via="agent")
         return GroundedAnswer(
             answer=result.answer,
             grounded=result.grounded,

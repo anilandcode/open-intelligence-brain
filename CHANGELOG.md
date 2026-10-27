@@ -56,6 +56,28 @@
 - **Production Configuration Validation**: `Settings.validate_for_production()` enforces secure secrets, tokens, and origins when `BRAIN_ENV=production`.
 - **Security Middleware Suite**: `RequestIdMiddleware` (`X-Request-ID`), `SecurityHeadersMiddleware` (HSTS, frame options, nosniff, strict referrer), `RateLimitMiddleware` (sliding window limit), and `AccessLogMiddleware`.
 
+## 1.6.8 — Today Summary, "Couldn't Answer" Log, and Console Cleanup
+
+- **"Couldn't answer" log.** Every question the Brain declines, from the
+  Playground or an agent's `ask_brain`, is recorded. Repeats of the same
+  question (same significant words) are counted on one row. A row closes on
+  its own when the question is later answered from approved knowledge, and
+  opens again if it is declined again. The Playground lists the open
+  questions, most asked first, each with "Capture an answer" (which opens the
+  Capture page with the question as its title) and "Dismiss". Owners and
+  admins only: `GET /api/v1/unanswered`,
+  `POST /api/v1/unanswered/{id}/dismiss`.
+- **Today.** The Overview now opens with what needs a person: suggestions
+  to review (and how long the oldest has waited), approved items that need
+  gardening, questions the Brain couldn't answer, watched folders that
+  failed to sync, new sources since yesterday, items approved this week and
+  agents' live notes. Each line goes to the view that handles it.
+  `GET /api/v1/today` returns the same list, read through the caller's scope.
+- **Preview pages are out of the live console.** The mock-up pages
+  (Workspaces, Turns, Proactivity, Insights, API Keys, Requests, Settings)
+  are no longer in the console's navigation or command palette. The demo
+  still shows them.
+
 ## 1.6.7 — Agent Working Memory: Expiring Scratchpad, Unreviewed Source Search, and pgvector
 
 - **Agent scratchpad.** Agents keep short-lived working notes with the MCP

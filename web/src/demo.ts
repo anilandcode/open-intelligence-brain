@@ -1,6 +1,5 @@
 import type { BrainClient } from "./client";
-import type { AgentNote, BatchReviewResult, CapturePayload, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Gardening, Source, SourceHit, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy, Timeframe } from "./api";
-
+import type { AgentNote, BatchReviewResult, CapturePayload, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Gardening, Source, SourceHit, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy, Timeframe, Unanswered } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -47,6 +46,8 @@ export function createDemoClient(): BrainClient {
   const flags = (k: Knowledge) => ({ due_for_review: !!k.review_by && new Date(k.review_by) <= new Date(), expired: !!k.expires_at && new Date(k.expires_at) <= new Date() });
   const dated = (dates?: { as_of?: string | null; review_by?: string | null; expires_at?: string | null }) => { const frame = { as_of: dates?.as_of ?? null, review_by: dates?.review_by ?? null, expires_at: dates?.expires_at ?? null }; return { ...frame, ...flags(frame as Knowledge) }; };
   const evalRuns: EvalRun[] = [];
+  const unanswered: Unanswered[] = [];
+  const questionKey = (q: string) => q.toLowerCase().split(/\W+/).filter(t => t.length > 2 && !["the","and","what","who","how","our","for","does","with"].includes(t)).sort().join(" ");
   const notes: AgentNote[] = [{ id: "sample-note-1", author: "obk_agent…", topic: "renewal research", content: "Three customers asked about multi-year renewal pricing this week; check whether the discount cap applies to them.", sensitivity: "private", created_at: date(), expires_at: new Date(Date.now() + 6 * 86_400_000).toISOString(), promoted_source_id: null, promoted_at: null }];
 
   const entityByName = (name: string) => entities.find(e => e.name.toLowerCase() === name.toLowerCase() || e.aliases.some(a => a.toLowerCase() === name.toLowerCase()));
@@ -200,6 +201,9 @@ export function createDemoClient(): BrainClient {
         content,
       });
     },
+    today: async () => {const pending=proposals.filter(p=>p.status==="proposed");const open=unanswered.filter(u=>u.status==="open");const items=[];if(pending.length)items.push({key:"reviews",count:pending.length,label:`${pending.length} ${pending.length===1?"suggestion":"suggestions"} to review`,view:"inbox",detail:""});if(open.length)items.push({key:"unanswered",count:open.length,label:`${open.length} ${open.length===1?"question":"questions"} the Brain couldn't answer`,view:"ask",detail:""});const live=notes.length;if(live)items.push({key:"notes",count:live,label:`${live} agent working ${live===1?"note":"notes"}`,view:"working-memory",detail:""});return {generated_at:date(),items,top_unanswered:open.slice(0,5).map(u=>({id:u.id,question:u.question,times_asked:u.times_asked}))};},
+    unanswered: async (status = "open") => copy(unanswered.filter(u => status === "all" || u.status === status).sort((a,b)=>b.times_asked-a.times_asked)),
+    dismissUnanswered: async key => {const u=find(unanswered,key);u.status="dismissed";u.resolved_at=date();return copy(u);},
     scratchpad: async (topic = "") => copy(notes.filter(n => !topic || n.topic === topic)),
     deleteNote: async key => { notes.splice(notes.indexOf(find(notes, key)), 1); },
     promoteNote: async (key, title = "") => {
@@ -502,7 +506,7 @@ export function createDemoClient(): BrainClient {
     deleteEvalQuestion: async key => {evalQuestions.splice(evalQuestions.indexOf(find(evalQuestions,key)),1);},
     runEval: async (label = "") => {const results=await Promise.all(evalQuestions.map(async q=>{const r=await client.chat(q.question);const cited=r.citations.map(c=>c.knowledge_id);const passed=q.expect_abstain?!r.grounded:r.grounded&&cited.some(c=>q.expected_ids.includes(c));return {id:q.id,question:q.question,expect_abstain:q.expect_abstain,expected_ids:q.expected_ids,passed,grounded:r.grounded,cited_ids:cited,retrieved_ids:cited,hit_rank:passed&&!q.expect_abstain?1:null,stale_ids:[],reason:passed?"":q.expect_abstain?"Answered a question it should abstain on":"Answered without citing an expected item"};}));const answerable=results.filter(r=>!r.expect_abstain);const abstain=results.filter(r=>r.expect_abstain);const share=(a:number,b:number)=>b?Math.round(a/b*1000)/1000:null;const run:EvalReport={id:id("evr"),label,created_at:date(),results,summary:{questions:results.length,passed:results.filter(r=>r.passed).length,pass_rate:share(results.filter(r=>r.passed).length,results.length),answerable:answerable.length,recall_at_8:share(answerable.filter(r=>r.hit_rank).length,answerable.length),mrr:share(answerable.filter(r=>r.hit_rank).length,answerable.length),answered_correctly:answerable.filter(r=>r.passed).length,abstain_questions:abstain.length,abstained_correctly:abstain.filter(r=>r.passed).length,false_answers:abstain.filter(r=>!r.passed).length,stale_questions:0,write_answers:false}};evalRuns.unshift({id:run.id,label,summary:run.summary,created_at:run.created_at});return copy(run);},
     evalRuns: async () => copy(evalRuns),
-    chat: async question => {const terms=question.toLowerCase().split(/\W+/).filter(x=>x.length>3);const atoms=knowledge.filter(k=>terms.some(t=>k.statement.toLowerCase().includes(t)));return {answer:atoms.length?`Sample cited retrieval:\n\n${atoms.map(k=>k.statement).join("\n\n")}`:"No matching approved sample knowledge. Try asking about onboarding, customer owners, or decisions.",grounded:atoms.length>0,citations:atoms.map(k=>({knowledge_id:k.id,source_id:k.source_id,source_title:k.source_title,excerpt:k.source_excerpt}))};},
+    chat: async question => {const terms=question.toLowerCase().split(/\W+/).filter(x=>x.length>3);const atoms=knowledge.filter(k=>terms.some(t=>k.statement.toLowerCase().includes(t)));const key=questionKey(question);const logged=unanswered.find(u=>u.id===`unq-${key}`);if(!atoms.length){if(logged){logged.times_asked++;logged.question=question;logged.status="open";logged.last_asked_at=date();}else unanswered.push({id:`unq-${key}`,question,times_asked:1,via:"console",near_ids:[],status:"open",first_asked_at:date(),last_asked_at:date(),resolved_at:null});}else if(logged&&logged.status==="open"){logged.status="answered";logged.resolved_at=date();}return {answer:atoms.length?`Sample cited retrieval:\n\n${atoms.map(k=>k.statement).join("\n\n")}`:"No matching approved sample knowledge. Try asking about onboarding, customer owners, or decisions.",grounded:atoms.length>0,citations:atoms.map(k=>({knowledge_id:k.id,source_id:k.source_id,source_title:k.source_title,excerpt:k.source_excerpt}))};},
     exportUrl: "", // Workspace export is intentionally absent from the demo shell.
     getWorkspacePolicy: async () => ({
       auto_approve_enabled: false,
