@@ -281,9 +281,23 @@ function Metric({ label, value, detail, icon, tone, share, shareNote }: {
 export function InboxView({ proposals, onChanged, onNotice, onError }: { proposals: Proposal[]; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   const client = useBrainClient();
   const [selectedId, setSelectedId] = useState(proposals[0]?.id ?? "");
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
-  const [batchBusy, setBatchBusy] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [confirmDismiss, setConfirmDismiss] = useState("");
+  const [busy, setBusy] = useState(false);
   const selected = proposals.find((proposal) => proposal.id === selectedId) ?? proposals[0];
+  // One group per source, in the order sources first appear in the queue, so a
+  // reviewer can take what matters from a note and clear the rest together.
+  const groups = useMemo(() => {
+    const bySource = new Map<string, { sourceId: string; title: string; items: Proposal[] }>();
+    for (const proposal of proposals) {
+      const group = bySource.get(proposal.source_id) ?? { sourceId: proposal.source_id, title: proposal.source_title, items: [] };
+      group.items.push(proposal);
+      bySource.set(proposal.source_id, group);
+    }
+    return [...bySource.values()];
+  }, [proposals]);
+  const pendingIds = useMemo(() => new Set(proposals.map((proposal) => proposal.id)), [proposals]);
+  const checkedIds = useMemo(() => [...checked].filter((id) => pendingIds.has(id)), [checked, pendingIds]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -304,7 +318,7 @@ export function InboxView({ proposals, onChanged, onNotice, onError }: { proposa
         }
       } else if (event.key === "x" && selected) {
         event.preventDefault();
-        setCheckedIds((prev) => {
+        setChecked((prev) => {
           const next = new Set(prev);
           if (next.has(selected.id)) next.delete(selected.id);
           else next.add(selected.id);
@@ -316,124 +330,96 @@ export function InboxView({ proposals, onChanged, onNotice, onError }: { proposa
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [proposals, selected]);
 
-  const allSelected = proposals.length > 0 && checkedIds.size === proposals.length;
-  function toggleSelectAll() {
-    if (allSelected) {
-      setCheckedIds(new Set());
-    } else {
-      setCheckedIds(new Set(proposals.map((p) => p.id)));
-    }
-  }
-
-  async function handleBatchApprove() {
-    if (!checkedIds.size) return;
-    setBatchBusy(true);
-    try {
-      const res = await client.batchApproveProposals(Array.from(checkedIds));
-      onNotice(`Batch approved ${res.approved} proposal(s).`);
-      setCheckedIds(new Set());
-      await onChanged();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Batch approval failed.");
-    } finally {
-      setBatchBusy(false);
-    }
-  }
-
-  async function handleBatchReject() {
-    if (!checkedIds.size) return;
-    setBatchBusy(true);
-    try {
-      const res = await client.batchRejectProposals(Array.from(checkedIds));
-      onNotice(`Batch rejected ${res.rejected} proposal(s).`);
-      setCheckedIds(new Set());
-      await onChanged();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "Batch rejection failed.");
-    } finally {
-      setBatchBusy(false);
-    }
-  }
-
   if (!selected) return <section className="panel-card"><EmptyState icon={<CheckCircle2 />} title="Your inbox is clear">Every current proposal has been reviewed. Capture new material when you are ready.</EmptyState></section>;
 
+  function toggle(id: string) {
+    setChecked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function decide(action: "approve" | "reject") {
+    if (!checkedIds.length) return;
+    setBusy(true);
+    try {
+      const result = await client.reviewProposals(checkedIds, action, action === "reject" ? "Rejected from the review queue selection" : undefined);
+      const done = action === "approve" ? result.approved.length : result.rejected.length;
+      const skipped = result.skipped.length ? ` ${result.skipped.length} skipped.` : "";
+      onNotice(action === "approve" ? `${done} approved to the Brain.${skipped}` : `${done} rejected. Sources are unchanged.${skipped}`);
+      setChecked(new Set());
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Review failed.");
+    } finally { setBusy(false); }
+  }
+
+  async function dismissRest(sourceId: string, title: string) {
+    if (confirmDismiss !== sourceId) { setConfirmDismiss(sourceId); return; }
+    setBusy(true);
+    try {
+      const result = await client.dismissSourceProposals(sourceId, "Dismissed the rest of this source from the review queue");
+      onNotice(`Dismissed ${result.rejected} remaining from ${title}. The source is unchanged.`);
+      setConfirmDismiss("");
+      await onChanged();
+    } catch (requestError) {
+      onError(requestError instanceof Error ? requestError.message : "Dismiss failed.");
+    } finally { setBusy(false); }
+  }
+
+  let index = 0;
   return (
     <section className="review-workspace">
       <aside className="review-queue" aria-label="Proposal queue">
-        <header>
-          <div>
-            <span className="section-kicker">Fast Review (j/k to navigate, x to select)</span>
-            <h2>{proposals.length} to review</h2>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", fontSize: "11px", color: "var(--muted)" }} title="Toggle all proposals">
-              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
-              <span>All</span>
-            </label>
-            <span className="queue-badge">{proposals.length}</span>
-          </div>
-        </header>
-        {checkedIds.size > 0 && (
-          <div className="batch-action-bar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.75rem", background: "var(--surface-soft)", borderBottom: "1px solid var(--line)", fontSize: "12px" }}>
-            <span><strong>{checkedIds.size}</strong> selected</span>
-            <div style={{ display: "flex", gap: "0.35rem" }}>
-              <Button size="sm" type="button" disabled={batchBusy} onClick={handleBatchApprove}>
-                <Check size={13} /> Approve ({checkedIds.size})
-              </Button>
-              <Button size="sm" variant="danger" type="button" disabled={batchBusy} onClick={handleBatchReject}>
-                <X size={13} /> Reject ({checkedIds.size})
-              </Button>
-            </div>
+        <header><div><span className="section-kicker">Queue</span><h2>{proposals.length} to review</h2></div><span className="queue-badge">{proposals.length}</span></header>
+        {checkedIds.length > 0 && (
+          <div className="queue-bulk" role="toolbar" aria-label="Selected proposals">
+            <span>{checkedIds.length} selected</span>
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChecked(new Set())}>Clear</Button>
+            <Button size="sm" variant="danger" disabled={busy} onClick={() => decide("reject")}>Reject</Button>
+            <Button size="sm" disabled={busy} onClick={() => decide("approve")}><Check size={14} /> Approve as written</Button>
           </div>
         )}
         <div className="review-queue-list">
-          {proposals.map((proposal, index) => {
-            const isChecked = checkedIds.has(proposal.id);
-            const isConflict = Boolean(proposal.conflict_with_id);
-            return (
-              <button
-                key={proposal.id}
-                className={selected.id === proposal.id ? "active" : ""}
-                onClick={() => setSelectedId(proposal.id)}
-                aria-current={selected.id === proposal.id ? "true" : undefined}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={(e) => {
-                      e.stopPropagation();
-                      setCheckedIds((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(proposal.id)) next.delete(proposal.id);
-                        else next.add(proposal.id);
-                        return next;
-                      });
-                    }}
-                    aria-label={`Select proposal ${index + 1}`}
-                  />
-                  <span className="queue-number">{String(index + 1).padStart(2, "0")}</span>
-                </div>
-                <span>
-                  <small style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>{proposal.type}</span>
-                    {isConflict && (
-                      <span
-                        className="conflict-badge"
-                        title={proposal.conflict_note || "Contradiction detected"}
-                        style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: "var(--danger)", background: "var(--danger-soft)", padding: "1px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: 600 }}
-                      >
-                        <TriangleAlert size={10} aria-hidden="true" /> Conflict
+          {groups.map((group) => (
+            <div key={group.sourceId} className="queue-group" role="group" aria-label={group.title}>
+              <div className="queue-group-head">
+                <span title={group.title}><FileText size={13} /> {group.title}</span>
+                <small>{group.items.length}</small>
+                <button type="button" className="queue-dismiss" disabled={busy} onClick={() => dismissRest(group.sourceId, group.title)} onBlur={() => setConfirmDismiss((current) => current === group.sourceId ? "" : current)}>
+                  {confirmDismiss === group.sourceId ? `Confirm: reject ${group.items.length}` : "Dismiss rest"}
+                </button>
+              </div>
+              {group.items.map((proposal) => {
+                index += 1;
+                const isConflict = Boolean(proposal.conflict_with_id);
+                return (
+                  <div key={proposal.id} className="queue-item">
+                    <input type="checkbox" id={`queue-check-${proposal.id}`} checked={checked.has(proposal.id)} onChange={() => toggle(proposal.id)} aria-label={`Select: ${proposal.statement}`} />
+                    <button className={selected.id === proposal.id ? "active" : ""} onClick={() => setSelectedId(proposal.id)} aria-current={selected.id === proposal.id ? "true" : undefined}>
+                      <span className="queue-number">{String(index).padStart(2, "0")}</span>
+                      <span>
+                        <small style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span>{proposal.type}</span>
+                          {isConflict && (
+                            <span
+                              className="conflict-badge"
+                              title={proposal.conflict_note || "Contradiction detected"}
+                              style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: "var(--danger)", background: "var(--danger-soft)", padding: "1px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: 600 }}
+                            >
+                              <TriangleAlert size={10} aria-hidden="true" /> Conflict
+                            </span>
+                          )}
+                        </small>
+                        <strong>{proposal.statement}</strong>
                       </span>
-                    )}
-                  </small>
-                  <strong>{proposal.statement}</strong>
-                  <em>{proposal.source_title}</em>
-                </span>
-              </button>
-            );
-          })}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </aside>
       <ReviewEditor key={selected.id} proposal={selected} onChanged={onChanged} onNotice={onNotice} onError={onError} />
@@ -450,17 +436,22 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const tags = (() => { try { const parsed = JSON.parse(proposal.tags || "[]"); return Array.isArray(parsed) ? (parsed as string[]) : []; } catch { return []; } })();
+  const [tagText, setTagText] = useState(tags.join(", "));
 
   async function approve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
-      const options = supersedeConflict && proposal.conflict_with_id
-        ? { supersedes_knowledge_id: proposal.conflict_with_id }
-        : undefined;
+      const edited = tagText.split(",").map((tag) => tag.trim()).filter(Boolean);
+      const options: { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[] } = {
+        tags: edited,
+      };
+      if (supersedeConflict && proposal.conflict_with_id) {
+        options.supersedes_knowledge_id = proposal.conflict_with_id;
+      }
       await client.approveProposal(proposal.id, statement, rationale, options);
       onNotice(
-        options
+        options.supersedes_knowledge_id
           ? `Proposal approved to Brain (superseded ${proposal.conflict_with_id}).`
           : "Proposal approved and added to canonical knowledge."
       );
@@ -523,6 +514,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
           <section className="canonical-editor">
             <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
             <Textarea id={`rationale-${proposal.id}`} label="Why we believe this" description="Internal reasoning" value={rationale} onChange={(event) => setRationale(event.target.value)} rows={4} />
+            <Input id={`tags-${proposal.id}`} label="Tags" description="Comma separated. Used to filter the Brain and agent searches." value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="pricing, onboarding" />
           </section>
           <aside className="evidence-panel">
             <div className="evidence-heading"><span><Fingerprint size={15} /> Exact evidence</span><ShieldCheck size={16} /></div>
@@ -532,7 +524,6 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
               <div><dt>Captured</dt><dd>{timeAgo(proposal.created_at)}</dd></div>
               <div><dt>Integrity</dt><dd><span className="verified-dot" /> Original preserved</dd></div>
               {proposal.summary ? <div><dt>Summary</dt><dd>{proposal.summary}</dd></div> : null}
-              {tags.length ? <div><dt>Tags</dt><dd>{tags.join(", ")}</dd></div> : null}
             </dl>
           </aside>
         </div>
@@ -930,6 +921,7 @@ export function AskView() {
         <section className="answer-card panel-card">
           <header><span className={result.grounded ? "grounded-badge" : "ungrounded-badge"}>{result.grounded ? <ShieldCheck size={15} /> : <CircleDot size={15} />}{result.grounded ? "Grounded answer" : "Not enough approved knowledge"}</span></header>
           <p className="answer-text">{result.answer}</p>
+          {!result.grounded && (result.near_matches?.length ?? 0) > 0 && <div className="citations near-matches"><h2>Close, but not an answer</h2><p className="section-sub">These approved items share words with your question. Check them before relying on them.</p>{result.near_matches!.map((citation, index) => <EvidenceCitation key={`near-${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
           {result.citations.length > 0 && <div className="citations"><h2>Evidence used</h2>{result.citations.map((citation, index) => <EvidenceCitation key={`${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
         </section>
       )}

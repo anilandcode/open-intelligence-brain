@@ -35,7 +35,7 @@ html,body,#root{min-height:100%;margin:0}*{box-sizing:border-box}
 dialog.detail-drawer{position:fixed;inset:0 0 0 auto;margin:0;width:min(640px,100vw);max-width:100vw;height:100dvh;max-height:100dvh;border:0;border-left:1px solid var(--line);color:var(--ink);padding:0;background:var(--surface)}
 dialog.detail-drawer::backdrop{background:rgba(0,0,0,.55)}
 .setup-steps pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface-soft);border:1px solid var(--line);border-radius:5px;padding:12px;font:11px/1.6 "IBM Plex Mono",monospace;color:var(--ink-soft)}
-:root[data-surface="console"] .queue-row:hover,:root[data-surface="console"] .queue-list>button:hover,:root[data-surface="console"] .review-queue-list>button:hover,:root[data-surface="console"] .knowledge-card:hover,:root[data-surface="console"] .pipeline button:hover{background:var(--surface-hover)}
+:root[data-surface="console"] .queue-row:hover,:root[data-surface="console"] .queue-list>button:hover,:root[data-surface="console"] .review-queue-list .queue-item>button:hover,:root[data-surface="console"] .knowledge-card:hover,:root[data-surface="console"] .pipeline button:hover{background:var(--surface-hover)}
 :root[data-surface="console"] .hero-ratio-bar>span{background:var(--accent)}
 .graph-inner svg line{stroke:var(--line-strong);stroke-width:1.5}.graph-canvas{touch-action:none}.graph-list{position:relative;z-index:1}.graph-controls{z-index:3}.graph-legend span:first-of-type i{background:var(--muted)}.node-proposal{background:var(--amber-soft);border-color:var(--amber)}
 .studio-card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

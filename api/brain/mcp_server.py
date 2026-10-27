@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from .access import ReadScope, WorkspaceAccess, ensure_default_workspace
 from .config import get_settings
 from .database import SessionLocal
+from .extraction import parse_tags
 from .models import Proposal, Source, Workspace
 from .schemas import SourceCreate
 from .services import (
@@ -52,6 +53,7 @@ class BrainHit(BaseModel):
     valid_from: str | None = None
     valid_to: str | None = None
     superseded_by: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class BrainSearchResult(BaseModel):
@@ -71,6 +73,9 @@ class GroundedAnswer(BaseModel):
     answer: str
     grounded: bool
     citations: list[CitationResult]
+    # When grounded is false: approved items that share words with the
+    # question but do not answer it. Never cite these as the answer.
+    near_matches: list[CitationResult] = Field(default_factory=list)
 
 
 class ReviewItem(BaseModel):
@@ -138,6 +143,8 @@ def search_brain_scoped(
     scope: ReadScope,
     as_of: str | None = None,
     include_superseded: bool = False,
+    knowledge_type: str | None = None,
+    tag: str | None = None,
 ) -> BrainSearchResult:
     as_of_dt: datetime | None = None
     if as_of:
@@ -148,7 +155,14 @@ def search_brain_scoped(
 
     with SessionLocal() as db:
         matches = search_knowledge(
-            db, scope, query, limit=limit, as_of=as_of_dt, include_superseded=include_superseded
+            db,
+            scope,
+            query,
+            limit=limit,
+            as_of=as_of_dt,
+            include_superseded=include_superseded,
+            knowledge_type=knowledge_type,
+            tag=tag,
         )
         items = []
         for match in matches:
@@ -168,6 +182,7 @@ def search_brain_scoped(
                     valid_from=match.valid_from.isoformat() if match.valid_from else None,
                     valid_to=match.valid_to.isoformat() if match.valid_to else None,
                     superseded_by=match.superseded_by,
+                    tags=parse_tags(match.tags),
                 )
             )
         return BrainSearchResult(query=query, count=len(items), items=items)
@@ -185,6 +200,9 @@ def ask_brain_scoped(question: str, scope: ReadScope) -> GroundedAnswer:
             # pinned by test_mcp_tools_are_scope_bound.
             citations=[
                 CitationResult.model_validate(item.model_dump()) for item in result.citations
+            ],
+            near_matches=[
+                CitationResult.model_validate(item.model_dump()) for item in result.near_matches
             ],
         )
 
@@ -307,10 +325,18 @@ def search_brain(
         bool,
         Field(description="Whether to include superseded knowledge items in search results."),
     ] = False,
+    type: Annotated[str | None, Field(max_length=40)] = None,
+    tag: Annotated[str | None, Field(max_length=40)] = None,
 ) -> BrainSearchResult:
-    """Search only human-approved canonical knowledge with bi-temporal time-travel support and exact citations."""
+    """Search only human-approved canonical knowledge with bi-temporal time-travel support, exact citations, and optional type/tag filters."""
     return search_brain_scoped(
-        query, limit, _scope(), as_of=as_of, include_superseded=include_superseded
+        query,
+        limit,
+        _scope(),
+        as_of=as_of,
+        include_superseded=include_superseded,
+        knowledge_type=type,
+        tag=tag,
     )
 
 

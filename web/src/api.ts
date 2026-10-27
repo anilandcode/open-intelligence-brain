@@ -171,6 +171,8 @@ export type Knowledge = {
   revision_count: number;
   stale: boolean;
   conflict_ids: string[];
+  summary?: string;
+  tags?: string[];
 };
 
 export type KnowledgeRevision = {
@@ -198,15 +200,25 @@ export type Integrity = {
   }>;
 };
 
+export type ChatCitation = {
+  knowledge_id: string;
+  source_id: string;
+  source_title: string;
+  excerpt: string;
+};
+
 export type ChatResult = {
   answer: string;
   grounded: boolean;
-  citations: Array<{
-    knowledge_id: string;
-    source_id: string;
-    source_title: string;
-    excerpt: string;
-  }>;
+  citations: ChatCitation[];
+  /** Approved items that share words with the question but do not answer it. */
+  near_matches?: ChatCitation[];
+};
+
+export type BatchReviewResult = {
+  approved: string[];
+  rejected: string[];
+  skipped: Array<{ proposal_id: string; reason: string }>;
 };
 
 // --- Studio types ---
@@ -531,16 +543,33 @@ export const api = {
     id: string,
     statement: string,
     rationale: string,
-    options?: { valid_from?: string; supersedes_knowledge_id?: string }
-  ) =>
-    request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
+    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[] }
+  ) => {
+    let payload: Record<string, unknown> = { statement, rationale };
+    if (Array.isArray(optionsOrTags)) {
+      payload.tags = optionsOrTags;
+    } else if (optionsOrTags) {
+      payload = { ...payload, ...optionsOrTags };
+    }
+    return request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ statement, rationale, ...options }),
-    }),
+      body: JSON.stringify(payload),
+    });
+  },
   batchApproveProposals: (proposal_ids: string[]) =>
     request<{ approved: number; failed: number; knowledge_ids: string[]; errors: { proposal_id: string; error: string }[] }>("/api/v1/proposals/batch-approve", {
       method: "POST",
       body: JSON.stringify({ proposal_ids }),
+    }),
+  reviewProposals: (proposalIds: string[], action: "approve" | "reject", reason?: string) =>
+    request<BatchReviewResult>("/api/v1/proposals/review", {
+      method: "POST",
+      body: JSON.stringify({ proposal_ids: proposalIds, action, ...(reason ? { reason } : {}) }),
+    }),
+  dismissSourceProposals: (sourceId: string, reason: string) =>
+    request<{ source_id: string; rejected: number }>(`/api/v1/sources/${sourceId}/proposals/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
   rejectProposal: (id: string, reason: string) =>
     request<Proposal>(`/api/v1/proposals/${id}/reject`, {

@@ -20,6 +20,7 @@ Ported pieces:
 
 from __future__ import annotations
 
+import json
 import re
 from collections import Counter
 
@@ -105,3 +106,128 @@ def extract_tags(text: str, limit: int = 5) -> list[str]:
     words = re.findall(r"[a-zA-Z][a-zA-Z\-]{3,}", text.lower())
     counts = Counter(w for w in words if w not in _STOPWORDS)
     return [word for word, _ in counts.most_common(limit)]
+
+
+def normalize_tags(tags: list[str] | None, limit: int = 12) -> list[str]:
+    """Lower-case, trimmed, de-duplicated tags of at most 40 characters each."""
+    cleaned: list[str] = []
+    for tag in tags or []:
+        value = re.sub(r"\s+", " ", str(tag).replace('"', "")).strip().lower()[:40]
+        if value and value not in cleaned:
+            cleaned.append(value)
+    return cleaned[:limit]
+
+
+def parse_tags(raw: str | None) -> list[str]:
+    """Read a stored JSON tag list, tolerating NULL or a malformed value."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return []
+    return normalize_tags(parsed) if isinstance(parsed, list) else []
+
+
+# --- intake selection --------------------------------------------------------
+#
+# Every span stays in the immutable source as evidence. These helpers only
+# decide which spans are worth a reviewer's attention, because a queue that
+# proposes every sentence (3,685 proposals from 35 notes) cannot be reviewed,
+# and an unreviewable queue defeats the approval gate it exists to feed.
+
+_HEADING = re.compile(r"^\s*#{1,6}\s")
+_URL = re.compile(r"https?://\S+")
+_CLAIM_SIGNAL = re.compile(
+    r"\b(?:because|decided|decision|chose|learned|lesson|realized|should|must|"
+    r"always|never|prefer|believe|means|principle|rule|policy|costs?|price|"
+    r"revenue|deadline|owner|responsible|works?|fails?|caused?)\b"
+)
+
+
+def is_low_value_fragment(text: str) -> bool:
+    """Spans that are note structure rather than a statement of knowledge.
+
+    Markdown headings, lead-in lines ending in a colon, table rows, bare links
+    and lines that are mostly symbols or numbers. Like task lines they remain
+    evidence spans; they just never become proposals.
+    """
+    stripped = text.strip()
+    if not stripped or is_task_fragment(stripped):
+        return True
+    if _HEADING.match(stripped) or stripped.endswith(":"):
+        return True
+    if stripped.count("|") >= 2:
+        return True
+    without_urls = _URL.sub("", stripped).strip()
+    if len(without_urls) < 20:
+        return True
+    letters = sum(char.isalpha() for char in without_urls)
+    return letters / max(len(without_urls), 1) < 0.6
+
+
+def candidate_score(text: str, declared_type: str) -> float:
+    """How likely a span is to be knowledge worth approving. Higher is better.
+
+    Deterministic and explainable on purpose: it only ranks spans for the
+    per-version cap, and a reviewer can still find every span in the source.
+    A typed statement (decision, lesson, belief…) beats a plain fact, explicit
+    claim language and concrete detail (numbers, names) add weight, and very
+    short or very long spans lose some.
+    """
+    lowered = text.lower()
+    score = 0.0
+    if declared_type not in ("fact", "question"):
+        score += 2.0
+    score += min(len(_CLAIM_SIGNAL.findall(lowered)), 3) * 0.75
+    if re.search(r"\d", text):
+        score += 0.5
+    # Capitalised words after the first suggest names, products or places.
+    if any(word[:1].isupper() for word in text.split()[1:]):
+        score += 0.5
+    length = len(text)
+    if 60 <= length <= 320:
+        score += 1.0
+    elif length < 45:
+        score -= 0.5
+    return score
+
+
+def statement_key(text: str) -> str:
+    """Normalised form used to spot the same statement captured twice."""
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+_NEGATION = re.compile(r"\b(?:not|never|no|cannot|can't|won't|don't|doesn't|isn't|shouldn't)\b")
+
+
+def statement_terms(text: str) -> frozenset[str]:
+    """Significant terms for near-duplicate comparison.
+
+    Negation is kept as a marker term. "X should not Y" is a contradiction of
+    "X should Y", which a reviewer must see, so the two can never be treated as
+    duplicates of each other.
+    """
+    lowered = text.lower()
+    terms = {
+        word
+        for word in re.findall(r"[a-z0-9]+", lowered)
+        if len(word) > 2 and word not in _STOPWORDS
+    }
+    if _NEGATION.search(lowered):
+        terms.add("<negated>")
+    return frozenset(terms)
+
+
+def is_near_duplicate(left: frozenset[str], right: frozenset[str], threshold: float = 0.85) -> bool:
+    """Jaccard overlap of significant terms at or above `threshold`."""
+    if not left or not right:
+        return False
+    # Opposite polarity is a possible contradiction, never a duplicate.
+    if ("<negated>" in left) != ("<negated>" in right):
+        return False
+    smaller, larger = sorted((len(left), len(right)))
+    # Cheap bound: sets this different in size cannot reach the threshold.
+    if smaller / larger < threshold:
+        return False
+    return len(left & right) / len(left | right) >= threshold

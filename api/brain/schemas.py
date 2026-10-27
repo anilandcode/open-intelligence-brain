@@ -1,6 +1,8 @@
+import json
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .triage import TRIAGE_VERSION
 
@@ -80,6 +82,8 @@ class ApprovalRequest(BaseModel):
     rationale: str | None = Field(default=None, max_length=10_000)
     valid_from: datetime | None = None
     supersedes_knowledge_id: str | None = None
+    # None keeps the proposal's tags; a list (even empty) replaces them.
+    tags: list[str] | None = Field(default=None, max_length=12)
 
 
 class BatchApprovalRequest(BaseModel):
@@ -106,6 +110,34 @@ class RejectRequest(BaseModel):
     reason: str = Field(default="Not ready for canonical use", min_length=3, max_length=1_000)
 
 
+class BatchReviewRequest(BaseModel):
+    """Approve or reject several proposals in one call, each as proposed.
+
+    Approval keeps the proposed wording exactly; to change wording, approve the
+    one item on its own. Every id is checked against the caller's scope.
+    """
+
+    proposal_ids: list[str] = Field(min_length=1, max_length=200)
+    action: Literal["approve", "reject"]
+    reason: str = Field(default="Not ready for canonical use", min_length=3, max_length=1_000)
+
+
+class BatchReviewSkip(BaseModel):
+    proposal_id: str
+    reason: str
+
+
+class BatchReviewResult(BaseModel):
+    approved: list[str] = Field(default_factory=list)
+    rejected: list[str] = Field(default_factory=list)
+    skipped: list[BatchReviewSkip] = Field(default_factory=list)
+
+
+class DismissSourceResult(BaseModel):
+    source_id: str
+    rejected: int
+
+
 class KnowledgeRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -122,9 +154,30 @@ class KnowledgeRead(BaseModel):
     valid_from: datetime | None = None
     valid_to: datetime | None = None
     superseded_by: str | None = None
+    summary: str = ""
+    tags: list[str] = Field(default_factory=list)
     revision_count: int = 1
     stale: bool = False
     conflict_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("summary", mode="before")
+    @classmethod
+    def _summary_text(cls, value):
+        return value or ""
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _tags_list(cls, value):
+        # Stored as a JSON string list on the row; older rows may hold NULL.
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                return []
+            return [str(tag) for tag in parsed] if isinstance(parsed, list) else []
+        return value
 
 
 class KnowledgeRevisionRead(BaseModel):
@@ -210,6 +263,9 @@ class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation]
     grounded: bool
+    # Approved items that share words with the question but do not answer it.
+    # Only set when `grounded` is false; never counted as citations or usage.
+    near_matches: list[Citation] = Field(default_factory=list)
 
 
 class EngineRead(BaseModel):

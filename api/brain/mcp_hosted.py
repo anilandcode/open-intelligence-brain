@@ -237,9 +237,14 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
     def search_brain(
         query: Annotated[str, Field(min_length=2, max_length=500)],
         limit: Annotated[int, Field(ge=1, le=20)] = 8,
+        type: Annotated[str | None, Field(max_length=40)] = None,
+        tag: Annotated[str | None, Field(max_length=40)] = None,
     ) -> Any:
-        """Search only human-approved canonical knowledge and return its exact evidence."""
-        return search_brain_scoped(query, limit, _caller_scope())
+        """Search only human-approved canonical knowledge and return its exact evidence.
+
+        Optionally narrow to one knowledge type (decision, lesson, belief, fact…) or one tag.
+        """
+        return search_brain_scoped(query, limit, _caller_scope(), knowledge_type=type, tag=tag)
 
     @server.tool(title="Ask the approved Brain", annotations=read_only)
     def ask_brain(
