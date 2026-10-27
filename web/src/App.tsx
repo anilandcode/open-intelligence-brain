@@ -1,6 +1,6 @@
 import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, ConnectionsView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, X } from "lucide-react";
+import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, Users, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/arc/tabs/
 import ArchitecturePage from "./ArchitecturePage";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
+import { PeopleView } from "./People";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
 import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, getToken, hasToken, setToken, Unauthorized } from "./api";
 
@@ -24,6 +25,7 @@ const workspaceNav: NavItem[] = [
 ];
 const knowledgeNav: NavItem[] = [
   { id: "brain", label: "Brain", icon: Brain },
+  { id: "people", label: "People & projects", icon: Users },
   { id: "working-memory", label: "Working Memory", icon: Layers3, future: true },
   { id: "graph", label: "Brain Graph", icon: GitBranch },
   { id: "sources", label: "Sources", icon: Archive },
@@ -60,6 +62,10 @@ const titleMap: Record<View, { title: string; description: string }> = {
   inbox: {
     title: "Review inbox",
     description: "Inspect every proposal beside its original evidence before it becomes part of the Brain.",
+  },
+  people: {
+    title: "People & projects",
+    description: "The people, companies, projects and topics your approved knowledge is about, and what it says about each.",
   },
   brain: {
     title: "Your Brain",
@@ -791,6 +797,7 @@ export default function App() {
               {view === "audit" && overview && <AuditView overview={overview} integrity={integrity} />}
               {view === "agents" && <AgentsView connections={mcpConnections} />}
               {view === "graph" && <GraphView />}
+              {view === "people" && <PeopleView recordId={route.record} onSelect={id=>navigate("people", id ?? undefined)} onNotice={setNotice} onError={setError} />}
               {view === "connectors" && <ConnectorsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "connections" && <ConnectionsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {(["import", "workspaces", "working-memory", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}

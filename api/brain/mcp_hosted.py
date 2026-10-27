@@ -41,8 +41,10 @@ from .mcp_server import (
     brain_status_scoped,
     capture_source_scoped,
     context_pack_scoped,
+    entity_profile_scoped,
     get_knowledge_scoped,
     inspect_brain_integrity_scoped,
+    list_entities_scoped,
     list_pending_reviews_scoped,
     propose_update_scoped,
     related_knowledge_scoped,
@@ -243,12 +245,16 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
         limit: Annotated[int, Field(ge=1, le=20)] = 8,
         type: Annotated[str | None, Field(max_length=40)] = None,
         tag: Annotated[str | None, Field(max_length=40)] = None,
+        about: Annotated[str | None, Field(max_length=80)] = None,
     ) -> Any:
         """Search only human-approved canonical knowledge and return its exact evidence.
 
-        Optionally narrow to one knowledge type (decision, lesson, belief, fact…) or one tag.
+        Optionally narrow to one knowledge type (decision, lesson, belief, fact…), one tag,
+        or items about one person, company, project or topic (`about`, a name or alias).
         """
-        return search_brain_scoped(query, limit, _caller_scope(), knowledge_type=type, tag=tag)
+        return search_brain_scoped(
+            query, limit, _caller_scope(), knowledge_type=type, tag=tag, about=about
+        )
 
     @server.tool(title="Ask the approved Brain", annotations=read_only)
     def ask_brain(
@@ -315,6 +321,23 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
     ) -> Any:
         """Return a compact, cited brief of approved knowledge relevant to a task, sized for a prompt."""
         return context_pack_scoped(task, limit, max_chars, _caller_scope())
+
+    @server.tool(title="List people, companies, projects and topics", annotations=read_only)
+    def list_entities(
+        kind: Annotated[str | None, Field(pattern="^(person|company|project|topic)$")] = None,
+        query: Annotated[str, Field(max_length=80)] = "",
+        limit: Annotated[int, Field(ge=1, le=100)] = 30,
+    ) -> Any:
+        """List the people, companies, projects and topics approved knowledge is about."""
+        return list_entities_scoped(kind, query, limit, _caller_scope())
+
+    @server.tool(title="Everything approved about one entity", annotations=read_only)
+    def entity_profile(
+        name: Annotated[str, Field(min_length=2, max_length=80)],
+        limit: Annotated[int, Field(ge=1, le=50)] = 20,
+    ) -> Any:
+        """Approved knowledge about one person, company, project or topic, with related entities."""
+        return entity_profile_scoped(name, limit, _caller_scope())
 
     @server.tool(title="Suggest a correction for review", annotations=intake)
     def propose_update(

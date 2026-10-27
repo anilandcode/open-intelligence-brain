@@ -18,6 +18,10 @@ truth, so the governed model is untouched.
 - ``document``  : source → each of its approved knowledge (their doc→memory).
 - ``extends``   : knowledge → knowledge sharing a source (sibling facts).
 - ``derives``   : knowledge → knowledge with high semantic similarity.
+- ``mentions``  : entity → knowledge it is linked to (people, companies,
+  projects and topics, see ``entities.py``). Entities are listed under a
+  separate ``entities`` key so memory-graph clients that only know
+  documents keep working.
 - ``updates``   : reserved for cross-node supersession links (Open Brain keeps
   version history in ``KnowledgeRevision``, carried on the node's ``version``,
   so it is not emitted as a cross-node edge today).
@@ -33,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope
+from .entities import entities_for_items
 from .models import Knowledge, Source
 
 log = logging.getLogger(__name__)
@@ -195,7 +200,18 @@ def build_graph(db: Session, scope: ReadScope, limit: int = MAX_NODES) -> dict[s
             seen.add(key)
             edges.append({"source": item.id, "target": target, "edgeType": relation})
 
-    return {"documents": documents, "edges": edges}
+    # entity→memory edges. Only entities visible to the caller are listed.
+    entities: dict[str, dict[str, Any]] = {}
+    for knowledge_id, linked in entities_for_items(db, scope, list(known_ids)).items():
+        for entity in linked:
+            node = entities.setdefault(
+                entity.id,
+                {"id": entity.id, "name": entity.name, "kind": entity.kind, "memoryCount": 0},
+            )
+            node["memoryCount"] += 1
+            edges.append({"source": entity.id, "target": knowledge_id, "edgeType": "mentions"})
+
+    return {"documents": documents, "edges": edges, "entities": list(entities.values())}
 
 
 def _iso(value) -> str:

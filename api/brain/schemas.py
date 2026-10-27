@@ -6,6 +6,37 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .triage import TRIAGE_VERSION
 
+EntityKind = Literal["person", "company", "project", "topic"]
+
+
+class EntityChip(BaseModel):
+    """An entity as it appears on a proposal or an approved item."""
+
+    id: str | None = None
+    name: str
+    kind: str = "topic"
+
+
+def _entity_chips(value):
+    # Proposals store suggestions as a JSON string list of {"name", "kind"}.
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    return (
+        [item for item in value if isinstance(item, (dict, EntityChip))]
+        if isinstance(value, list)
+        else []
+    )
+
+
+class EntityRefIn(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    kind: EntityKind = "topic"
+
 
 class SourceCreate(BaseModel):
     title: str = Field(min_length=3, max_length=240)
@@ -77,12 +108,19 @@ class ProposalRead(BaseModel):
     # Wording of the target, only when the caller may read it.
     target_statement: str = ""
     confidence: float | None = None
+    # Suggested entities; the reviewer confirms or edits them at approval.
+    entities: list[EntityChip] = Field(default_factory=list)
     created_at: datetime
 
     @field_validator("relation", mode="before")
     @classmethod
     def _relation_text(cls, value):
         return value or "new"
+
+    @field_validator("entities", mode="before")
+    @classmethod
+    def _entities_list(cls, value):
+        return _entity_chips(value)
 
 
 class ApprovalRequest(BaseModel):
@@ -93,6 +131,9 @@ class ApprovalRequest(BaseModel):
     # An `update` or `contradiction` proposal revises its target by default.
     # True adds it as a separate approved item instead.
     as_new: bool = False
+    # None keeps the proposal's suggested entities; a list (even empty)
+    # replaces them. Approval links the item to these.
+    entities: list[EntityRefIn] | None = Field(default=None, max_length=12)
 
 
 class RejectRequest(BaseModel):
@@ -145,6 +186,7 @@ class KnowledgeRead(BaseModel):
     revision_count: int = 1
     stale: bool = False
     conflict_ids: list[str] = Field(default_factory=list)
+    entities: list[EntityChip] = Field(default_factory=list)
 
     @field_validator("summary", mode="before")
     @classmethod
@@ -164,6 +206,38 @@ class KnowledgeRead(BaseModel):
                 return []
             return [str(tag) for tag in parsed] if isinstance(parsed, list) else []
         return value
+
+
+class EntityRead(BaseModel):
+    id: str
+    name: str
+    kind: str
+    aliases: list[str] = Field(default_factory=list)
+    # Approved items the caller may read that are linked to this entity.
+    item_count: int = 0
+
+
+class EntityDetail(EntityRead):
+    items: list[KnowledgeRead] = Field(default_factory=list)
+    related: list[EntityRead] = Field(default_factory=list)
+
+
+class EntityCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    kind: EntityKind = "topic"
+    aliases: list[str] = Field(default_factory=list, max_length=20)
+    # Link approved items whose wording already names this entity.
+    link_existing: bool = True
+
+
+class EntityUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    kind: EntityKind | None = None
+    aliases: list[str] | None = Field(default=None, max_length=20)
+
+
+class EntityMerge(BaseModel):
+    into_id: str = Field(min_length=3, max_length=32)
 
 
 class KnowledgeRevisionRead(BaseModel):

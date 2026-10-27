@@ -154,8 +154,16 @@ export type Proposal = {
   target_knowledge_id?: string | null;
   target_statement?: string;
   confidence?: number | null;
+  // Suggested people, companies, projects and topics; confirmed at approval.
+  entities?: EntityChip[];
   created_at: string;
 };
+
+export type EntityKind = "person" | "company" | "project" | "topic";
+export type EntityChip = { id?: string | null; name: string; kind: EntityKind | string };
+export type EntityRef = { name: string; kind: EntityKind };
+export type Entity = { id: string; name: string; kind: EntityKind; aliases: string[]; item_count: number };
+export type EntityDetail = Entity & { items: Knowledge[]; related: Entity[] };
 
 export type Knowledge = {
   id: string;
@@ -174,6 +182,7 @@ export type Knowledge = {
   conflict_ids: string[];
   summary?: string;
   tags?: string[];
+  entities?: EntityChip[];
 };
 
 export type KnowledgeRevision = {
@@ -383,7 +392,8 @@ export type McpConnection = {
 export type GraphMemory = { id: string; memory: string; content: string | null; version: number; memoryRelations: Record<string, string> };
 export type GraphDocument = { id: string; title: string; summary: string; documentType: string; createdAt: string; updatedAt: string; memories: GraphMemory[] };
 export type GraphEdge = { source: string; target: string; edgeType: string };
-export type Graph = { documents: GraphDocument[]; edges: GraphEdge[] };
+export type GraphEntity = { id: string; name: string; kind: string; memoryCount: number };
+export type Graph = { documents: GraphDocument[]; edges: GraphEdge[]; entities?: GraphEntity[] };
 
 export type LoginResult = {
   session_token: string;
@@ -488,11 +498,20 @@ export const api = {
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
-  approveProposal: (id: string, statement: string, rationale: string, tags?: string[], asNew?: boolean) =>
+  approveProposal: (id: string, statement: string, rationale: string, tags?: string[], asNew?: boolean, entities?: EntityRef[]) =>
     request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ statement, rationale, ...(tags === undefined ? {} : { tags }), ...(asNew ? { as_new: true } : {}) }),
+      body: JSON.stringify({ statement, rationale, ...(tags === undefined ? {} : { tags }), ...(asNew ? { as_new: true } : {}), ...(entities === undefined ? {} : { entities }) }),
     }),
+  entities: (kind?: EntityKind, query = "") =>
+    request<Entity[]>(`/api/v1/entities?${new URLSearchParams({ ...(kind ? { kind } : {}), ...(query ? { q: query } : {}) })}`),
+  entity: (id: string) => request<EntityDetail>(`/api/v1/entities/${id}`),
+  createEntity: (payload: { name: string; kind: EntityKind; aliases?: string[]; link_existing?: boolean }) =>
+    request<Entity>("/api/v1/entities", { method: "POST", body: JSON.stringify(payload) }),
+  updateEntity: (id: string, payload: { name?: string; kind?: EntityKind; aliases?: string[] }) =>
+    request<Entity>(`/api/v1/entities/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  mergeEntity: (id: string, intoId: string) =>
+    request<Entity>(`/api/v1/entities/${id}/merge`, { method: "POST", body: JSON.stringify({ into_id: intoId }) }),
   reviewProposals: (proposalIds: string[], action: "approve" | "reject", reason?: string) =>
     request<BatchReviewResult>("/api/v1/proposals/review", {
       method: "POST",
