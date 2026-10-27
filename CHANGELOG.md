@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased — a reviewable intake and honest answers
+
+- **Intake proposes less, and better.** A source version no longer turns every
+  sentence into a proposal. Headings, lead-in lines, table rows and bare links
+  are skipped; sentences unchanged from the previous version are not offered
+  again; statements the workspace already holds (pending, approved or
+  rejected) are dropped as duplicates, but a negated statement is never treated
+  as a duplicate of its positive form; and at most
+  `BRAIN_MAX_PROPOSALS_PER_VERSION` (default 12) of the strongest candidates
+  are proposed. Every span is still stored as evidence, and the audit entry
+  records how many were skipped and why. Engine-derived facts use the same
+  workspace-wide de-duplication.
+- **Staleness is per fact.** A new source version only marks approved
+  knowledge stale when the sentence it rests on changed.
+- **Batch review.** `POST /api/v1/proposals/review` approves (as written) or
+  rejects a selection; `POST /api/v1/sources/{id}/proposals/dismiss` rejects
+  the rest of one source. The Inbox groups proposals by source, adds
+  checkboxes with Approve/Reject, a two-step "Dismiss rest", and editable tags.
+- **Answers do not overclaim.** `/api/v1/chat` and `ask_brain` only cite
+  items that cover most of the question's topic terms (or, with embeddings,
+  are semantically close per `BRAIN_ANSWER_MIN_SIMILARITY`). Weaker matches are
+  returned as `near_matches` with `grounded: false`. The templated extraction
+  rationale no longer counts toward a match.
+- **Ranked search is scoped before its limit.** The FTS5 and tsvector queries
+  now filter by workspace and sensitivity inside SQL, so another workspace's
+  rows can no longer crowd a caller's matches out of the top N.
+- **Tags on knowledge.** Approved knowledge keeps the proposal's summary and
+  tags (editable at approval), exported in backups, and filterable with
+  `GET /api/v1/knowledge?type=…&tag=…` and `search_brain(type, tag)` over MCP.
+- **Graph.** Same-source facts are linked as a chain rather than all-to-all,
+  and semantic `derives` edges need cosine ≥ 0.5 (was 0.35).
+
 ## 1.6.1 — developer-app credentials onboarding + custom domain
 
 - Composio-style developer-app credentials panel in the Connections hub:

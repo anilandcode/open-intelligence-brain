@@ -38,7 +38,9 @@ from .models import Knowledge, Source
 log = logging.getLogger(__name__)
 
 # A `derives` edge needs this much cosine similarity (0..1) between embeddings.
-DERIVES_THRESHOLD = 0.35
+# 0.35 linked most pairs under typical sentence embeddings; 0.5 keeps the links
+# that read as "about the same thing".
+DERIVES_THRESHOLD = 0.5
 # Guard the O(n²) pairwise pass on large brains.
 MAX_NODES = 400
 
@@ -95,11 +97,13 @@ def _memory_relations(items: list[Knowledge]) -> dict[str, dict[str, str]]:
     embeddings = {item.id: _embedding(item.embedding) for item in items}
     relations: dict[str, dict[str, str]] = {item.id: {} for item in items}
 
-    for item in items:
-        # extends: siblings captured from the same source
-        for sibling in by_source.get(item.source_id, []):
-            if sibling.id != item.id:
-                relations[item.id][sibling.id] = "extends"
+    # extends: facts from the same source, linked in reading order as a chain.
+    # Linking every sibling to every other made a note with 30 approved facts
+    # draw 870 edges, which buried the few relations that carry meaning.
+    for siblings in by_source.values():
+        ordered = sorted(siblings, key=lambda row: (row.approved_at, row.id))
+        for left, right in zip(ordered, ordered[1:], strict=False):
+            relations[left.id][right.id] = "extends"
 
     # derives: semantic similarity (pairwise, capped). Only when both embedded.
     embedded = [item for item in items if embeddings[item.id]]

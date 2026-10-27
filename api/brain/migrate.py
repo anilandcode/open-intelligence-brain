@@ -112,6 +112,29 @@ def add_proposal_summary_tags() -> list[str]:
     return added
 
 
+def add_knowledge_summary_tags() -> list[str]:
+    """Store summary and tags on approved knowledge.
+
+    Additive and idempotent. Existing rows get an empty summary and an empty
+    tag list rather than a guess; nothing canonical is read or rewritten.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "knowledge" not in columns:
+        return added
+    wanted = (
+        ("summary", "TEXT NOT NULL DEFAULT ''"),
+        ("tags", "TEXT NOT NULL DEFAULT '[]'"),
+    )
+    with engine.begin() as connection:
+        for column, definition in wanted:
+            if column in columns["knowledge"]:
+                continue
+            connection.execute(text(f"ALTER TABLE knowledge ADD COLUMN {column} {definition}"))
+            added.append(f"knowledge.{column}")
+    return added
+
+
 def add_nullable_evidence_span() -> list[str]:
     """Make `proposal_evidence.source_span_id` nullable for derived proposals.
 

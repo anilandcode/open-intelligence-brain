@@ -37,8 +37,12 @@ def test_source_to_canonical_to_grounded_answer(client, headers):
     proposals = client.get("/api/v1/proposals", headers=headers).json()
     assert len(proposals) == 2
 
+    # Approve the claim the question is about. Approving the other sentence
+    # used to pass too, but only because the templated rationale ("…wording and
+    # evidence…") matched the word "evidence"; that is now a near match.
+    claim = next(p for p in proposals if "evidence-backed" in p["statement"])
     approval = client.post(
-        f"/api/v1/proposals/{proposals[0]['id']}/approve",
+        f"/api/v1/proposals/{claim['id']}/approve",
         headers=headers,
         json={},
     )
