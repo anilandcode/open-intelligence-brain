@@ -148,6 +148,12 @@ export type Proposal = {
   critic_notes: string;
   summary?: string;
   tags?: string;
+  // "update" or "contradiction" when the claim changes an approved item the
+  // caller can read; approving an update revises that item instead of adding one.
+  relation?: "new" | "update" | "contradiction";
+  target_knowledge_id?: string | null;
+  target_statement?: string;
+  confidence?: number | null;
   created_at: string;
 };
 
@@ -482,10 +488,10 @@ export const api = {
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
-  approveProposal: (id: string, statement: string, rationale: string, tags?: string[]) =>
+  approveProposal: (id: string, statement: string, rationale: string, tags?: string[], asNew?: boolean) =>
     request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify(tags === undefined ? { statement, rationale } : { statement, rationale, tags }),
+      body: JSON.stringify({ statement, rationale, ...(tags === undefined ? {} : { tags }), ...(asNew ? { as_new: true } : {}) }),
     }),
   reviewProposals: (proposalIds: string[], action: "approve" | "reject", reason?: string) =>
     request<BatchReviewResult>("/api/v1/proposals/review", {

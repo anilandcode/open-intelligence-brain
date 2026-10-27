@@ -367,7 +367,7 @@ export function InboxView({ proposals, onChanged, onNotice, onError }: { proposa
                     <input type="checkbox" id={`queue-check-${proposal.id}`} checked={checked.has(proposal.id)} onChange={() => toggle(proposal.id)} aria-label={`Select: ${proposal.statement}`} />
                     <button className={selected.id === proposal.id ? "active" : ""} onClick={() => setSelectedId(proposal.id)} aria-current={selected.id === proposal.id ? "true" : undefined}>
                       <span className="queue-number">{String(index).padStart(2, "0")}</span>
-                      <span><small>{proposal.type}</small><strong>{proposal.statement}</strong></span>
+                      <span><small>{proposal.type}{proposal.relation === "update" ? " · updates existing" : proposal.relation === "contradiction" ? " · contradicts existing" : ""}</small><strong>{proposal.statement}</strong></span>
                     </button>
                   </div>
                 );
@@ -390,14 +390,16 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const [rejectReason, setRejectReason] = useState("");
   const tags = (() => { try { const parsed = JSON.parse(proposal.tags || "[]"); return Array.isArray(parsed) ? (parsed as string[]) : []; } catch { return []; } })();
   const [tagText, setTagText] = useState(tags.join(", "));
+  const target = proposal.relation && proposal.relation !== "new" && proposal.target_knowledge_id ? proposal.target_statement || "" : null;
+  const [asNew, setAsNew] = useState(false);
 
   async function approve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
       const edited = tagText.split(",").map((tag) => tag.trim()).filter(Boolean);
-      await client.approveProposal(proposal.id, statement, rationale, edited);
-      onNotice("Proposal approved and added to canonical knowledge.");
+      await client.approveProposal(proposal.id, statement, rationale, edited, asNew);
+      onNotice(target !== null && !asNew ? "Approved. The existing item was revised and keeps its history." : "Proposal approved and added to canonical knowledge.");
       await onChanged();
     } catch (requestError) {
       onError(requestError instanceof Error ? requestError.message : "Approval failed.");
@@ -420,9 +422,15 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
     <article className="review-editor">
       <form onSubmit={approve}>
         <header className="review-editor-header">
-          <div><Badge>{proposal.type}</Badge><Badge tone="info" icon={<CircleDot size={11} />}>Proposed</Badge></div>
+          <div><Badge>{proposal.type}</Badge><Badge tone="info" icon={<CircleDot size={11} />}>Proposed</Badge>{proposal.relation === "update" ? <Badge tone="warning">Updates existing</Badge> : proposal.relation === "contradiction" ? <Badge tone="danger">Contradicts existing</Badge> : null}{typeof proposal.confidence === "number" ? <Badge>{Math.round(proposal.confidence * 100)}% confident</Badge> : null}</div>
           <span className="source-reference"><FileText size={15} /> {proposal.source_title}</span>
         </header>
+        {target !== null && (
+          <div className="relation-panel">
+            <p><strong>{proposal.relation === "contradiction" ? "This contradicts an approved item:" : "This looks like a change to an approved item:"}</strong> {target}</p>
+            <label><input type="checkbox" checked={asNew} onChange={(event) => setAsNew(event.target.checked)} /> Add as a separate item instead of revising it</label>
+          </div>
+        )}
         <div className="editor-body">
           <section className="canonical-editor">
             <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
@@ -468,7 +476,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
         )}
         <footer className="review-actions">
           <p><ShieldCheck size={15} /> Approval creates an immutable first revision.</p>
-          <div><Button variant="danger" type="button" disabled={busy} onClick={() => setRejectMode(true)}>Reject</Button><Button type="submit" loading={busy}><Check size={17} /> Approve to Brain</Button></div>
+          <div><Button variant="danger" type="button" disabled={busy} onClick={() => setRejectMode(true)}>Reject</Button><Button type="submit" loading={busy}><Check size={17} /> {target !== null && !asNew ? "Approve as revision" : "Approve to Brain"}</Button></div>
         </footer>
       </form>
     </article>

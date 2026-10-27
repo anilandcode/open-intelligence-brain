@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from collections import Counter
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Protocol
@@ -10,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
+from .claims import CanonIndex, extract_claims
 from .config import get_settings
 from .critic import assess_proposal
 from .database import SessionLocal
@@ -31,6 +33,7 @@ from .extraction import (
     statement_terms,
     summarize,
 )
+from .llm import get_chat_model
 from .models import (
     AuditEvent,
     Knowledge,
@@ -57,7 +60,21 @@ _EXTRACTED_RATIONALE = (
     "Candidate extracted from an immutable source span. "
     "Review wording and evidence before approval."
 )
-_TEMPLATED_RATIONALES = (_EXTRACTED_RATIONALE, "Derived by the ")
+_MODEL_RATIONALE_PREFIX = "Claim extracted by "
+_TEMPLATED_RATIONALES = (_EXTRACTED_RATIONALE, "Derived by the ", _MODEL_RATIONALE_PREFIX)
+
+
+@dataclass
+class _Candidate:
+    """One statement that may become a proposal, before de-duplication and the cap."""
+
+    score: float
+    order: int
+    span: SourceSpan
+    statement: str
+    kind: str
+    confidence: float | None
+    rationale: str
 
 
 class _HasWorkspace(Protocol):
@@ -245,8 +262,7 @@ def add_source_version(
                     select(SourceSpan.span_hash).where(SourceSpan.source_version_id == previous.id)
                 ).all()
             )
-    candidates: list[tuple[float, int, SourceSpan, str, str]] = []
-    skipped_unchanged = 0
+    sentence_spans: list[SourceSpan] = []
     for start, end, text in extract_spans(content):
         span = SourceSpan(
             id=new_id("span"),
@@ -257,55 +273,116 @@ def add_source_version(
             span_hash=content_hash(text),
         )
         db.add(span)
-        if not create_proposals or not 35 <= len(text) <= 600 or is_low_value_fragment(text):
-            continue
-        if span.span_hash in previous_hashes:
-            skipped_unchanged += 1
-            continue
-        statement = re.sub(r"\s+", " ", text)
-        kind = classify_statement(statement)
-        candidates.append(
-            (candidate_score(statement, kind), len(candidates), span, statement, kind)
-        )
+        sentence_spans.append(span)
+
+    candidates: list[_Candidate] = []
+    skipped_unchanged = 0
+    claims = extract_claims(content) if create_proposals else None
+    model = get_chat_model() if claims is not None else None
+    if claims is not None:
+        # Model path: self-contained claims, each pinned to a verbatim quote.
+        by_offsets = {(span.start_offset, span.end_offset): span for span in sentence_spans}
+        for claim in claims:
+            quote = content[claim.start : claim.end]
+            quote_hash = content_hash(quote)
+            if quote_hash in previous_hashes:
+                skipped_unchanged += 1
+                continue
+            span = by_offsets.get((claim.start, claim.end))
+            if span is None:
+                span = SourceSpan(
+                    id=new_id("span"),
+                    source_version_id=version.id,
+                    start_offset=claim.start,
+                    end_offset=claim.end,
+                    text=quote,
+                    span_hash=quote_hash,
+                )
+                db.add(span)
+                by_offsets[(claim.start, claim.end)] = span
+            confidence = claim.confidence if claim.confidence is not None else 0.5
+            candidates.append(
+                _Candidate(
+                    score=confidence,
+                    order=claim.start * 1000 + len(candidates),
+                    span=span,
+                    statement=claim.statement,
+                    kind=claim.type,
+                    confidence=claim.confidence,
+                    rationale=(
+                        f"{_MODEL_RATIONALE_PREFIX}{model.model if model else 'model'} from "
+                        "an exact source quote. Review wording and evidence before approval."
+                    ),
+                )
+            )
+    elif create_proposals:
+        for span in sentence_spans:
+            text = span.text
+            if not 35 <= len(text) <= 600 or is_low_value_fragment(text):
+                continue
+            if span.span_hash in previous_hashes:
+                skipped_unchanged += 1
+                continue
+            statement = re.sub(r"\s+", " ", text)
+            kind = classify_statement(statement)
+            candidates.append(
+                _Candidate(
+                    score=candidate_score(statement, kind),
+                    order=span.start_offset * 1000 + len(candidates),
+                    span=span,
+                    statement=statement,
+                    kind=kind,
+                    confidence=None,
+                    rationale=_EXTRACTED_RATIONALE,
+                )
+            )
     db.flush()
 
     known = KnownStatements.load(db, source.workspace_id) if candidates else None
-    selected: list[tuple[int, SourceSpan, str, str]] = []
+    selected: list[_Candidate] = []
     skipped_duplicate = 0
-    for _score, order, span, statement, kind in sorted(
-        candidates, key=lambda row: (-row[0], row[1])
-    ):
-        if known is not None and known.contains(statement):
+    for candidate in sorted(candidates, key=lambda row: (-row.score, row.order)):
+        if known is not None and known.contains(candidate.statement):
             skipped_duplicate += 1
             continue
         if known is not None:
-            known.add(statement)
-        selected.append((order, span, statement, kind))
-    cap = get_settings().max_proposals_per_version
+            known.add(candidate.statement)
+        selected.append(candidate)
+    settings = get_settings()
+    cap = (
+        settings.llm_max_claims_per_version
+        if claims is not None
+        else settings.max_proposals_per_version
+    )
     skipped_over_cap = max(len(selected) - cap, 0) if cap > 0 else 0
     if skipped_over_cap:
         selected = selected[:cap]
+    canon = CanonIndex.load(db, source.workspace_id) if selected else None
     # Back into reading order, so the queue follows the source.
-    for _, span, statement, kind in sorted(selected, key=lambda row: row[0]):
+    for candidate in sorted(selected, key=lambda row: row.order):
+        relation, target = canon.relate(candidate.statement) if canon else ("new", None)
         proposal = Proposal(
             id=new_id("prop"),
             workspace_id=source.workspace_id,
             source_id=source.id,
-            type=kind,
-            statement=statement,
-            rationale=_EXTRACTED_RATIONALE,
-            source_excerpt=span.text,
-            summary=summarize(statement),
-            tags=json.dumps(extract_tags(statement), ensure_ascii=False),
+            type=candidate.kind,
+            statement=candidate.statement,
+            rationale=candidate.rationale,
+            source_excerpt=candidate.span.text,
+            summary=summarize(candidate.statement),
+            tags=json.dumps(extract_tags(candidate.statement), ensure_ascii=False),
+            relation=relation,
+            target_knowledge_id=target,
+            confidence=candidate.confidence,
         )
         db.add(proposal)
         db.flush()
         # Run critic pass
         assessment = assess_proposal(
             proposal_id=proposal.id,
-            statement=statement,
+            statement=candidate.statement,
             declared_type=proposal.type,
-            source_excerpt=span.text,
+            source_excerpt=candidate.span.text,
         )
         if assessment.has_notes:
             proposal.critic_notes = json.dumps(
@@ -319,10 +396,10 @@ def add_source_version(
             ProposalEvidence(
                 proposal_id=proposal.id,
                 source_version_id=version.id,
-                source_span_id=span.id,
+                source_span_id=candidate.span.id,
             )
         )
-    intake = f"{len(selected)} proposed"
+    intake = f"{len(selected)} proposed" + (" by model" if claims is not None else "")
     for count, label in (
         (skipped_unchanged, "unchanged"),
         (skipped_duplicate, "already known"),
@@ -362,6 +439,103 @@ def create_source_with_proposals(
     db.refresh(source)
     offer_to_engine(source)
     return source
+
+
+def propose_knowledge_update(
+    db: Session,
+    target: Knowledge,
+    statement: str,
+    reason: str,
+    evidence: str,
+    actor: WorkspaceAccess | None = None,
+) -> Proposal:
+    """File a suggested correction to approved knowledge for human review.
+
+    The evidence becomes its own immutable source (at the target's own
+    sensitivity, so a correction is never more visible than what it corrects)
+    and a single `update` or `contradiction` proposal points at the target.
+    Nothing canonical changes until a person approves it, and approving it
+    revises the target with this evidence.
+    """
+    target_source = db.get(Source, target.source_id)
+    if target_source is None:
+        raise ValueError("The knowledge to update has no source")
+    source = Source(
+        id=new_id("src"),
+        workspace_id=target.workspace_id,
+        title=f"Suggested correction: {statement[:80]}",
+        kind="note",
+        sensitivity=target_source.sensitivity,
+        content=evidence,
+    )
+    db.add(source)
+    db.flush()
+    version = add_source_version(
+        db,
+        source,
+        evidence,
+        "Evidence for a suggested correction",
+        create_proposals=False,
+        actor=actor,
+    )
+    span = SourceSpan(
+        id=new_id("span"),
+        source_version_id=version.id,
+        start_offset=0,
+        end_offset=len(evidence),
+        text=evidence,
+        span_hash=content_hash(evidence),
+    )
+    db.add(span)
+    opposite = ("<negated>" in statement_terms(statement)) != (
+        "<negated>" in statement_terms(target.statement)
+    )
+    proposal = Proposal(
+        id=new_id("prop"),
+        workspace_id=target.workspace_id,
+        source_id=source.id,
+        type=target.type,
+        statement=re.sub(r"\s+", " ", statement).strip(),
+        rationale=f"Suggested by an agent: {reason}".strip(),
+        source_excerpt=evidence[:600],
+        summary=summarize(statement),
+        tags=target.tags or "[]",
+        relation="contradiction" if opposite else "update",
+        target_knowledge_id=target.id,
+    )
+    db.add(proposal)
+    db.flush()
+    assessment = assess_proposal(
+        proposal_id=proposal.id,
+        statement=proposal.statement,
+        declared_type=proposal.type,
+        source_excerpt=evidence,
+    )
+    if assessment.has_notes:
+        proposal.critic_notes = json.dumps(
+            [
+                {"severity": n.severity, "category": n.category, "message": n.message}
+                for n in assessment.notes
+            ],
+            ensure_ascii=False,
+        )
+    db.add(
+        ProposalEvidence(
+            proposal_id=proposal.id, source_version_id=version.id, source_span_id=span.id
+        )
+    )
+    audit(
+        db,
+        target.workspace_id,
+        "proposal.correction_suggested",
+        "proposal",
+        proposal.id,
+        f"Suggested {proposal.relation} of {target.id}",
+        actor=actor,
+    )
+    db.commit()
+    db.refresh(proposal)
+    return proposal
 
 
 def offer_to_engine(source: Source) -> str:
@@ -526,7 +700,16 @@ def approve_proposal(
     rationale: str | None,
     actor: WorkspaceAccess | None = None,
     tags: list[str] | None = None,
+    update_target: Knowledge | None = None,
 ) -> Knowledge:
+    """Make a proposal canonical.
+
+    With `update_target`, the proposal revises that approved item instead of
+    creating a new one: a new revision carrying this proposal's wording and
+    its evidence (source, version and span), so the history can say what
+    changed and which source changed it. The caller resolves the target
+    through the approver's own scope.
+    """
     if proposal.status != "proposed":
         raise ValueError("Only proposed knowledge can be approved")
     evidence = db.get(ProposalEvidence, proposal.id)
@@ -539,6 +722,10 @@ def approve_proposal(
     version = db.get(SourceVersion, evidence.source_version_id)
     if version is None:
         raise ValueError("Proposal evidence points at a source version that is gone")
+    if update_target is not None:
+        return _approve_as_update(
+            db, proposal, update_target, evidence, statement, rationale, tags, actor
+        )
     canonical = Knowledge(
         id=new_id("know"),
         workspace_id=proposal.workspace_id,
@@ -598,6 +785,80 @@ def approve_proposal(
     except Exception:
         pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return canonical
+
+
+def _approve_as_update(
+    db: Session,
+    proposal: Proposal,
+    item: Knowledge,
+    evidence: ProposalEvidence,
+    statement: str | None,
+    rationale: str | None,
+    tags: list[str] | None,
+    actor: WorkspaceAccess | None,
+) -> Knowledge:
+    if item.workspace_id != proposal.workspace_id or item.status != "canonical":
+        raise ValueError("The knowledge this proposal updates is not available")
+    current = db.scalar(
+        select(func.max(KnowledgeRevision.revision)).where(
+            KnowledgeRevision.knowledge_id == item.id
+        )
+    )
+    if current is None:
+        raise ValueError("Knowledge item has no revision provenance")
+    revision = current + 1
+    wording = statement or proposal.statement
+    reasoning = rationale if rationale is not None else proposal.rationale
+    excerpt = proposal.source_excerpt or ""
+    db.add(
+        KnowledgeRevision(
+            id=new_id("rev"),
+            knowledge_id=item.id,
+            revision=revision,
+            statement=wording,
+            rationale=reasoning,
+            source_id=proposal.source_id,
+            source_version_id=evidence.source_version_id,
+            source_span_id=evidence.source_span_id,
+            source_excerpt=excerpt,
+            change_note=f"Updated by {proposal.id} ({proposal.relation}) with new evidence",
+        )
+    )
+    merged = normalize_tags(
+        [*parse_tags(item.tags), *(tags if tags is not None else parse_tags(proposal.tags))]
+    )
+    item.statement = wording
+    item.rationale = reasoning
+    item.source_id = proposal.source_id
+    item.source_excerpt = excerpt
+    item.summary = proposal.summary or item.summary
+    item.tags = json.dumps(merged, ensure_ascii=False)
+    item.version = revision
+    embedder = get_embedder()
+    if embedder is not None:
+        vec = embedder.embed(f"{item.statement} {item.rationale}")
+        if vec:
+            item.embedding = json.dumps(vec)
+            item.embedding_model = embedder.model
+    proposal.status = "approved"
+    audit(
+        db,
+        item.workspace_id,
+        "knowledge.updated",
+        "knowledge",
+        item.id,
+        f"Revision {revision} from {proposal.id} ({proposal.relation})",
+        actor=actor,
+    )
+    db.commit()
+    db.refresh(item)
+    try:
+        with SessionLocal() as fts_db:
+            sync_fts_update(fts_db, item)
+            fts_db.commit()
+    except Exception:
+        pass  # FTS sync is best-effort; the knowledge row is the source of truth
+    return item
 
 
 def reject_proposal(
@@ -1367,6 +1628,9 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "rationale": row.rationale,
                 "source_excerpt": row.source_excerpt,
                 "status": row.status,
+                "relation": row.relation or "new",
+                "target_knowledge_id": row.target_knowledge_id,
+                "confidence": row.confidence,
                 "created_at": timestamp(row.created_at),
             }
             for row in proposals

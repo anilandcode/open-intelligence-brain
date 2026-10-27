@@ -135,6 +135,30 @@ def add_knowledge_summary_tags() -> list[str]:
     return added
 
 
+def add_proposal_relation() -> list[str]:
+    """Store how a proposal relates to approved knowledge, and model confidence.
+
+    Additive and idempotent. Existing proposals read as `new` with no target,
+    which is what they were treated as before.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "proposals" not in columns:
+        return added
+    wanted = (
+        ("relation", "VARCHAR(20) NOT NULL DEFAULT 'new'"),
+        ("target_knowledge_id", "VARCHAR(32)"),
+        ("confidence", "FLOAT"),
+    )
+    with engine.begin() as connection:
+        for column, definition in wanted:
+            if column in columns["proposals"]:
+                continue
+            connection.execute(text(f"ALTER TABLE proposals ADD COLUMN {column} {definition}"))
+            added.append(f"proposals.{column}")
+    return added
+
+
 def add_nullable_evidence_span() -> list[str]:
     """Make `proposal_evidence.source_span_id` nullable for derived proposals.
 
