@@ -208,6 +208,10 @@ class Proposal(Base):
     target_knowledge_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
     # The extractor's own 0..1 confidence, when a model produced the claim.
     confidence: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    # Suggested people, companies, projects and topics, as a JSON list of
+    # {"name", "kind"}. Proposal metadata only: approval (with the reviewer's
+    # edits) is what links an approved item to entities.
+    entities: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")
@@ -259,6 +263,37 @@ class Knowledge(Base):
     tags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     version: Mapped[int] = mapped_column(Integer, default=1)
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class Entity(Base):
+    """A person, company, project or topic that approved knowledge is about.
+
+    See `entities.py`: an entity is visible only through readable knowledge
+    linked to it, and links are created by approval.
+    """
+
+    __tablename__ = "entities"
+    __table_args__ = (UniqueConstraint("workspace_id", "key", name="uq_entity_workspace_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    kind: Mapped[str] = mapped_column(String(20), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    # Lowercased, whitespace-collapsed name: what uniqueness and lookups use.
+    key: Mapped[str] = mapped_column(String(80))
+    # Other names for the same thing, as a JSON string list.
+    aliases: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class KnowledgeEntity(Base):
+    __tablename__ = "knowledge_entities"
+
+    knowledge_id: Mapped[str] = mapped_column(ForeignKey("knowledge.id"), primary_key=True)
+    entity_id: Mapped[str] = mapped_column(ForeignKey("entities.id"), primary_key=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
 class KnowledgeRevision(Base):

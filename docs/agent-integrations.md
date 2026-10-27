@@ -131,7 +131,7 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | Tool | Purpose |
 | --- | --- |
 | `brain_status` | Counts sources, proposals, canonical items, and pending reviews |
-| `search_brain` | Searches only approved knowledge and returns exact evidence |
+| `search_brain` | Searches only approved knowledge and returns exact evidence. Filters: `type`, `tag`, and `about` (an entity name) |
 | `ask_brain` | Produces a grounded synthesis with citations or abstains |
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
@@ -139,6 +139,8 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | `get_knowledge` | One approved item in full: statement, rationale, evidence and its revision history |
 | `related_knowledge` | Approved items linked to one item: possible conflicts, similar wording, same source |
 | `context_pack` | A cited markdown brief of the approved knowledge relevant to a task, sized for a prompt (`max_chars`) |
+| `list_entities` | The people, companies, projects and topics approved knowledge is about, with item counts |
+| `entity_profile` | Everything approved about one entity (by name or alias), plus the entities most often mentioned with it |
 | `propose_update` | **Intake:** suggests a correction to an approved item with a reason and evidence. Files the evidence as a source and one update/contradiction proposal; the item only changes when a person approves it. Gated by `sources:write`. |
 
 Search results also include revision counts and a stale flag. Agents should

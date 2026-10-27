@@ -136,10 +136,12 @@ def add_knowledge_summary_tags() -> list[str]:
 
 
 def add_proposal_relation() -> list[str]:
-    """Store how a proposal relates to approved knowledge, and model confidence.
+    """Store how a proposal relates to approved knowledge, model confidence and
+    suggested entities.
 
-    Additive and idempotent. Existing proposals read as `new` with no target,
-    which is what they were treated as before.
+    Additive and idempotent. Existing proposals read as `new` with no target
+    and no entities, which is what they were treated as before. The entity
+    tables themselves are new, so `create_all` makes them.
     """
     added: list[str] = []
     columns = _existing_columns(engine)
@@ -149,6 +151,7 @@ def add_proposal_relation() -> list[str]:
         ("relation", "VARCHAR(20) NOT NULL DEFAULT 'new'"),
         ("target_knowledge_id", "VARCHAR(32)"),
         ("confidence", "FLOAT"),
+        ("entities", "TEXT NOT NULL DEFAULT '[]'"),
     )
     with engine.begin() as connection:
         for column, definition in wanted:

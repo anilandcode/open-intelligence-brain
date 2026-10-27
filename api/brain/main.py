@@ -26,6 +26,19 @@ from .config import get_settings
 from .connections_api import router as connections_router
 from .connectors import ConnectorError, get_connector, ingest_fetched
 from .database import Base, SessionLocal, engine, get_db
+from .entities import (
+    clean_refs,
+    co_mentioned,
+    create_entity,
+    entities_for_items,
+    entity_items,
+    item_counts,
+    list_entities,
+    merge_entities,
+    parse_aliases,
+    readable_entity,
+    update_entity,
+)
 from .harness import Turn as TurnRow
 from .mcp_hosted import install_hosted_mcp_routes
 from .mcp_http import router as mcp_http_router
@@ -49,6 +62,7 @@ from .migrate import (
 )
 from .models import (
     AuditEvent,
+    Entity,
     Knowledge,
     KnowledgeRevision,
     Proposal,
@@ -71,6 +85,12 @@ from .schemas import (
     ConnectorIngestRequest,
     DeletionPreview,
     DismissSourceResult,
+    EntityChip,
+    EntityCreate,
+    EntityDetail,
+    EntityMerge,
+    EntityRead,
+    EntityUpdate,
     EventCreate,
     EventIntake,
     EventRead,
@@ -377,6 +397,7 @@ def knowledge_view(
     item: Knowledge,
     source_title: str,
     conflicts: dict[str, list[str]] | None = None,
+    entities: list[Entity] | None = None,
 ) -> KnowledgeRead:
     return KnowledgeRead.model_validate(item).model_copy(
         update={
@@ -384,8 +405,44 @@ def knowledge_view(
             "revision_count": knowledge_revision_count(db, item.id),
             "stale": knowledge_is_stale(db, item),
             "conflict_ids": (conflicts or {}).get(item.id, []),
+            "entities": [
+                EntityChip(id=entity.id, name=entity.name, kind=entity.kind)
+                for entity in entities or []
+            ],
         }
     )
+
+
+def entity_view(entity: Entity, count: int) -> EntityRead:
+    return EntityRead(
+        id=entity.id,
+        name=entity.name,
+        kind=entity.kind,
+        aliases=parse_aliases(entity.aliases),
+        item_count=count,
+    )
+
+
+def knowledge_views(db: Session, scope: ReadScope, items: list[Knowledge]) -> list[KnowledgeRead]:
+    """Readable items with source titles, conflicts and entities, in order."""
+    titles = {
+        source_id: title
+        for source_id, title in db.execute(
+            scope.apply(
+                select(Source.id, Source.title).where(
+                    Source.id.in_({item.source_id for item in items})
+                ),
+                Source,
+            )
+        ).all()
+    }
+    conflicts = conflict_map(items)
+    linked = entities_for_items(db, scope, [item.id for item in items])
+    return [
+        knowledge_view(db, item, titles[item.source_id], conflicts, linked.get(item.id))
+        for item in items
+        if item.source_id in titles
+    ]
 
 
 @app.get("/health/live")
@@ -948,6 +1005,11 @@ def approve(
             actor=access,
             tags=payload.tags,
             update_target=update_target_for(db, access, proposal, payload.as_new),
+            entities=(
+                clean_refs([ref.model_dump() for ref in payload.entities])
+                if payload.entities is not None
+                else None
+            ),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -955,8 +1017,7 @@ def approve(
     # canonical state. Best effort — our table is the system of record and a
     # failing notification must not undo a human's stored decision.
     record_review_with_engine(proposal, "approve", proposal.engine_memory_id)
-    source = db.get(Source, item.source_id)
-    return knowledge_view(db, item, source.title)
+    return knowledge_views(db, ReadScope.of(access), [item])[0]
 
 
 @app.post("/api/v1/proposals/{proposal_id}/reject", response_model=ProposalRead)
@@ -1053,27 +1114,16 @@ def list_knowledge(
     q: str = "",
     knowledge_type: str | None = Query(default=None, alias="type", max_length=40),
     tag: str | None = Query(default=None, max_length=40),
+    entity: str | None = Query(default=None, max_length=32),
     scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    items = search_knowledge(db, scope, q, limit=50, knowledge_type=knowledge_type, tag=tag)
-    titles = {
-        source_id: title
-        for source_id, title in db.execute(
-            scope.apply(
-                select(Source.id, Source.title).where(
-                    Source.id.in_({item.source_id for item in items})
-                ),
-                Source,
-            )
-        ).all()
-    }
-    conflicts = conflict_map(items)
-    return [
-        knowledge_view(db, item, titles[item.source_id], conflicts)
-        for item in items
-        if item.source_id in titles
-    ]
+    if entity and readable_entity(db, scope, entity) is None:
+        return []
+    items = search_knowledge(
+        db, scope, q, limit=50, knowledge_type=knowledge_type, tag=tag, entity_id=entity
+    )
+    return knowledge_views(db, scope, items)
 
 
 @app.get("/api/v1/knowledge/{knowledge_id}/revisions", response_model=list[KnowledgeRevisionRead])
@@ -1106,8 +1156,115 @@ def supersede(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    source = db.get(Source, item.source_id)
-    return knowledge_view(db, item, source.title)
+    return knowledge_views(db, ReadScope.of(access), [item])[0]
+
+
+# --- entities: people, companies, projects, topics ----------------------------
+
+
+def _entity_or_404(db: Session, scope: ReadScope, entity_id: str) -> Entity:
+    entity = readable_entity(db, scope, entity_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return entity
+
+
+@app.get("/api/v1/entities", response_model=list[EntityRead])
+def get_entities(
+    kind: str | None = Query(default=None, pattern="^(person|company|project|topic)$"),
+    q: str = Query(default="", max_length=80),
+    scope: ReadScope = Depends(read_scope),
+    db: Session = Depends(get_db),
+):
+    return [
+        entity_view(entity, count) for entity, count in list_entities(db, scope, kind=kind, q=q)
+    ]
+
+
+@app.get("/api/v1/entities/{entity_id}", response_model=EntityDetail)
+def get_entity(
+    entity_id: str, scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)
+):
+    entity = _entity_or_404(db, scope, entity_id)
+    items = entity_items(db, scope, entity.id)
+    related = co_mentioned(db, scope, entity.id, [item.id for item in items])
+    views = knowledge_views(db, scope, items)
+    return EntityDetail(
+        **entity_view(entity, len(views)).model_dump(),
+        items=views,
+        related=[entity_view(other, count) for other, count in related],
+    )
+
+
+@app.post("/api/v1/entities", response_model=EntityRead, status_code=201)
+def post_entity(
+    payload: EntityCreate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """A reviewer adds a person, company, project or topic by hand.
+
+    With `link_existing`, approved items whose wording names it (or one of its
+    aliases) are linked now; later intake suggests it automatically.
+    """
+    require_scope(access, "reviews:write")
+    try:
+        entity, _ = create_entity(
+            db,
+            access.workspace_id,
+            payload.name,
+            payload.kind,
+            payload.aliases,
+            link_existing=payload.link_existing,
+            actor=access,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    scope = ReadScope.of(access)
+    return entity_view(entity, item_counts(db, scope, [entity.id])[entity.id])
+
+
+@app.patch("/api/v1/entities/{entity_id}", response_model=EntityRead)
+def patch_entity(
+    entity_id: str,
+    payload: EntityUpdate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    require_scope(access, "reviews:write")
+    scope = ReadScope.of(access)
+    entity = _entity_or_404(db, scope, entity_id)
+    try:
+        entity = update_entity(
+            db,
+            entity,
+            name=payload.name,
+            kind=payload.kind,
+            aliases=payload.aliases,
+            actor=access,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return entity_view(entity, item_counts(db, scope, [entity.id])[entity.id])
+
+
+@app.post("/api/v1/entities/{entity_id}/merge", response_model=EntityRead)
+def merge_entity(
+    entity_id: str,
+    payload: EntityMerge,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Fold a duplicate into another entity. Both must be visible to the caller."""
+    require_scope(access, "reviews:write")
+    scope = ReadScope.of(access)
+    duplicate = _entity_or_404(db, scope, entity_id)
+    keep = _entity_or_404(db, scope, payload.into_id)
+    try:
+        keep = merge_entities(db, duplicate, keep, actor=access)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return entity_view(keep, item_counts(db, scope, [keep.id])[keep.id])
 
 
 @app.get("/api/v1/integrity", response_model=IntegrityRead)

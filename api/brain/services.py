@@ -22,6 +22,14 @@ from .engine import (
     engine_status,
     get_engine,
 )
+from .entities import (
+    EntityIndex,
+    EntityRef,
+    clean_refs,
+    link_entities,
+    refs_json,
+    visible_entity_ids,
+)
 from .extraction import (
     candidate_score,
     extract_tags,
@@ -36,7 +44,9 @@ from .extraction import (
 from .llm import get_chat_model
 from .models import (
     AuditEvent,
+    Entity,
     Knowledge,
+    KnowledgeEntity,
     KnowledgeRevision,
     Proposal,
     ProposalEvidence,
@@ -75,6 +85,7 @@ class _Candidate:
     kind: str
     confidence: float | None
     rationale: str
+    entities: tuple[EntityRef, ...] = ()
 
 
 class _HasWorkspace(Protocol):
@@ -313,6 +324,7 @@ def add_source_version(
                         f"{_MODEL_RATIONALE_PREFIX}{model.model if model else 'model'} from "
                         "an exact source quote. Review wording and evidence before approval."
                     ),
+                    entities=claim.entities,
                 )
             )
     elif create_proposals:
@@ -358,6 +370,7 @@ def add_source_version(
     if skipped_over_cap:
         selected = selected[:cap]
     canon = CanonIndex.load(db, source.workspace_id) if selected else None
+    known_entities = EntityIndex.load(db, source.workspace_id) if selected else None
     # Back into reading order, so the queue follows the source.
     for candidate in sorted(selected, key=lambda row: row.order):
         relation, target = canon.relate(candidate.statement) if canon else ("new", None)
@@ -374,6 +387,11 @@ def add_source_version(
             relation=relation,
             target_knowledge_id=target,
             confidence=candidate.confidence,
+            entities=refs_json(
+                known_entities.suggest(candidate.statement, list(candidate.entities))
+                if known_entities
+                else list(candidate.entities)
+            ),
         )
         db.add(proposal)
         db.flush()
@@ -701,8 +719,12 @@ def approve_proposal(
     actor: WorkspaceAccess | None = None,
     tags: list[str] | None = None,
     update_target: Knowledge | None = None,
+    entities: list[EntityRef] | None = None,
 ) -> Knowledge:
     """Make a proposal canonical.
+
+    `entities` are the reviewer's choice of people, companies, projects and
+    topics; None keeps the proposal's suggestions. Approval links them.
 
     With `update_target`, the proposal revises that approved item instead of
     creating a new one: a new revision carrying this proposal's wording and
@@ -724,7 +746,7 @@ def approve_proposal(
         raise ValueError("Proposal evidence points at a source version that is gone")
     if update_target is not None:
         return _approve_as_update(
-            db, proposal, update_target, evidence, statement, rationale, tags, actor
+            db, proposal, update_target, evidence, statement, rationale, tags, actor, entities
         )
     canonical = Knowledge(
         id=new_id("know"),
@@ -766,6 +788,9 @@ def approve_proposal(
             change_note="Initial approval",
         )
     )
+    link_entities(
+        db, canonical, entities if entities is not None else clean_refs(proposal.entities), actor
+    )
     audit(
         db,
         canonical.workspace_id,
@@ -796,6 +821,7 @@ def _approve_as_update(
     rationale: str | None,
     tags: list[str] | None,
     actor: WorkspaceAccess | None,
+    entities: list[EntityRef] | None = None,
 ) -> Knowledge:
     if item.workspace_id != proposal.workspace_id or item.status != "canonical":
         raise ValueError("The knowledge this proposal updates is not available")
@@ -834,6 +860,9 @@ def _approve_as_update(
     item.summary = proposal.summary or item.summary
     item.tags = json.dumps(merged, ensure_ascii=False)
     item.version = revision
+    link_entities(
+        db, item, entities if entities is not None else clean_refs(proposal.entities), actor
+    )
     embedder = get_embedder()
     if embedder is not None:
         vec = embedder.embed(f"{item.statement} {item.rationale}")
@@ -1047,8 +1076,16 @@ def _query_terms(query: str) -> list[str]:
     ]
 
 
-def _knowledge_filters(knowledge_type: str | None, tag: str | None) -> list:
+def _knowledge_filters(
+    knowledge_type: str | None, tag: str | None, entity_id: str | None = None
+) -> list:
     filters = []
+    if entity_id:
+        filters.append(
+            Knowledge.id.in_(
+                select(KnowledgeEntity.knowledge_id).where(KnowledgeEntity.entity_id == entity_id)
+            )
+        )
     if knowledge_type:
         filters.append(Knowledge.type == knowledge_type)
     cleaned = normalize_tags([tag]) if tag else []
@@ -1068,13 +1105,14 @@ def search_knowledge(
     *,
     knowledge_type: str | None = None,
     tag: str | None = None,
+    entity_id: str | None = None,
 ) -> list[Knowledge]:
-    """Search canonical knowledge, optionally narrowed to one type and/or tag.
+    """Search canonical knowledge, optionally narrowed by type, tag and entity.
 
     Uses FTS5 BM25 ranking when available, falls back to ILIKE. Both paths
     respect workspace and sensitivity scoping through the same ReadScope.
     """
-    filters = _knowledge_filters(knowledge_type, tag)
+    filters = _knowledge_filters(knowledge_type, tag, entity_id)
     base = scope.apply(
         select(Knowledge).where(Knowledge.status == "canonical", *filters),
         Knowledge,
@@ -1566,6 +1604,24 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
         ).all(),
         key=lambda row: (row.knowledge_id, row.revision),
     )
+    # Entity links travel with the knowledge they belong to; an entity is
+    # exported only when it is linked to an exported item or visible on its own.
+    entity_links = sorted(
+        db.scalars(
+            select(KnowledgeEntity).where(KnowledgeEntity.knowledge_id.in_(knowledge_ids))
+        ).all(),
+        key=lambda row: (row.knowledge_id, row.entity_id),
+    )
+    entity_ids = {row.entity_id for row in entity_links}
+    entity_rows = sorted(
+        db.scalars(
+            select(Entity).where(
+                Entity.workspace_id == workspace_id,
+                or_(Entity.id.in_(entity_ids), Entity.id.in_(visible_entity_ids(scope))),
+            )
+        ).all(),
+        key=lambda row: row.created_at,
+    )
     events = sorted(
         db.scalars(
             select(AuditEvent)
@@ -1631,6 +1687,7 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "relation": row.relation or "new",
                 "target_knowledge_id": row.target_knowledge_id,
                 "confidence": row.confidence,
+                "entities": row.entities or "[]",
                 "created_at": timestamp(row.created_at),
             }
             for row in proposals
@@ -1675,6 +1732,20 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "approved_at": timestamp(row.approved_at),
             }
             for row in revisions
+        ],
+        "entities": [
+            {
+                "id": row.id,
+                "kind": row.kind,
+                "name": row.name,
+                "key": row.key,
+                "aliases": row.aliases or "[]",
+                "created_at": timestamp(row.created_at),
+            }
+            for row in entity_rows
+        ],
+        "knowledge_entities": [
+            {"knowledge_id": row.knowledge_id, "entity_id": row.entity_id} for row in entity_links
         ],
         "audit_events": [
             {
@@ -1826,6 +1897,23 @@ def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
                 approved_at=_parse_timestamp(row["approved_at"]),
             )
         )
+    db.flush()
+    # Optional collections: backups written before entities existed lack them.
+    for row in backup.get("entities", []):
+        db.add(
+            Entity(
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("created_at", "workspace_id")
+                },
+                workspace_id=workspace_id,
+                created_at=_parse_timestamp(row["created_at"]),
+            )
+        )
+    db.flush()
+    for row in backup.get("knowledge_entities", []):
+        db.add(KnowledgeEntity(knowledge_id=row["knowledge_id"], entity_id=row["entity_id"]))
     db.flush()
     for row in backup["audit_events"]:
         db.add(

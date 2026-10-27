@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import get_settings
+from .entities import EntityRef, clean_refs
 from .extraction import is_near_duplicate, statement_terms
 from .llm import get_chat_model
 from .models import Knowledge
@@ -44,7 +45,8 @@ CLAIM_TYPES = (
 SYSTEM_PROMPT = """You extract durable knowledge from a person's notes for their \
 personal knowledge base. A human reviews every claim before it is kept.
 
-Return JSON only: {"claims": [{"statement": str, "type": str, "quote": str, "confidence": number}]}
+Return JSON only: {"claims": [{"statement": str, "type": str, "quote": str, \
+"confidence": number, "entities": [{"name": str, "kind": str}]}]}
 
 Rules:
 - One idea per claim. Write the statement so it stands alone: name the subject, \
@@ -54,6 +56,9 @@ resolve "we", "it", "this" and relative dates where the passage makes them clear
 contiguous text that supports the claim, at most 300 characters.
 - "type" is one of: fact, decision, belief, lesson, thesis, framework, evidence, story, question.
 - "confidence" is 0 to 1: how clearly the passage states the claim.
+- "entities" lists the specific people, companies, projects and named topics the \
+claim is about, each with "kind" one of: person, company, project, topic. Use the \
+fullest name the passage gives. Leave it empty when the claim names none.
 - Skip headings, to-do items, greetings, boilerplate and anything trivial or temporary.
 - Return {"claims": []} when nothing is worth keeping."""
 
@@ -65,6 +70,7 @@ class Claim:
     start: int
     end: int
     confidence: float | None
+    entities: tuple[EntityRef, ...] = ()
 
 
 def windows(content: str, size: int) -> list[tuple[int, str]]:
@@ -160,6 +166,7 @@ def extract_claims(content: str) -> list[Claim] | None:
                     start=offset + located[0],
                     end=offset + located[1],
                     confidence=_confidence(raw.get("confidence")),
+                    entities=tuple(clean_refs(raw.get("entities"))),
                 )
             )
     return claims if answered else None

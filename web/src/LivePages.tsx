@@ -3,6 +3,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState
 import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, KeyRound, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
 import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion, StagedAction } from "./api";
 import { useBrainClient } from "./client";
+import { formatEntityText, parseEntityText } from "./entities";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
 import { Button } from "@/components/arc/button/button";
@@ -392,13 +393,14 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const [tagText, setTagText] = useState(tags.join(", "));
   const target = proposal.relation && proposal.relation !== "new" && proposal.target_knowledge_id ? proposal.target_statement || "" : null;
   const [asNew, setAsNew] = useState(false);
+  const [entityText, setEntityText] = useState(formatEntityText(proposal.entities));
 
   async function approve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
       const edited = tagText.split(",").map((tag) => tag.trim()).filter(Boolean);
-      await client.approveProposal(proposal.id, statement, rationale, edited, asNew);
+      await client.approveProposal(proposal.id, statement, rationale, edited, asNew, parseEntityText(entityText));
       onNotice(target !== null && !asNew ? "Approved. The existing item was revised and keeps its history." : "Proposal approved and added to canonical knowledge.");
       await onChanged();
     } catch (requestError) {
@@ -436,6 +438,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
             <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
             <Textarea id={`rationale-${proposal.id}`} label="Why we believe this" description="Internal reasoning" value={rationale} onChange={(event) => setRationale(event.target.value)} rows={4} />
             <Input id={`tags-${proposal.id}`} label="Tags" description="Comma separated. Used to filter the Brain and agent searches." value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="pricing, onboarding" />
+            <Input id={`entities-${proposal.id}`} label="People, companies and projects" description="Comma separated. Add the kind in brackets: person, company or project. Anything else is a topic." value={entityText} onChange={(event) => setEntityText(event.target.value)} placeholder="Dana Lee (person), Acme (company)" />
           </section>
           <aside className="evidence-panel">
             <div className="evidence-heading"><span><Fingerprint size={15} /> Exact evidence</span><ShieldCheck size={16} /></div>
@@ -559,6 +562,7 @@ function KnowledgeCard({ item, onChanged, onNotice, onError }: { item: Knowledge
       <div className="knowledge-card-main">
         <div className="knowledge-card-meta"><span className="type-chip">{item.type}</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span>{item.stale && <span className="warning-chip">Source updated</span>}{item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}</div>
         <h2>{item.statement}</h2><p>{item.rationale}</p>
+        {(item.entities ?? []).length > 0 && <p className="entity-chips" aria-label="About">{(item.entities ?? []).map((chip) => <a key={chip.id ?? chip.name} className="entity-chip" href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/people?record=${encodeURIComponent(chip.id ?? "")}`}>{chip.name}<small>{chip.kind}</small></a>)}</p>}
         <section className="knowledge-evidence" aria-label="Exact source evidence"><h3>Exact source evidence</h3><blockquote>{item.source_excerpt}</blockquote><a href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(item.source_id)}`}>Inspect original source and versions</a></section>
         <details className="history-disclosure" onToggle={(event) => { if (event.currentTarget.open) void loadHistory(); }}>
           <summary><History size={15} aria-hidden="true" /> {item.revision_count} {item.revision_count === 1 ? "revision" : "revisions"} · inspect or supersede</summary>
