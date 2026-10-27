@@ -112,6 +112,8 @@ class ProposalRead(BaseModel):
     confidence: float | None = None
     # Suggested entities; the reviewer confirms or edits them at approval.
     entities: list[EntityChip] = Field(default_factory=list)
+    # Likely to change; approval suggests a review-by date.
+    time_sensitive: bool = False
     created_at: datetime
 
     @field_validator("relation", mode="before")
@@ -138,6 +140,18 @@ class ApprovalRequest(BaseModel):
     # None keeps the proposal's suggested entities; a list (even empty)
     # replaces them. Approval links the item to these.
     entities: list[EntityRefIn] | None = Field(default=None, max_length=12)
+    # Time frame. Omitted keys keep the defaults (a time-sensitive claim gets
+    # a review-by date); an explicit null leaves that date unset.
+    as_of: datetime | None = None
+    review_by: datetime | None = None
+    expires_at: datetime | None = None
+
+    def timeframe(self) -> dict[str, datetime | None]:
+        return {
+            key: getattr(self, key)
+            for key in ("as_of", "review_by", "expires_at")
+            if key in self.model_fields_set
+        }
 
 
 class BatchApprovalRequest(BaseModel):
@@ -214,6 +228,12 @@ class KnowledgeRead(BaseModel):
     stale: bool = False
     conflict_ids: list[str] = Field(default_factory=list)
     entities: list[EntityChip] = Field(default_factory=list)
+    as_of: datetime | None = None
+    review_by: datetime | None = None
+    expires_at: datetime | None = None
+    last_reviewed_at: datetime | None = None
+    due_for_review: bool = False
+    expired: bool = False
 
     @field_validator("summary", mode="before")
     @classmethod
@@ -344,6 +364,10 @@ class Citation(BaseModel):
     source_id: str
     source_title: str
     excerpt: str
+    # Time frame of the cited item, so a reader can tell a dated fact.
+    as_of: datetime | None = None
+    due_for_review: bool = False
+    expired: bool = False
 
 
 class AnswerSentence(BaseModel):
@@ -683,3 +707,23 @@ class EvalRunRead(BaseModel):
 
 class EvalReport(EvalRunRead):
     results: list[EvalQuestionResult]
+
+
+class TimeframeUpdate(BaseModel):
+    """Only the keys sent change; null clears a date."""
+
+    as_of: datetime | None = None
+    review_by: datetime | None = None
+    expires_at: datetime | None = None
+
+    def changes(self) -> dict[str, datetime | None]:
+        return {
+            key: getattr(self, key)
+            for key in ("as_of", "review_by", "expires_at")
+            if key in self.model_fields_set
+        }
+
+
+class ReviewedRequest(BaseModel):
+    # Schedule the next check this many days out; null schedules none.
+    next_review_days: int | None = Field(default=90, ge=1, le=3_650)

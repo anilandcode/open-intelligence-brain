@@ -158,8 +158,15 @@ export type Proposal = {
   confidence?: number | null;
   // Suggested people, companies, projects and topics; confirmed at approval.
   entities?: EntityChip[];
+  /** Likely to change (a price, owner, plan); approval suggests a review-by date. */
+  time_sensitive?: boolean;
   created_at: string;
 };
+
+export type Timeframe = { as_of?: string | null; review_by?: string | null; expires_at?: string | null };
+export type GardenItem = { knowledge_id: string; statement: string; detail: string; related_id?: string | null };
+export type GardenSection = "due_for_review" | "expired" | "source_changed" | "conflicts" | "duplicates" | "unused";
+export type Gardening = Record<GardenSection, GardenItem[]> & { generated_at: string; counts: Record<GardenSection, number>; total: number };
 
 export type EntityKind = "person" | "company" | "project" | "topic";
 export type EntityChip = { id?: string | null; name: string; kind: EntityKind | string };
@@ -188,6 +195,12 @@ export type Knowledge = {
   summary?: string;
   tags?: string[];
   entities?: EntityChip[];
+  as_of?: string | null;
+  review_by?: string | null;
+  expires_at?: string | null;
+  last_reviewed_at?: string | null;
+  due_for_review?: boolean;
+  expired?: boolean;
 };
 
 export type KnowledgeRevision = {
@@ -220,6 +233,9 @@ export type ChatCitation = {
   source_id: string;
   source_title: string;
   excerpt: string;
+  as_of?: string | null;
+  due_for_review?: boolean;
+  expired?: boolean;
 };
 
 export type ChatResult = {
@@ -583,22 +599,26 @@ export const api = {
     id: string,
     statement: string,
     rationale: string,
-    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[]; as_new?: boolean; entities?: EntityRef[] },
+    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[]; as_new?: boolean; entities?: EntityRef[]; as_of?: string | null; review_by?: string | null; expires_at?: string | null },
     asNew?: boolean,
-    entities?: EntityRef[]
+    entities?: EntityRef[],
+    dates?: Timeframe
   ) => {
     let payload: Record<string, unknown> = { statement, rationale };
     if (Array.isArray(optionsOrTags)) {
       payload.tags = optionsOrTags;
       if (asNew) payload.as_new = true;
       if (entities) payload.entities = entities;
+      if (dates) Object.assign(payload, dates);
     } else if (optionsOrTags) {
       payload = { ...payload, ...optionsOrTags };
       if (asNew) payload.as_new = true;
       if (entities) payload.entities = entities;
+      if (dates) Object.assign(payload, dates);
     } else {
       if (asNew) payload.as_new = true;
       if (entities) payload.entities = entities;
+      if (dates) Object.assign(payload, dates);
     }
     return request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
@@ -610,6 +630,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ proposal_ids }),
     }),
+  setTimeframe: (id: string, changes: Timeframe) =>
+    request<Knowledge>(`/api/v1/knowledge/${id}/timeframe`, { method: "PATCH", body: JSON.stringify(changes) }),
+  markReviewed: (id: string, nextReviewDays: number | null = 90) =>
+    request<Knowledge>(`/api/v1/knowledge/${id}/reviewed`, { method: "POST", body: JSON.stringify({ next_review_days: nextReviewDays }) }),
+  gardening: () => request<Gardening>("/api/v1/gardening"),
+  sendGardening: (force = false) =>
+    request<{ sent: boolean; reason: string; text: string }>(`/api/v1/routines/gardening/send${force ? "?force=true" : ""}`, { method: "POST" }),
   entities: (kind?: EntityKind, query = "") =>
     request<Entity[]>(`/api/v1/entities?${new URLSearchParams({ ...(kind ? { kind } : {}), ...(query ? { q: query } : {}) })}`),
   entity: (id: string) => request<EntityDetail>(`/api/v1/entities/${id}`),

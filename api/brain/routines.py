@@ -97,12 +97,12 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     """Build the morning digest from the Brain's current state."""
     since = datetime.now(UTC) - timedelta(hours=since_hours)
 
-    # Pending proposals
+    # Every count and listing goes through the caller's scope: a member's
+    # digest must not count, let alone quote, private material.
     pending = (
         db.scalar(
-            select(func.count(Proposal.id)).where(
-                Proposal.workspace_id == scope.workspace_id,
-                Proposal.status == "proposed",
+            scope.apply(
+                select(func.count(Proposal.id)).where(Proposal.status == "proposed"), Proposal
             )
         )
         or 0
@@ -111,10 +111,7 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     # Stale knowledge
     items = list(
         db.scalars(
-            select(Knowledge).where(
-                Knowledge.workspace_id == scope.workspace_id,
-                Knowledge.status == "canonical",
-            )
+            scope.apply(select(Knowledge).where(Knowledge.status == "canonical"), Knowledge)
         ).all()
     )
     stale = sum(1 for item in items if knowledge_is_stale(db, item))
@@ -127,9 +124,8 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     # Recent activity
     approvals = (
         db.scalar(
-            select(func.count(Knowledge.id)).where(
-                Knowledge.workspace_id == scope.workspace_id,
-                Knowledge.approved_at >= since,
+            scope.apply(
+                select(func.count(Knowledge.id)).where(Knowledge.approved_at >= since), Knowledge
             )
         )
         or 0
@@ -137,10 +133,7 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
 
     sources = (
         db.scalar(
-            select(func.count(Source.id)).where(
-                Source.workspace_id == scope.workspace_id,
-                Source.created_at >= since,
-            )
+            scope.apply(select(func.count(Source.id)).where(Source.created_at >= since), Source)
         )
         or 0
     )
@@ -148,11 +141,7 @@ def build_digest(db: Session, scope: ReadScope, since_hours: int = 24) -> Routin
     # Top pending proposals (most recent 3)
     top = list(
         db.scalars(
-            select(Proposal)
-            .where(
-                Proposal.workspace_id == scope.workspace_id,
-                Proposal.status == "proposed",
-            )
+            scope.apply(select(Proposal).where(Proposal.status == "proposed"), Proposal)
             .order_by(Proposal.created_at.desc())
             .limit(3)
         ).all()

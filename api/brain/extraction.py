@@ -166,6 +166,24 @@ def is_low_value_fragment(text: str) -> bool:
     return letters / max(len(without_urls), 1) < 0.6
 
 
+_TIME_SENSITIVE = re.compile(
+    r"(?:[$€£¥]\s?\d|\d\s?%|\b\d[\d,.]*\s?(?:dollars|euros|pounds|usd|eur|gbp|per\s+(?:seat|month|year|user))\b"
+    r"|\b(?:price|prices|pricing|costs?|fee|fees|salary|budget|headcount|currently|right now|"
+    r"at the moment|this (?:quarter|month|year)|next (?:quarter|month|year)|deadline|roadmap|"
+    r"plan(?:s|ned)? to|owns|owner|lead(?:s)?|head of|reports to|version|release)\b)",
+    re.IGNORECASE,
+)
+
+
+def looks_time_sensitive(statement: str) -> bool:
+    """Whether a statement is the kind that goes out of date.
+
+    Prices, amounts, roles and owners, plans and "currently" statements change;
+    lessons and principles mostly do not. Used only to suggest a review-by date.
+    """
+    return bool(_TIME_SENSITIVE.search(statement))
+
+
 def candidate_score(text: str, declared_type: str) -> float:
     """How likely a span is to be knowledge worth approving. Higher is better.
 

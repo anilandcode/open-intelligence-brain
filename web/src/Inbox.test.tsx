@@ -70,7 +70,7 @@ describe("review inbox", () => {
     expect(screen.getByText("82% confident")).toBeTruthy();
     expect(screen.getByText("Enterprise customers pay 1200 per seat.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Approve as revision/ }));
-    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p9", update.statement, "", [], false, []));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p9", update.statement, "", [], false, [], { review_by: null }));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Approved. The existing item was revised and keeps its history."));
     fireEvent.click(screen.getByLabelText("Add as a separate item instead of revising it"));
     expect(screen.getByRole("button", { name: /Approve to Brain/ })).toBeTruthy();
@@ -88,6 +88,22 @@ describe("review inbox", () => {
     expect(field.value).toBe("Dana Lee (person), Renewals");
     fireEvent.change(field, { target: { value: "Dana Lee (person), Acme (company), acme (company)" } });
     fireEvent.click(screen.getByRole("button", { name: /Approve to Brain/ }));
-    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p7", suggested.statement, "", [], false, [{ name: "Dana Lee", kind: "person" }, { name: "Acme", kind: "company" }]));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p7", suggested.statement, "", [], false, [{ name: "Dana Lee", kind: "person" }, { name: "Acme", kind: "company" }], { review_by: null }));
+  });
+
+  it("suggests a review date for a time-sensitive claim and sends the chosen dates", async () => {
+    const approveProposal = vi.fn(async () => ({}) as Awaited<ReturnType<BrainClient["approveProposal"]>>);
+    const price: Proposal = { ...proposal("p8", "s8", "Pricing", "Enterprise pays 1200 dollars per seat."), time_sensitive: true };
+    render(
+      <BrainClientContext.Provider value={{ ...createDemoClient(), approveProposal } as BrainClient}>
+        <InboxView proposals={[price]} onChanged={vi.fn(async () => {})} onNotice={vi.fn()} onError={vi.fn()} />
+      </BrainClientContext.Provider>,
+    );
+    const reviewBy = screen.getByLabelText("Review by") as HTMLInputElement;
+    expect(reviewBy.value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    fireEvent.change(reviewBy, { target: { value: "2027-01-15" } });
+    fireEvent.change(screen.getByLabelText("True as of"), { target: { value: "2026-10-01" } });
+    fireEvent.click(screen.getByRole("button", { name: /Approve to Brain/ }));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p8", price.statement, "", [], false, [], { review_by: "2027-01-15T00:00:00Z", as_of: "2026-10-01T00:00:00Z" }));
   });
 });

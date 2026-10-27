@@ -1,5 +1,6 @@
 import type { BrainClient } from "./client";
-import type { BatchReviewResult, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy } from "./api";
+import type { BatchReviewResult, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Gardening, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy, Timeframe } from "./api";
+
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -43,6 +44,8 @@ export function createDemoClient(): BrainClient {
     s.citations.forEach(c => c.section_id = s.id); d.sections.push(s); d.section_count = d.sections.length; d.citation_count += atoms.length; return s;
   }
   const evalQuestions: EvalQuestion[] = [];
+  const flags = (k: Knowledge) => ({ due_for_review: !!k.review_by && new Date(k.review_by) <= new Date(), expired: !!k.expires_at && new Date(k.expires_at) <= new Date() });
+  const dated = (dates?: { as_of?: string | null; review_by?: string | null; expires_at?: string | null }) => { const frame = { as_of: dates?.as_of ?? null, review_by: dates?.review_by ?? null, expires_at: dates?.expires_at ?? null }; return { ...frame, ...flags(frame as Knowledge) }; };
   const evalRuns: EvalRun[] = [];
   const entityByName = (name: string) => entities.find(e => e.name.toLowerCase() === name.toLowerCase() || e.aliases.some(a => a.toLowerCase() === name.toLowerCase()));
   const chipsFor = (refs: (EntityRef | EntityChip)[]): EntityChip[] => refs.map(ref => {
@@ -219,13 +222,14 @@ export function createDemoClient(): BrainClient {
     },
     knowledgeRevisions: async key => copy(revisions.get(key) ?? []),
     supersedeKnowledge: async (key, statement, rationale, note) => {const k=find(knowledge,key);k.statement=statement;k.rationale=rationale;k.version++;k.revision_count++;k.approved_at=date();const original=revisions.get(key)![0];revisions.get(key)!.unshift({...original,id:id("revision"),revision:k.version,statement,rationale,change_note:note,approved_at:k.approved_at});event("knowledge.revised",statement);return copy(k);},
-    approveProposal: async (key, statement, rationale, _tags, asNew, chosen) => {
+    approveProposal: async (key, statement, rationale, _tags, asNew, chosen, dates) => {
       const p = find(proposals, key);
       const chosenRefs = chosen ?? (typeof _tags === "object" && !Array.isArray(_tags) && _tags !== null && "entities" in _tags ? (_tags as { entities?: EntityRef[] }).entities : undefined);
       const chips = chipsFor(chosenRefs ?? p.entities ?? []);
       if (p.status !== "proposed") throw new Error("Sample proposal has already been reviewed.");
       const isAsNew = typeof asNew === "boolean" ? asNew : (typeof _tags === "object" && !Array.isArray(_tags) && _tags !== null && "as_new" in _tags ? (_tags as { as_new?: boolean }).as_new : false);
       const target = !isAsNew && p.relation && p.relation !== "new" ? knowledge.find(item => item.id === p.target_knowledge_id) : undefined;
+      const timeframeData = dates ?? (typeof _tags === "object" && !Array.isArray(_tags) && _tags !== null ? (_tags as Timeframe) : undefined);
       if (target) {
         p.status = "approved";
         target.statement = statement;
@@ -236,6 +240,7 @@ export function createDemoClient(): BrainClient {
         target.version += 1;
         target.revision_count += 1;
         target.entities = [...(target.entities ?? []), ...chips.filter(chip => !(target.entities ?? []).some(old => old.id === chip.id))];
+        Object.assign(target, dated(timeframeData));
         revisions.get(target.id)?.unshift({
           id: id("revision"),
           knowledge_id: target.id,
@@ -269,6 +274,7 @@ export function createDemoClient(): BrainClient {
         stale: false,
         conflict_ids: [],
         entities: chips,
+        ...dated(timeframeData),
       };
       knowledge.unshift(k);
       revisions.set(k.id, [
@@ -311,6 +317,7 @@ export function createDemoClient(): BrainClient {
             stale: false,
             conflict_ids: [],
             entities: chipsFor(p.entities ?? []),
+            ...dated(),
           };
           knowledge.unshift(k);
           approvedIds.push(k.id);
@@ -420,6 +427,38 @@ export function createDemoClient(): BrainClient {
       if (pending.length) event("proposal.rejected", reason);
       return { source_id: sourceKey, rejected: pending.length };
     },
+    setTimeframe: async (key, changes) => {
+      const k = find(knowledge, key);
+      Object.assign(k, changes, flags({ ...k, ...changes } as Knowledge));
+      event("knowledge.timeframe", k.statement);
+      return copy(k);
+    },
+    markReviewed: async (key, days = 90) => {
+      const k = find(knowledge, key);
+      k.last_reviewed_at = date();
+      k.review_by = days ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
+      Object.assign(k, flags(k));
+      event("knowledge.reviewed", k.statement);
+      return copy(k);
+    },
+    gardening: async () => {
+      const live = knowledge.filter(k => k.status === "canonical");
+      const item = (k: Knowledge, detail: string) => ({ knowledge_id: k.id, statement: k.statement, detail });
+      const report = {
+        generated_at: date(),
+        due_for_review: live.filter(k => flags(k).due_for_review).map(k => item(k, `Review was due ${k.review_by?.slice(0, 10)}`)),
+        expired: live.filter(k => flags(k).expired).map(k => item(k, `Expired ${k.expires_at?.slice(0, 10)}`)),
+        source_changed: live.filter(k => k.stale).map(k => item(k, "The sentence it rests on changed in a newer version")),
+        conflicts: [],
+        duplicates: [],
+        unused: [],
+      } as unknown as Gardening;
+      const keys = ["due_for_review", "expired", "source_changed", "conflicts", "duplicates", "unused"] as const;
+      report.counts = Object.fromEntries(keys.map(key => [key, report[key].length])) as Gardening["counts"];
+      report.total = keys.reduce((sum, key) => sum + report[key].length, 0);
+      return report;
+    },
+    sendGardening: async () => ({ sent: false, reason: "The demo workspace has no Hermes connection.", text: "" }),
     evalQuestions: async () => copy(evalQuestions),
     addEvalQuestion: async payload => {const expected=payload.expected_ids ?? [];if(!payload.expect_abstain&&!expected.length)throw new Error("Name at least one expected item, or mark it as abstain");const q:EvalQuestion={id:id("evq"),question:payload.question,expected_ids:expected,expect_abstain:!!payload.expect_abstain,note:payload.note ?? "",created_at:date()};evalQuestions.push(q);return copy(q);},
     deleteEvalQuestion: async key => {evalQuestions.splice(evalQuestions.indexOf(find(evalQuestions,key)),1);},
