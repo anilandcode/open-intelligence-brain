@@ -63,7 +63,7 @@ into the caller's.
 
 - React/TypeScript web application with modular CSS architecture.
 - FastAPI API with 50+ endpoints covering sources, proposals, knowledge, workspaces, events, turns, proactivity, studio, routines, and usage.
-- SQLAlchemy persistence with SQLite locally and PostgreSQL in Compose.
+- SQLAlchemy persistence with SQLite locally, PostgreSQL 16 in Compose and CI, and PostgreSQL 18 in production.
 - Deterministic extraction provider for offline reliability.
 - Engine abstraction (`engine.py`) with `DeterministicEngine` (local, always available) and `SupermemoryEngine` (hosted, optional). Engine failures degrade to empty, never block reads.
 - Harness layer: event intake (`harness.py`), deterministic triage with policy enforcement (`triage.py`), and turn orchestration with budgets, steering, suspension, and cooperative cancellation (`turns.py`).
@@ -136,6 +136,7 @@ optional and offline by default (`BRAIN_MAB_BRIDGE_URL` empty means 503).
 29. An audit event names a caller, and never a raw credential. `actor_kind` is `user`, `token`, or `system`; a `token` is recorded only as a non-recoverable preview, so an audit table can never become a store of live credentials. Work nobody asked for (engine derivation, startup backfill) records `system` rather than borrowing a human or a token that did not act.
 30. Nothing may claim an actor it cannot name. Rows written before attribution existed resolve to `system`, not to a plausible person.
 31. Machine credential scopes are real. Hashed `api_credentials` may carry a scope set; write and admin routes call `require_scope`. Empty/unrestricted means owner-class ops for that principal. Legacy `workspace_grants` remain operation-unrestricted for the bootstrap owner token only.
+32. A public deployment (HTTPS `BRAIN_PUBLIC_BASE_URL`) never runs on a published default: boot refuses the default owner token, skips demo data, and the first-owner claim is limited to an allowlist.
 
 ## Data model
 
@@ -177,7 +178,7 @@ provenance.
 
 ## Retrieval
 
-The first release uses conservative keyword matching with simple token scoring. It returns an abstention when no approved item matches. This makes the trust workflow testable before introducing embeddings or rerankers.
+Retrieval started as conservative keyword matching with abstention, so the trust workflow was testable before embeddings. It is now ranked full-text search, optionally fused with a vector channel (see Hybrid retrieval above); abstention still applies when no approved item matches.
 
 Ranked search has two engine implementations behind one contract, selected by dialect: SQLite FTS5 (BM25) and PostgreSQL `tsvector` (ts_rank_cd). Both are regression-tested against the same corpus and questions on every push (`test_dialect_parity.py`, `test_restart_gate.py`), asserting equivalent recall, abstention decisions, sensitivity behaviour, and citation provenance. Ranking order need not be byte-identical — the two engines use different ranking models — but safety behaviour must be. The restart gate runs the full capture → approve → restart → search → grounded answer → citation lifecycle across two real application lifespans, because the ranked index is only built in `lifespan` and a broken one is indistinguishable from an empty one in any single-boot test.
 
@@ -186,11 +187,11 @@ reaches a result, an answer, an agent tool, or the interface. See
 `supermemory-core-spec.md` for the retrieval engine this is being built
 towards.
 
-Planned hybrid retrieval:
+Hybrid retrieval, as built and still planned:
 
 1. Authenticate and resolve the workspace.
 2. Apply status, purpose, sensitivity, and temporal filters.
-3. Combine full-text and local vector candidates.
+3. Combine full-text and vector candidates (built; local on-box embeddings still planned).
 4. Rerank only if evaluation demonstrates an improvement.
 5. Expand permitted evidence and show conflicts.
 6. Build a versioned context package.

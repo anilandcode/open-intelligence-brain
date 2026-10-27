@@ -1,6 +1,6 @@
 # Interface architecture and capability matrix
 
-The UI keeps original sources, proposed claims, working memory, and approved knowledge distinct. The public landing explains capture → human review → approved knowledge → cited reuse. Token access remains the live authentication mechanism; this UI phase does not add Google authentication or change API contracts.
+The UI keeps original sources, proposed claims, working memory, and approved knowledge distinct. The public landing explains capture → human review → approved knowledge → cited reuse. Google sign-in (human sessions) and token paste (machine credentials) are both live on the access gate.
 
 ## Routes and data boundaries
 
@@ -27,7 +27,7 @@ The Caret landing uses lightweight synthetic React illustrations, Context/Eviden
 | Sources | Search, visibility/type filters, versions and immutable updates | Local sample version history |
 | Analytics | Knowledge-health counts with named denominators | Synthetic counts; no usage/outcome attribution |
 | Audit | Integrity signals and filterable domain event details | Synthetic events; possible conflicts remain signals |
-| Connections | Connected LinkedIn/X accounts, alias edits, staged action approvals with recorded post URNs, developer-app credentials onboarding | Live (Arc): accounts, staged queue, and the Composio-style developer-app credentials panel |
+| Connections | **Live (Arc)**: connected LinkedIn/X accounts, alias edits, staged action approvals with recorded post URNs, developer-app credentials onboarding | Synthetic accounts and staged queue |
 | Import: Text | Existing capture endpoint | Local capture and opening-sentence sample extraction |
 | Import: Files / URL | Explicit preview; no upload or web ingestion | Locally staged selection only |
 | Workspaces | Explicit preview entry | Sample browsing and detail; tags are not permissions |

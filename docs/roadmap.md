@@ -13,12 +13,9 @@
       `audit_events`): a human is named by `users.id`, a machine token only by a
       non-recoverable preview, unattributed work records `system`. Raw credentials
       never land in the audit table.
-- [x] Persistent PostgreSQL as the hosted default: Neon free project
-      `digital-brain` (id `ancient-queen-28972054`), restart proof against live
-      Neon (`grounded=True` after reconnect), deploy script loads
-      `~/.digital-brain/neon-database-url` into Secret Manager as
-      `BRAIN_DATABASE_URL`. Local dev still defaults to SQLite; Compose still
-      ships local Postgres 16.
+- [x] Persistent PostgreSQL as the hosted default. First Neon (retired after
+      its credential rotation), now PostgreSQL 18 on the Oracle VM. Local dev
+      still defaults to SQLite; Compose and CI use PostgreSQL 16.
 - [x] Hashed machine API credentials (`api_credentials` + scopes):
       `brn_live_…` secrets returned once, stored as SHA-256 only; soft-revoke;
       `require_scope` on write/admin routes. Bootstrap owner token remains a
@@ -27,12 +24,11 @@
       `identity_firebase_project_id`); optional `google-auth` extra. Web gate
       offers human sign-in when `/api/v1/auth/status` reports a provider, and
       still accepts machine token paste.
-- [ ] Wire Firebase web SDK + Google button on the hosted console (needs a
-      Firebase project id in env). Until then: paste Firebase ID token or use
-      `local` provider for dev.
-- [ ] First-owner bootstrap: auto-membership for the first verified human, or
-      an explicit invite flow, so Google sign-in is usable without a prior
-      `workspace_members` row.
+- [x] Google sign-in button on the hosted console (`identity_provider=google`,
+      `web/src/google-signin.ts`).
+- [x] Explicit first-owner bootstrap (`POST /api/v1/auth/bootstrap`), limited on
+      a public deployment to `BRAIN_BOOTSTRAP_ALLOWED_EMAILS`.
+- [ ] Invite flow for further members.
 - [x] Hosted Streamable HTTP MCP at `/mcp` with OAuth 2.1 paste-token consent
       and dual Bearer (OAuth token or raw Brain API key). Read-only tools only;
       approval stays in the console. `BRAIN_PUBLIC_BASE_URL` for issuer/resource.
@@ -74,7 +70,8 @@ proposal→approve→canon model (never their auto-memory-write product):
 - [x] Dialect parity (v1.0.2): PostgreSQL `tsvector`/`ts_rank_cd` ranked search over a GIN index, OR-term query semantics matching SQLite/ILIKE recall, standard `GROUP BY`, rollback-safe capability probing, native `DROP NOT NULL` migrations that preserve every foreign key.
 - [x] Search-index versioning (`SEARCH_INDEX_VERSION` persisted in `search_index_state`, stale/absent versions rebuilt at boot).
 - [x] Restart release gate on both dialects (`test_restart_gate.py`): create → approve → close → restart → search → grounded → citation survives.
-- [ ] Local embeddings and a fused full-text + vector candidate path.
+- [x] Fused full-text + vector candidate path (v1.2, needs `BRAIN_EMBEDDING_BASE_URL`).
+- [ ] Local (on-box) embeddings so hybrid retrieval needs no external provider.
 - [ ] Encrypted backup packaging and reviewed deletion execution.
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
@@ -138,6 +135,9 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - [ ] Playwright suite codification for the connections hub flows.
 - [x] Custom domain: `brain.trulyagentic.io` (console) and
       `bridge.trulyagentic.io` (broker + LinkedIn callback), TLS via Caddy.
+- [x] Public-deployment boot guards, VM templates and nightly backup script (v1.7).
+- [ ] Off-VM backup destination configured and a restore drill run.
+- [ ] Rate limiting on token, OAuth consent and `/mcp` routes.
 - [ ] Four-week personal usage study.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.

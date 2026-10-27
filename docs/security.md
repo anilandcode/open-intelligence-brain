@@ -1,6 +1,6 @@
 # Security baseline
 
-This is a personal-first demo with a deliberate path to stronger isolation. It is not yet an internet-facing multi-tenant service.
+This is a personal-first Brain with a deliberate path to stronger isolation. It is internet-facing for one owner (`https://brain.trulyagentic.io`, TLS via Caddy) and is not yet a multi-tenant service.
 
 ## Implemented
 
@@ -21,6 +21,8 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 - MCP over HTTP binds every tool to the resolved caller's workspace and role; a member token reads as a member, and a token granted only to another workspace cannot read the default one.
 - Token listings return a non-recoverable preview; a raw token string is shown exactly once, in the creation response.
 - Outbound URLs (Jev evaluation) come from server configuration only — no endpoint accepts a caller-supplied destination URL.
+- A deployment whose `BRAIN_PUBLIC_BASE_URL` is HTTPS on a real host refuses to boot on the default or an empty owner token, never seeds demo data, and only lets `BRAIN_BOOTSTRAP_ALLOWED_EMAILS` claim the first-owner role (`deploy_guard.py`, `test_deploy_guard.py`).
+- Boot logs legacy owner grants left by an owner-token rotation (previews only) and removes them when `BRAIN_RETIRE_LEGACY_OWNER_GRANTS=true`.
 - Every boundary above is pinned by a regression test in `api/tests/test_security_regressions.py`, each proven to fail when its fix is reverted.
 
 ## Known gaps (deliberate, documented)
@@ -50,9 +52,12 @@ This is a personal-first demo with a deliberate path to stronger isolation. It i
 - The owner token is a long-lived static bearer credential (bootstrap only).
 - SQLite/Postgres access control is application-level only; there is no
   row-level security in the database.
-- **Still open for hosted Google UX:** Firebase web SDK button + first-owner
-  membership bootstrap so a fresh Google account can be invited/joined without
-  a prior `workspace_members` row.
+- Google sign-in and explicit first-owner bootstrap are live; an invite flow
+  for further members is still open.
+- **No rate limiting** on token auth, the OAuth consent page, or `/mcp`. The
+  owner token is a long-lived bearer secret; keep it long and random.
+- `/openapi.json` and `/docs` are public. They describe routes, not data, but
+  can be turned off for production if preferred.
 
 Proven fixed in v1.0.2 (search persistence, not auth, but it is a safety property):
 a contentless FTS5 index made `search_knowledge` return empty on every restart,
@@ -61,11 +66,10 @@ now prevent a silent false abstention (content-storing FTS5 DDL, NULL-id
 filtering, ILIKE fall-through when ranked ids resolve to nothing), with a
 restart release gate on both dialects.
 
-## Before remote deployment
+## Still open (the Brain is already remote)
 
 - Replace the long-lived owner token with a hosted identity provider (Google/Firebase) behind the existing `IdentityProvider` protocol; short-lived sessions already exist for humans.
-- Enforce or remove token `scope` — a field that promises restriction and delivers none is worse than no field.
-- Enforce TLS, strict host/origin policy, rate limits, and secure headers.
+- Rate limits, strict host/origin policy and secure headers (TLS is done by Caddy; header template in `deploy/oracle-vm/Caddyfile`).
 - Add workspace-scoped grants and PostgreSQL row-level security as defense in depth.
 - Store original uploaded files outside the database with malware-safe parsing.
 - Add payload-hash-bound action approvals.

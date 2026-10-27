@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .access import Workspace
+from .config import get_settings
 from .database import get_db
 from .identity import IdentityError
 from .models import User, UserSession, WorkspaceMember
@@ -192,6 +193,16 @@ def bootstrap_first_owner(
     user = db.get(User, row.user_id)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign-in required")
+    settings = get_settings()
+    allowed = settings.bootstrap_emails
+    if allowed or settings.is_public_deployment:
+        # A public Brain names who may claim it. Email is checked here only as
+        # an allowlist on a provider-verified identity, never as a key.
+        if (user.email or "").strip().lower() not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This account may not claim this Brain. Ask an owner to invite you.",
+            )
     workspace = db.get(Workspace, DEFAULT_WORKSPACE_ID)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No workspace to claim")

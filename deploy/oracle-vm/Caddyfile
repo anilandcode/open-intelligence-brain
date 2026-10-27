@@ -1,0 +1,23 @@
+# /etc/caddy/Caddyfile — template; reconcile with the VM before use.
+
+(hardening) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+brain.trulyagentic.io, brain-129-158-45-154.sslip.io {
+	import hardening
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
+
+bridge.trulyagentic.io {
+	import hardening
+	# mcp-auth-bridge listen address on the VM
+	reverse_proxy 127.0.0.1:9090
+}

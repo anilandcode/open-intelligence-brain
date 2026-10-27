@@ -57,19 +57,49 @@ class Settings(BaseSettings):
     # the service URL so Cursor/Claude can complete OAuth redirects.
     public_base_url: str = "http://127.0.0.1:8000"
 
+    # First-owner bootstrap allowlist: comma-separated emails allowed to claim
+    # the default workspace while it has no members. On a public deployment an
+    # empty list refuses every claim, so a stranger with any Google account can
+    # never be first to sign in and take the Brain. Local development keeps the
+    # open claim so a fresh clone needs no setup.
+    bootstrap_allowed_emails: str = ""
+
+    # Delete legacy `workspace_grants` owner rows whose principal is not the
+    # configured owner token, once, at boot. Rotating BRAIN_OWNER_TOKEN only
+    # grants the new value; without this the previous token stays an owner.
+    # Opt-in because it deletes rows; boot always logs what it would retire.
+    retire_legacy_owner_grants: bool = False
+
     # When false, Streamable HTTP MCP + OAuth routes are not mounted. Stdio MCP
     # and the legacy /api/v1/mcp adapter stay available either way.
     mcp_hosted: bool = True
 
     # Embeddings for hybrid (vector + keyword) retrieval. When `embedding_base_url`
-    # is set, neural embeddings give real semantic search; otherwise a built-in
-    # lexical (hashing) embedder keeps the vector channel live at zero cost. The
-    # vector path fuses with full-text via reciprocal-rank fusion either way.
+    # is set, neural embeddings give real semantic search fused with full-text via
+    # reciprocal-rank fusion. Unset means keyword-only: the lexical hashing
+    # embedder is a test utility and never the default (it breaks abstention).
     embedding_base_url: str = ""  # e.g. https://api.openai.com — any /v1/embeddings
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
+
+    @property
+    def is_public_deployment(self) -> bool:
+        """True when the advertised origin is HTTPS on a non-loopback host."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.public_base_url)
+        host = (parsed.hostname or "").lower()
+        return parsed.scheme == "https" and host not in {"", "localhost", "127.0.0.1", "::1"}
+
+    @property
+    def bootstrap_emails(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.bootstrap_allowed_emails.split(",")
+            if email.strip()
+        }
 
     @property
     def allowed_origins(self) -> list[str]:

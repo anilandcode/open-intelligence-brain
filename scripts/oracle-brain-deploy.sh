@@ -5,6 +5,9 @@
 # installs Docker, deploys the Brain, and returns the public IP.
 #
 # Usage: ./scripts/oracle-brain-deploy.sh
+#
+# Only 22, 80 and 443 are opened; the app stays on loopback behind Caddy. See
+# deploy/oracle-vm/README.md for the live layout (Caddy, PostgreSQL 18, systemd).
 
 set -euo pipefail
 
@@ -58,8 +61,7 @@ if [ -z "$EXISTING_SUBNET" ] || [ "$EXISTING_SUBNET" = "null" ]; then
         --ingress-security-rules "[
             {\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":22,\"max\":22}}},
             {\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":80,\"max\":80}}},
-            {\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":443,\"max\":443}}},
-            {\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":8000,\"max\":8000}}}
+            {\"protocol\":\"6\",\"source\":\"0.0.0.0/0\",\"tcpOptions\":{\"destinationPortRange\":{\"min\":443,\"max\":443}}}
         ]" \
         --egress-security-rules "[{\"protocol\":\"all\",\"destination\":\"0.0.0.0/0\"}]" \
         --query 'data.id' --raw-output 2>/dev/null)
@@ -144,13 +146,13 @@ echo "✅ Digital Brain server deployed!"
 echo ""
 echo "  Public IP: $PUBLIC_IP"
 echo "  SSH: ssh -i $SSH_KEY_PATH ubuntu@$PUBLIC_IP"
-echo "  API: http://$PUBLIC_IP:8000"
+echo "  API: behind Caddy on 443 (see deploy/oracle-vm/)"
 echo ""
 echo "Next steps:"
 echo "  1. SSH in: ssh -i $SSH_KEY_PATH ubuntu@$PUBLIC_IP"
 echo "  2. Install Docker: curl -fsSL https://get.docker.com | sh"
 echo "  3. Clone repo: git clone https://github.com/anilandcode/open-intelligence-brain.git"
-echo "  4. Deploy: cd open-intelligence-brain && docker compose up -d"
+echo "  4. Deploy: follow deploy/oracle-vm/README.md (docker-compose.yml is the local dev stack, not production)"
 echo ""
 echo "Save these:"
 echo "  SSH_KEY=$SSH_KEY_PATH"
