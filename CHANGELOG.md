@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.7.0 — public-deployment guards, VM templates, backups
+
+- `deploy_guard.py`: when `BRAIN_PUBLIC_BASE_URL` is HTTPS on a real host, boot
+  refuses the default or an empty owner token, never seeds demo data, and warns
+  on a short owner token.
+- First-owner bootstrap is limited to `BRAIN_BOOTSTRAP_ALLOWED_EMAILS` on a
+  public deployment; with the list empty every claim is refused, so a stranger
+  cannot sign in first and take the Brain.
+- Owner-token rotation: boot logs legacy owner grants that belong to a previous
+  token (previews only) and deletes them when
+  `BRAIN_RETIRE_LEGACY_OWNER_GRANTS=true`.
+- `scripts/backup-postgres.sh` (verified `pg_dump`, optional off-box upload,
+  retention) and `deploy/oracle-vm/` templates: Caddyfile with security
+  headers, systemd unit, env example, nightly backup timer.
+- `scripts/oracle-brain-deploy.sh` no longer opens port 8000 to the internet.
+- Docs: README, roadmap, security, interface, architecture and the Hermes skill
+  now describe the live VM, Google sign-in, hybrid retrieval and
+  `capture_source`; Neon references retired. API version reported as 1.7.0.
+
 ## 1.6.1 — developer-app credentials onboarding + custom domain
 
 - Composio-style developer-app credentials panel in the Connections hub:

@@ -8,7 +8,7 @@ The project deliberately separates three layers:
 2. **Proposals** — what the extraction process thinks might be useful knowledge, each carrying an extracted summary + tags and its exact source evidence.
 3. **Canonical knowledge** — exact wording a person has reviewed and approved.
 
-- Version 1.0 — all milestones complete. Daily routines, usage tracking, held-out evaluation, Hermes messaging, and release packaging. The Brain is ready for personal beta across all your AI tools.
+- Version 1.7 — live at `https://brain.trulyagentic.io`. Milestones M1, M3, M4 and M5 are complete and M2 and M6 are in progress; see [CHANGELOG.md](CHANGELOG.md) for each release and [docs/roadmap.md](docs/roadmap.md) for what is still open.
 
 ## Screens
 
@@ -47,9 +47,9 @@ docker compose up --build
 
 This starts PostgreSQL, the API at `http://localhost:8000`, and the workbench at `http://localhost:5173`.
 
-### Cloud Run (free tier)
+### Production (Oracle VM) and rollback (Cloud Run)
 
-See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md). The `Dockerfile` builds a single image serving both the API and the frontend from one origin. Cloud Build configs and a deploy script are included. The live deployment runs on an Oracle Always Free VM at `https://brain.trulyagentic.io` (marketing site on Vercel; the OAuth/tool broker at `https://bridge.trulyagentic.io`).
+The `Dockerfile` builds a single image serving the API, the frontend and the optional engine from one origin. The live deployment runs it on an Oracle Always Free VM at `https://brain.trulyagentic.io` behind Caddy, with local PostgreSQL 18 and the OAuth/tool broker at `https://bridge.trulyagentic.io`; the marketing site is on Vercel. See [deploy/oracle-vm/](deploy/oracle-vm/README.md) for the VM layout, boot guards and backups. Cloud Run ([docs/deploy-cloud-run.md](docs/deploy-cloud-run.md)) is kept as the rollback path.
 
 ## Verify
 
@@ -112,6 +112,14 @@ api/                  FastAPI domain, services, and tests
   brain/
     access.py         Workspace resolution, roles, sensitivity scoping
     config.py         Settings from environment
+    deploy_guard.py   Public-deployment boot guards (owner token, demo seed, stale grants)
+    credentials.py    Hashed machine API keys and scopes
+    embeddings.py     Optional neural embedder for hybrid retrieval
+    extraction.py     Semantic chunking + summary/tags on proposals
+    graph.py          Read-only knowledge graph
+    connectors.py     Drive / Notion / OneDrive fetch into the review queue
+    bridge_client.py  mcp-auth-bridge control-plane client
+    connections*.py   Connections hub + staged action queue
     database.py       SQLAlchemy session and engine
     engine.py         Engine abstraction (deterministic + Supermemory)
     harness.py        Event intake, triage, and turn tables
@@ -140,7 +148,7 @@ api/                  FastAPI domain, services, and tests
     usage.py          Knowledge usage tracking and analytics
     evaluation.py     Held-out evaluation for Jev promotion decisions
     messaging.py       Hermes messaging pairing for digest delivery
-  tests/              332 backend tests across 22 modules (350 against PostgreSQL)
+  tests/              Backend suite (SQLite locally, PostgreSQL in CI)
 web/                  React + TypeScript workbench
   src/
     App.tsx           Main application with all views
@@ -155,11 +163,12 @@ web/                  React + TypeScript workbench
   public/
     favicon.svg       App favicon
 engine/               Self-hosted LLM proxy (Dockerfile + entrypoint + proxy)
-scripts/              Deploy scripts (Cloud Run, engine, fetch)
+scripts/              Deploy, backup and fetch scripts
+deploy/oracle-vm/     Production VM templates (Caddy, systemd, env, backup timer)
 hermes-skill/         Hermes skill for one-command MCP connection
 docs/                 Architecture, security, roadmap, interface, deploy, harness
 docker-compose.yml    PostgreSQL + API + frontend development stack
-Dockerfile            Single-image build for Cloud Run
+Dockerfile            Single-image build (VM and Cloud Run)
 cloudbuild.yaml       Cloud Build config (API + frontend)
 cloudbuild-engine.yaml  Cloud Build config (engine proxy)
 AGENTS.md             Guardrails for coding agents
@@ -209,11 +218,13 @@ Implemented:
 - Improved conflict detection with same-topic/same-type matching.
 - Security hardening (v1.0.1): static-file containment, MCP scope binding, export/usage sensitivity ceiling, token previews, SSRF-free evaluation config, admin-gated restore — each pinned by a regression test.
 - Retrieval persistence and PostgreSQL correctness (v1.0.2): search broke after the first restart on SQLite (contentless FTS5 returned NULL ids and shadowed the fallback) — fixed, plus PostgreSQL ranked search, transaction rollback safety, standard `GROUP BY`, FK-preserving migrations — each pinned, and a restart release gate on both dialects.
-- 332 backend tests (350 against PostgreSQL) and 5 frontend tests.
+- Backend and frontend suites run on every push; the backend runs on both SQLite and PostgreSQL.
+- Public-deployment boot guards: no default owner token, no demo seed, allowlisted first-owner claim.
 
 Next:
 
-- Local embeddings and a fused full-text + vector retrieval path (PostgreSQL full-text and index-version tracking landed in v1.0.2).
+- Local (on-box) embeddings; hybrid retrieval exists today but needs an external `BRAIN_EMBEDDING_BASE_URL`.
+- Rate limiting on token, OAuth consent and `/mcp` routes.
 - Evaluation-backed conflict detection and review policy.
 - Encrypted backup packaging, retention execution, and workspace-level grants.
 - Four-week personal usage study.
@@ -227,7 +238,7 @@ See [docs/operations.md](docs/operations.md) before restoring or planning deleti
 
 The default profile runs locally and makes no model-provider calls. The seeded content is synthetic. Database files, exports, secrets, and model caches are ignored by Git.
 
-The included authentication is appropriate for a loopback-bound personal demo. Before remote access, add TLS, durable identity, short-lived scoped credentials, CSRF/Origin controls where cookies are used, rate limits, and a reviewed deployment threat model.
+The default profile (local SQLite, demo token, seeded data) is for loopback only. A deployment whose `BRAIN_PUBLIC_BASE_URL` is HTTPS is treated as public and refuses the default token, skips demo data and restricts the first-owner claim. See [docs/security.md](docs/security.md) for what is still open before wider exposure, notably rate limiting.
 
 ## License
 

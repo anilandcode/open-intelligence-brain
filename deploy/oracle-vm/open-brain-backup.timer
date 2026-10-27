@@ -1,0 +1,11 @@
+# /etc/systemd/system/open-brain-backup.timer — enable with:
+#   systemctl enable --now open-brain-backup.timer
+[Unit]
+Description=Run the Open Brain backup nightly
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -166,8 +166,8 @@ ENV OPENAI_MODEL=deepseek/deepseek-v4.1-flash
 
 # /tmp is the writable path on Cloud Run, and it is where the engine materialises
 # its runtime. A deployment that must keep data points BRAIN_DATABASE_URL at
-# Postgres (Neon free tier, psycopg is already a dependency); a stateless demo
-# keeps the default so its disposability is honest rather than accidental.
+# PostgreSQL (the live VM uses local PostgreSQL 18; psycopg is already a
+# dependency); a stateless demo keeps the default so its disposability is honest.
 ENV BRAIN_DATABASE_URL=sqlite:////tmp/brain.db
 EXPOSE 8080
 

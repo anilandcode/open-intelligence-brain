@@ -26,6 +26,11 @@ from .config import get_settings
 from .connections_api import router as connections_router
 from .connectors import ConnectorError, get_connector, ingest_fetched
 from .database import Base, SessionLocal, engine, get_db
+from .deploy_guard import (
+    check_owner_token,
+    report_or_retire_stale_owner_grants,
+    should_seed_demo,
+)
 from .harness import Turn as TurnRow
 from .mcp_hosted import install_hosted_mcp_routes
 from .mcp_http import router as mcp_http_router
@@ -134,6 +139,9 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Before anything is written: a public deployment must not grant owner to
+    # the token published in this repository.
+    check_owner_token(settings)
     Base.metadata.create_all(engine)
     # create_all does not alter existing tables, so an existing deployment needs
     # the columns added before any query that selects them.
@@ -196,11 +204,12 @@ async def lifespan(app: FastAPI):
         # Unconditional: authentication has to work whether or not demo data is
         # seeded, otherwise a non-demo deployment could not authenticate at all.
         grant_workspace(db, workspace, settings.owner_token, role="owner")
+        report_or_retire_stale_owner_grants(db, settings)
         db.commit()
     for workspace_row in _workspaces():
         with SessionLocal() as db:
             backfill_provenance(db, workspace_row)
-    if settings.seed_demo:
+    if should_seed_demo(settings):
         with SessionLocal() as db:
             workspace = ensure_default_workspace(db)
             seed_demo(db, workspace.id)
@@ -224,7 +233,7 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="1.1.0",
+    version="1.7.0",
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
