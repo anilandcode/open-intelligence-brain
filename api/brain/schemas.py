@@ -74,7 +74,17 @@ class ProposalRead(BaseModel):
     tags: str = "[]"
     conflict_with_id: str | None = None
     conflict_note: str | None = None
+    relation: str = "new"
+    target_knowledge_id: str | None = None
+    # Wording of the target, only when the caller may read it.
+    target_statement: str = ""
+    confidence: float | None = None
     created_at: datetime
+
+    @field_validator("relation", mode="before")
+    @classmethod
+    def _relation_text(cls, value):
+        return value or "new"
 
 
 class ApprovalRequest(BaseModel):
@@ -84,6 +94,9 @@ class ApprovalRequest(BaseModel):
     supersedes_knowledge_id: str | None = None
     # None keeps the proposal's tags; a list (even empty) replaces them.
     tags: list[str] | None = Field(default=None, max_length=12)
+    # An `update` or `contradiction` proposal revises its target by default.
+    # True adds it as a separate approved item instead.
+    as_new: bool = False
 
 
 class BatchApprovalRequest(BaseModel):

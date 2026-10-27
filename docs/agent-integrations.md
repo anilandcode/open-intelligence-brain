@@ -136,6 +136,10 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
 | `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. |
+| `get_knowledge` | One approved item in full: statement, rationale, evidence and its revision history |
+| `related_knowledge` | Approved items linked to one item: possible conflicts, similar wording, same source |
+| `context_pack` | A cited markdown brief of the approved knowledge relevant to a task, sized for a prompt (`max_chars`) |
+| `propose_update` | **Intake:** suggests a correction to an approved item with a reason and evidence. Files the evidence as a source and one update/contradiction proposal; the item only changes when a person approves it. Gated by `sources:write`. |
 
 Search results also include revision counts and a stale flag. Agents should
 surface those warnings rather than silently relying on an outdated item.

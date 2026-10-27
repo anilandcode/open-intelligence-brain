@@ -36,8 +36,12 @@ async def test_mcp_query_tools_read_only_and_capture_non_approving(client, heade
             "ask_brain",
             "brain_status",
             "capture_source",
+            "context_pack",
+            "get_knowledge",
             "inspect_brain_integrity",
             "list_pending_reviews",
+            "propose_update",
+            "related_knowledge",
             "search_brain",
         }
         by_name = {tool.name: tool for tool in listed.tools}
@@ -45,13 +49,17 @@ async def test_mcp_query_tools_read_only_and_capture_non_approving(client, heade
         for read_only_name in (
             "ask_brain",
             "brain_status",
+            "context_pack",
+            "get_knowledge",
             "inspect_brain_integrity",
             "list_pending_reviews",
+            "related_knowledge",
             "search_brain",
         ):
             assert by_name[read_only_name].annotations.read_only_hint is True
-        # Capture is intake (writes proposal rows) but cannot approve.
+        # Capture and suggestions are intake (write proposal rows) but cannot approve.
         assert by_name["capture_source"].annotations.read_only_hint is False
+        assert by_name["propose_update"].annotations.read_only_hint is False
         # The approval boundary holds: no tool can approve, reject, or mint truth.
         assert not any("approve" in n or "reject" in n or "canonical" in n for n in names)
 

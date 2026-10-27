@@ -150,6 +150,12 @@ export type Proposal = {
   tags?: string;
   conflict_with_id?: string | null;
   conflict_note?: string | null;
+  // "update" or "contradiction" when the claim changes an approved item the
+  // caller can read; approving an update revises that item instead of adding one.
+  relation?: "new" | "update" | "contradiction";
+  target_knowledge_id?: string | null;
+  target_statement?: string;
+  confidence?: number | null;
   created_at: string;
 };
 
@@ -543,13 +549,18 @@ export const api = {
     id: string,
     statement: string,
     rationale: string,
-    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[] }
+    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[]; as_new?: boolean },
+    asNew?: boolean
   ) => {
     let payload: Record<string, unknown> = { statement, rationale };
     if (Array.isArray(optionsOrTags)) {
       payload.tags = optionsOrTags;
+      if (asNew) payload.as_new = true;
     } else if (optionsOrTags) {
       payload = { ...payload, ...optionsOrTags };
+      if (asNew) payload.as_new = true;
+    } else if (asNew) {
+      payload.as_new = true;
     }
     return request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",

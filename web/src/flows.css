@@ -237,6 +237,9 @@
 }
 .evidence-panel cite { display: block; margin-top: 0.375rem; color: var(--muted); font-size: var(--fs-micro); font-style: normal; }
 .reject-panel { display: grid; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--line); background: var(--danger-soft); }
+.relation-panel { display: grid; gap: 0.5rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); background: var(--amber-soft); font-size: var(--fs-small); }
+.relation-panel p { margin: 0; line-height: 1.5; }
+.relation-panel label { display: flex; gap: 0.5rem; align-items: center; color: var(--muted); }
 .revision-form, .revision-list { display: grid; gap: 0.5rem; padding: 0.875rem 1rem; }
 .revision-list { border-top: 1px solid var(--line); }
 .revision-form label, .revision-list label { color: var(--muted); font-size: var(--fs-label); font-weight: 500; letter-spacing: var(--tracking-label); }
