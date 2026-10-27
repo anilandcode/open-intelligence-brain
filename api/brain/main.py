@@ -41,6 +41,7 @@ from .migrate import (
     add_engine_link_columns,
     add_grant_scope_and_expiry,
     add_knowledge_embedding,
+    add_knowledge_summary_tags,
     add_nullable_evidence_span,
     add_proposal_summary_tags,
     add_workspace_columns,
@@ -61,10 +62,14 @@ from .models import (
 from .retrieval import SEARCH_INDEX_VERSION, dialect_name, ensure_fts, rebuild_fts
 from .schemas import (
     ApprovalRequest,
+    BatchReviewRequest,
+    BatchReviewResult,
+    BatchReviewSkip,
     ChatRequest,
     ChatResponse,
     ConnectorIngestRequest,
     DeletionPreview,
+    DismissSourceResult,
     EventCreate,
     EventIntake,
     EventRead,
@@ -104,7 +109,6 @@ from .services import (
     add_source_version,
     answer_question,
     approve_proposal,
-    audit,
     backfill_provenance,
     conflict_map,
     create_source_with_proposals,
@@ -115,6 +119,7 @@ from .services import (
     latest_source_version,
     overview,
     record_review_with_engine,
+    reject_proposal,
     restore_preview,
     restore_workspace,
     search_knowledge,
@@ -172,6 +177,12 @@ async def lifespan(app: FastAPI):
     if enriched:
         logging.getLogger(__name__).info(
             "Added proposal summary/tags columns: %s", ", ".join(enriched)
+        )
+    # Carries proposal summary/tags onto approved knowledge for topic filters.
+    tagged = add_knowledge_summary_tags()
+    if tagged:
+        logging.getLogger(__name__).info(
+            "Added knowledge summary/tags columns: %s", ", ".join(tagged)
         )
     # Build the ranked full-text index for canonical knowledge. The backend
     # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
@@ -879,7 +890,9 @@ def approve(
     require_scope(access, "reviews:write")
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     try:
-        item = approve_proposal(db, proposal, payload.statement, payload.rationale, actor=access)
+        item = approve_proposal(
+            db, proposal, payload.statement, payload.rationale, actor=access, tags=payload.tags
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     # Engine-derived facts: tell the engine so its index agrees with our
@@ -899,32 +912,88 @@ def reject(
 ):
     require_scope(access, "reviews:write")
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
-    if proposal.status != "proposed":
-        raise HTTPException(status_code=409, detail="Only proposed knowledge can be rejected")
-    proposal.status = "rejected"
-    record_review_with_engine(proposal, "decline", proposal.engine_memory_id)
-    audit(
-        db,
-        access.workspace_id,
-        "proposal.rejected",
-        "proposal",
-        proposal.id,
-        payload.reason,
-        actor=access,
-    )
-    db.commit()
-    db.refresh(proposal)
+    try:
+        reject_proposal(db, proposal, payload.reason, actor=access)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     source = db.get(Source, proposal.source_id)
     return proposal_view(proposal, source.title)
+
+
+@app.post("/api/v1/proposals/review", response_model=BatchReviewResult)
+def review_batch(
+    payload: BatchReviewRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Approve or reject a reviewer's selection in one request.
+
+    Each id is loaded through the same scope check as the single-item routes, so
+    an id the caller cannot see is skipped as "Not found" rather than revealed.
+    Approval uses the proposed wording unchanged. Items are decided one at a
+    time, so one bad id never undoes the others.
+    """
+    require_scope(access, "reviews:write")
+    result = BatchReviewResult()
+    for proposal_id in dict.fromkeys(payload.proposal_ids):
+        try:
+            proposal = require_in_workspace(db, access, Proposal, proposal_id)
+        except HTTPException:
+            result.skipped.append(BatchReviewSkip(proposal_id=proposal_id, reason="Not found"))
+            continue
+        try:
+            if payload.action == "approve":
+                item = approve_proposal(db, proposal, None, None, actor=access)
+                record_review_with_engine(proposal, "approve", proposal.engine_memory_id)
+                result.approved.append(item.id)
+            else:
+                reject_proposal(db, proposal, payload.reason, actor=access)
+                result.rejected.append(proposal.id)
+        except ValueError as exc:
+            db.rollback()
+            result.skipped.append(BatchReviewSkip(proposal_id=proposal_id, reason=str(exc)))
+    return result
+
+
+@app.post("/api/v1/sources/{source_id}/proposals/dismiss", response_model=DismissSourceResult)
+def dismiss_source_proposals(
+    source_id: str,
+    payload: RejectRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Reject every proposal still pending for one source.
+
+    For the moment a reviewer has taken what matters from a note and wants the
+    rest out of the queue. Approved and already-rejected items are untouched,
+    and the source keeps every span as evidence.
+    """
+    require_scope(access, "reviews:write")
+    source = require_in_workspace(db, access, Source, source_id)
+    pending = list(
+        db.scalars(
+            select(Proposal).where(
+                Proposal.source_id == source.id,
+                Proposal.workspace_id == access.workspace_id,
+                Proposal.status == "proposed",
+            )
+        ).all()
+    )
+    for proposal in pending:
+        reject_proposal(db, proposal, payload.reason, actor=access, commit=False)
+    db.commit()
+    return DismissSourceResult(source_id=source.id, rejected=len(pending))
 
 
 @app.get("/api/v1/knowledge", response_model=list[KnowledgeRead])
 def list_knowledge(
     q: str = "",
+    knowledge_type: str | None = Query(default=None, alias="type", max_length=40),
+    tag: str | None = Query(default=None, max_length=40),
     scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    items = search_knowledge(db, scope, q, limit=50)
+    items = search_knowledge(db, scope, q, limit=50, knowledge_type=knowledge_type, tag=tag)
     titles = {
         source_id: title
         for source_id, title in db.execute(

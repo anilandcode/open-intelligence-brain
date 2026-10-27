@@ -233,6 +233,12 @@ class Knowledge(Base):
     # are re-embedded by the search-index rebuild or lazily on read.
     embedding: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Carried over from the proposal at approval (and editable there), so
+    # approved knowledge can be browsed and filtered by topic. `tags` is a JSON
+    # string list, the same shape proposals use. Descriptive metadata only:
+    # the statement remains the canonical wording.
+    summary: Mapped[str] = mapped_column(Text, default="", server_default="")
+    tags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     version: Mapped[int] = mapped_column(Integer, default=1)
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 

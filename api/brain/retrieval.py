@@ -28,7 +28,7 @@ import json
 import logging
 import re
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.orm import Session
 
 from .models import Knowledge
@@ -350,8 +350,15 @@ def sync_fts_delete(db: Session, knowledge_id: str) -> None:
 # --- search ---------------------------------------------------------------
 
 
-def search_fts(db: Session, query: str, limit: int = 20) -> list[str]:
+def search_fts(db: Session, query: str, limit: int = 20, scope=None) -> list[str]:
     """Ranked knowledge ids for a query, best match first.
+
+    Pass the caller's `ReadScope`. The scope is applied inside the ranked
+    query, before LIMIT: ranking every workspace and filtering afterwards let a
+    busy neighbouring workspace (or private rows a member cannot read) fill the
+    top N, so a caller's own matches were cut off and search fell back to ILIKE
+    or abstained. `scope=None` searches the whole index and is only for
+    index-level tests and maintenance.
 
     Returns an empty list when ranked search is unavailable or the query has no
     terms, which tells the caller to use the ILIKE fallback. Never raises: a
@@ -360,11 +367,29 @@ def search_fts(db: Session, query: str, limit: int = 20) -> list[str]:
     if not query or not query.strip():
         return []
     if is_postgres(db):
-        return _search_postgres(db, query, limit)
-    return _search_sqlite_fts5(db, query, limit)
+        return _search_postgres(db, query, limit, scope)
+    return _search_sqlite_fts5(db, query, limit, scope)
 
 
-def _search_postgres(db: Session, query: str, limit: int) -> list[str]:
+def _scope_clause(scope, knowledge_alias: str) -> tuple[str, dict]:
+    """SQL fragment + params restricting knowledge rows to a ReadScope.
+
+    Mirrors `ReadScope.apply(…, Knowledge)`: the row's own workspace, and a
+    source in that workspace whose sensitivity the caller may read.
+    """
+    if scope is None:
+        return "", {}
+    clause = f"""
+        AND {knowledge_alias}.workspace_id = :scope_ws
+        AND {knowledge_alias}.source_id IN (
+            SELECT id FROM sources
+            WHERE workspace_id = :scope_ws AND sensitivity IN :scope_sens
+        )
+    """
+    return clause, {"scope_ws": scope.workspace_id, "scope_sens": list(scope.permitted)}
+
+
+def _search_postgres(db: Session, query: str, limit: int, scope=None) -> list[str]:
     """ts_rank_cd over the expression GIN index.
 
     Terms are OR'd, matching the SQLite FTS5 path and the ILIKE fallback. This
@@ -382,17 +407,22 @@ def _search_postgres(db: Session, query: str, limit: int) -> list[str]:
     tsquery = _build_or_tsquery(query)
     if not tsquery:
         return []
+    scope_sql, scope_params = _scope_clause(scope, "knowledge")
+    statement = text(f"""
+        SELECT id
+        FROM knowledge
+        WHERE status = 'canonical'
+          AND {PG_TSV_EXPR} @@ to_tsquery('english', :tsq)
+          {scope_sql}
+        ORDER BY ts_rank_cd({PG_TSV_EXPR}, to_tsquery('english', :tsq)) DESC
+        LIMIT :limit
+    """)
+    if scope_params:
+        statement = statement.bindparams(bindparam("scope_sens", expanding=True))
     try:
         rows = db.execute(
-            text(f"""
-                SELECT id
-                FROM knowledge
-                WHERE status = 'canonical'
-                  AND {PG_TSV_EXPR} @@ to_tsquery('english', :tsq)
-                ORDER BY ts_rank_cd({PG_TSV_EXPR}, to_tsquery('english', :tsq)) DESC
-                LIMIT :limit
-            """),
-            {"tsq": tsquery, "limit": limit},
+            statement,
+            {"tsq": tsquery, "limit": limit, **scope_params},
         ).fetchall()
         return [row[0] for row in rows]
     except Exception as exc:
@@ -419,7 +449,7 @@ def _build_or_tsquery(query: str) -> str:
     return " | ".join(f"'{term}'" for term in terms)
 
 
-def _search_sqlite_fts5(db: Session, query: str, limit: int) -> list[str]:
+def _search_sqlite_fts5(db: Session, query: str, limit: int, scope=None) -> list[str]:
     """BM25 over the FTS5 virtual table."""
     if not _fts_available(db):
         return []
@@ -431,17 +461,30 @@ def _search_sqlite_fts5(db: Session, query: str, limit: int) -> list[str]:
         return []
     # OR for broader recall; BM25 does the ranking.
     fts_query = " OR ".join(f'"{term}"' for term in terms)
+    if scope is None:
+        statement = text(f"""
+            SELECT knowledge_id, rank
+            FROM {FTS_TABLE}
+            WHERE {FTS_TABLE} MATCH :query
+            ORDER BY rank
+            LIMIT :limit
+        """)
+        params: dict = {"query": fts_query, "limit": limit}
+    else:
+        scope_sql, scope_params = _scope_clause(scope, "k")
+        statement = text(f"""
+            SELECT {FTS_TABLE}.knowledge_id, {FTS_TABLE}.rank
+            FROM {FTS_TABLE}
+            JOIN knowledge AS k ON k.id = {FTS_TABLE}.knowledge_id
+            WHERE {FTS_TABLE} MATCH :query
+              AND k.status = 'canonical'
+              {scope_sql}
+            ORDER BY {FTS_TABLE}.rank
+            LIMIT :limit
+        """).bindparams(bindparam("scope_sens", expanding=True))
+        params = {"query": fts_query, "limit": limit, **scope_params}
     try:
-        rows = db.execute(
-            text(f"""
-                SELECT knowledge_id, rank
-                FROM {FTS_TABLE}
-                WHERE {FTS_TABLE} MATCH :query
-                ORDER BY rank
-                LIMIT :limit
-            """),
-            {"query": fts_query, "limit": limit},
-        ).fetchall()
+        rows = db.execute(statement, params).fetchall()
         # Drop NULL ids. A truthy `[None]` once told search_knowledge that the
         # ranked path had answered, so the ILIKE fallback — which would have
         # found the row — never ran. Filtering here means no future index
@@ -526,7 +569,7 @@ def hybrid_search(db: Session, scope, query: str, limit: int = 20) -> list[str]:
     """
     from .embeddings import get_embedder  # local import avoids a settings cycle
 
-    fts_ids = search_fts(db, query, limit=limit)
+    fts_ids = search_fts(db, query, limit=limit, scope=scope)
     vec_ids: list[str] = []
     embedder = get_embedder()
     if embedder is not None:

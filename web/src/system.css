@@ -483,19 +483,19 @@
    rule for this exact markup lived on a `.queue-list` class the Inbox never
    applies. Row height was 146px; the reference list row (Skiff 27355) is a
    ~72px two-line row. */
-.review-queue-list > button > span:not(.queue-number) { display: grid; gap: 0.2rem; min-width: 0; }
-.review-queue-list > button { padding: 0.625rem 0.75rem; border-radius: var(--radius-sm); }
+.review-queue-list .queue-item > button > span:not(.queue-number) { display: grid; gap: 0.2rem; min-width: 0; }
+.review-queue-list .queue-item > button { padding: 0.625rem 0.75rem; border-radius: var(--radius-sm); }
 /* Number as a leading column, not a row above the item: the reference list row
    leads with a marker and gives the text the full width (Skiff 27355). */
-.review-queue-list > button { grid-template-columns: 1.75rem minmax(0, 1fr); align-items: start; }
-.review-queue-list > button small {
+.review-queue-list .queue-item > button { grid-template-columns: 1.75rem minmax(0, 1fr); align-items: start; }
+.review-queue-list .queue-item > button small {
   color: var(--fg-subtle);
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
-.review-queue-list > button strong {
+.review-queue-list .queue-item > button strong {
   display: -webkit-box;
   overflow: hidden;
   font-size: var(--fs-small);
@@ -504,7 +504,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.review-queue-list > button em {
+.review-queue-list .queue-item > button em {
   overflow: hidden;
   color: var(--fg-muted);
   font-size: var(--fs-micro);

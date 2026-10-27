@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, AppConfig, AppCredentialsResult } from "./api";
+import type { BatchReviewResult, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, AppConfig, AppCredentialsResult } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -38,7 +38,7 @@ export function createDemoClient(): BrainClient {
     const s: DraftSection = { id: id("section"), draft_id: d.id, ordinal: d.sections.length+1, title: payload.title, content: payload.content, created_at: date(), citations: atoms.map(k => ({ id: id("citation"), section_id: "", knowledge_id: k.id, created_at: date() })), knowledge_items: atoms.map(k => ({id: k.id, statement: k.statement, type: k.type, source_excerpt: k.source_excerpt})) };
     s.citations.forEach(c => c.section_id = s.id); d.sections.push(s); d.section_count = d.sections.length; d.citation_count += atoms.length; return s;
   }
-      return {
+  const client: BrainClient = {
     authStatus: async () => ({ sign_in_available: false, provider: null }),
     connectedAccounts: async () => [
       {
@@ -157,6 +157,8 @@ export function createDemoClient(): BrainClient {
     supersedeKnowledge: async (key, statement, rationale, note) => {const k=find(knowledge,key);k.statement=statement;k.rationale=rationale;k.version++;k.revision_count++;k.approved_at=date();const original=revisions.get(key)![0];revisions.get(key)!.unshift({...original,id:id("revision"),revision:k.version,statement,rationale,change_note:note,approved_at:k.approved_at});event("knowledge.revised",statement);return copy(k);},
     approveProposal: async (key,statement,rationale) => {const p=find(proposals,key);if(p.status!=="proposed")throw new Error("Sample proposal has already been reviewed.");p.status="approved";const k:Knowledge={id:id("knowledge"),proposal_id:p.id,source_id:p.source_id,source_title:p.source_title,type:p.type,statement,rationale,source_excerpt:p.source_excerpt,status:"canonical",version:1,approved_at:date(),revision_count:1,stale:false,conflict_ids:[]};knowledge.unshift(k);revisions.set(k.id,[{id:id("revision"),knowledge_id:k.id,revision:1,statement,rationale,source_id:k.source_id,source_version_id:proposalVersions.get(p.id) ?? `${k.source_id}-v1`,source_span_id:null,source_excerpt:k.source_excerpt,change_note:"Sample approval",approved_at:k.approved_at}]);event("knowledge.approved",statement);return copy(k);},
     rejectProposal: async (key,reason) => {const p=find(proposals,key);p.status="rejected";event("proposal.rejected",reason);return copy(p);},
+    reviewProposals: async (keys, action, reason) => {const result: BatchReviewResult = {approved: [], rejected: [], skipped: []};for (const key of keys) {const p=proposals.find(item => item.id===key);if(!p||p.status!=="proposed"){result.skipped.push({proposal_id:key,reason:p?"Sample proposal has already been reviewed.":"Not found"});continue;}if(action==="approve"){const k=await client.approveProposal(p.id,p.statement,p.rationale);result.approved.push(k.id);}else{p.status="rejected";event("proposal.rejected",reason ?? "Sample batch reject");result.rejected.push(p.id);}}return result;},
+    dismissSourceProposals: async (sourceKey, reason) => {const pending=proposals.filter(p => p.source_id===sourceKey && p.status==="proposed");pending.forEach(p => {p.status="rejected";});if(pending.length) event("proposal.rejected",reason);return {source_id:sourceKey,rejected:pending.length};},
     chat: async question => {const terms=question.toLowerCase().split(/\W+/).filter(x=>x.length>3);const atoms=knowledge.filter(k=>terms.some(t=>k.statement.toLowerCase().includes(t)));return {answer:atoms.length?`Sample cited retrieval:\n\n${atoms.map(k=>k.statement).join("\n\n")}`:"No matching approved sample knowledge. Try asking about onboarding, customer owners, or decisions.",grounded:atoms.length>0,citations:atoms.map(k=>({knowledge_id:k.id,source_id:k.source_id,source_title:k.source_title,excerpt:k.source_excerpt}))};},
     exportUrl: "", // Workspace export is intentionally absent from the demo shell.
     interviews: async()=>copy(interviews), interview: async key=>copy(find(interviews,key)),
@@ -169,4 +171,5 @@ export function createDemoClient(): BrainClient {
     addSection:async(key,payload)=>copy(section(find(drafts,key),payload)),deleteSection:async(key,sid)=>{const d=find(drafts,key);d.sections=d.sections.filter(s=>s.id!==sid);d.section_count=d.sections.length;d.citation_count=d.sections.reduce((n,s)=>n+s.citations.length,0);},
     assembleDraft:async payload=>{const d=makeDraft(payload);payload.knowledge_ids.forEach(key=>{const k=find(knowledge,key);section(d,{title:k.type,content:k.statement+(payload.include_excerpts?`\n\nEvidence: ${k.source_excerpt}`:""),knowledge_ids:[key]});});event("draft.assembled",d.title);return copy(d);},
   };
+  return client;
 }

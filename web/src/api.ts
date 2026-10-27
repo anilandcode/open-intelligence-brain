@@ -166,6 +166,8 @@ export type Knowledge = {
   revision_count: number;
   stale: boolean;
   conflict_ids: string[];
+  summary?: string;
+  tags?: string[];
 };
 
 export type KnowledgeRevision = {
@@ -193,15 +195,25 @@ export type Integrity = {
   }>;
 };
 
+export type ChatCitation = {
+  knowledge_id: string;
+  source_id: string;
+  source_title: string;
+  excerpt: string;
+};
+
 export type ChatResult = {
   answer: string;
   grounded: boolean;
-  citations: Array<{
-    knowledge_id: string;
-    source_id: string;
-    source_title: string;
-    excerpt: string;
-  }>;
+  citations: ChatCitation[];
+  /** Approved items that share words with the question but do not answer it. */
+  near_matches?: ChatCitation[];
+};
+
+export type BatchReviewResult = {
+  approved: string[];
+  rejected: string[];
+  skipped: Array<{ proposal_id: string; reason: string }>;
 };
 
 // --- Studio types ---
@@ -470,10 +482,20 @@ export const api = {
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
-  approveProposal: (id: string, statement: string, rationale: string) =>
+  approveProposal: (id: string, statement: string, rationale: string, tags?: string[]) =>
     request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ statement, rationale }),
+      body: JSON.stringify(tags === undefined ? { statement, rationale } : { statement, rationale, tags }),
+    }),
+  reviewProposals: (proposalIds: string[], action: "approve" | "reject", reason?: string) =>
+    request<BatchReviewResult>("/api/v1/proposals/review", {
+      method: "POST",
+      body: JSON.stringify({ proposal_ids: proposalIds, action, ...(reason ? { reason } : {}) }),
+    }),
+  dismissSourceProposals: (sourceId: string, reason: string) =>
+    request<{ source_id: string; rejected: number }>(`/api/v1/sources/${sourceId}/proposals/dismiss`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
     }),
   rejectProposal: (id: string, reason: string) =>
     request<Proposal>(`/api/v1/proposals/${id}/reject`, {

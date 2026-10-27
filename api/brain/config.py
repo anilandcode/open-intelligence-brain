@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
+    # Intake: at most this many locally extracted proposals per source version,
+    # best-scoring spans first. Every span is still stored as evidence; the cap
+    # only keeps the review queue reviewable. 0 disables the cap.
+    max_proposals_per_version: int = 12
+
+    # With embeddings configured, an approved item this close to the question
+    # (cosine, 0..1) counts as answering it even when the wording differs.
+    answer_min_similarity: float = 0.55
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property

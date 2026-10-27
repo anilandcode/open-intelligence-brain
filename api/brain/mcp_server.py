@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from .access import ReadScope, WorkspaceAccess, ensure_default_workspace
 from .config import get_settings
 from .database import SessionLocal
+from .extraction import parse_tags
 from .models import Proposal, Source, Workspace
 from .schemas import SourceCreate
 from .services import (
@@ -48,6 +49,7 @@ class BrainHit(BaseModel):
     source_excerpt: str
     revision_count: int
     stale: bool
+    tags: list[str] = Field(default_factory=list)
 
 
 class BrainSearchResult(BaseModel):
@@ -67,6 +69,9 @@ class GroundedAnswer(BaseModel):
     answer: str
     grounded: bool
     citations: list[CitationResult]
+    # When grounded is false: approved items that share words with the
+    # question but do not answer it. Never cite these as the answer.
+    near_matches: list[CitationResult] = Field(default_factory=list)
 
 
 class ReviewItem(BaseModel):
@@ -126,9 +131,17 @@ def brain_status_scoped(scope: ReadScope) -> BrainStatus:
         return BrainStatus.model_validate(overview(db, scope))
 
 
-def search_brain_scoped(query: str, limit: int, scope: ReadScope) -> BrainSearchResult:
+def search_brain_scoped(
+    query: str,
+    limit: int,
+    scope: ReadScope,
+    knowledge_type: str | None = None,
+    tag: str | None = None,
+) -> BrainSearchResult:
     with SessionLocal() as db:
-        matches = search_knowledge(db, scope, query, limit=limit)
+        matches = search_knowledge(
+            db, scope, query, limit=limit, knowledge_type=knowledge_type, tag=tag
+        )
         items = []
         for match in matches:
             source = db.get(Source, match.source_id)
@@ -143,6 +156,7 @@ def search_brain_scoped(query: str, limit: int, scope: ReadScope) -> BrainSearch
                     source_excerpt=match.source_excerpt,
                     revision_count=knowledge_revision_count(db, match.id),
                     stale=knowledge_is_stale(db, match),
+                    tags=parse_tags(match.tags),
                 )
             )
         return BrainSearchResult(query=query, count=len(items), items=items)
@@ -160,6 +174,9 @@ def ask_brain_scoped(question: str, scope: ReadScope) -> GroundedAnswer:
             # pinned by test_mcp_tools_are_scope_bound.
             citations=[
                 CitationResult.model_validate(item.model_dump()) for item in result.citations
+            ],
+            near_matches=[
+                CitationResult.model_validate(item.model_dump()) for item in result.near_matches
             ],
         )
 
@@ -270,9 +287,14 @@ def brain_status() -> BrainStatus:
 def search_brain(
     query: Annotated[str, Field(min_length=2, max_length=500)],
     limit: Annotated[int, Field(ge=1, le=20)] = 8,
+    type: Annotated[str | None, Field(max_length=40)] = None,
+    tag: Annotated[str | None, Field(max_length=40)] = None,
 ) -> BrainSearchResult:
-    """Search only human-approved canonical knowledge and return its exact evidence."""
-    return search_brain_scoped(query, limit, _scope())
+    """Search only human-approved canonical knowledge and return its exact evidence.
+
+    Optionally narrow to one knowledge type (decision, lesson, belief, fact…) or one tag.
+    """
+    return search_brain_scoped(query, limit, _scope(), knowledge_type=type, tag=tag)
 
 
 @mcp.tool(title="Ask the approved Brain", annotations=read_only)

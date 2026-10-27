@@ -10,6 +10,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
+from .config import get_settings
 from .critic import assess_proposal
 from .database import SessionLocal
 from .embeddings import get_embedder
@@ -19,7 +20,17 @@ from .engine import (
     engine_status,
     get_engine,
 )
-from .extraction import extract_tags, is_task_fragment, summarize
+from .extraction import (
+    candidate_score,
+    extract_tags,
+    is_low_value_fragment,
+    is_near_duplicate,
+    normalize_tags,
+    parse_tags,
+    statement_key,
+    statement_terms,
+    summarize,
+)
 from .models import (
     AuditEvent,
     Knowledge,
@@ -39,6 +50,14 @@ from .retrieval import (
 from .schemas import ChatResponse, Citation, SourceCreate
 
 log = logging.getLogger(__name__)
+
+# The rationale every locally extracted proposal starts with, and the prefix of
+# an engine-derived one. Templates, not reasoning: answers ignore them.
+_EXTRACTED_RATIONALE = (
+    "Candidate extracted from an immutable source span. "
+    "Review wording and evidence before approval."
+)
+_TEMPLATED_RATIONALES = (_EXTRACTED_RATIONALE, "Derived by the ")
 
 
 class _HasWorkspace(Protocol):
@@ -128,10 +147,52 @@ def extract_candidates(content: str) -> list[tuple[str, str]]:
     candidates = [
         re.sub(r"\s+", " ", text)
         for _, _, text in extract_spans(content)
-        if 35 <= len(text) <= 600 and not is_task_fragment(text)
+        if 35 <= len(text) <= 600 and not is_low_value_fragment(text)
     ]
     unique = list(dict.fromkeys(candidates))
     return [(classify_statement(text), text) for text in unique[:8]]
+
+
+class KnownStatements:
+    """Statements a workspace has already seen, for intake de-duplication.
+
+    Every proposal ever made (pending, approved or rejected) plus the current
+    canonical wording. A statement you already approved, already rejected or
+    already have waiting is not new information, so offering it again only
+    lengthens the queue. Matching is exact after normalisation, or a
+    near-duplicate by significant-term overlap.
+    """
+
+    def __init__(self, statements: list[str]) -> None:
+        self.keys: set[str] = set()
+        self.terms: list[frozenset[str]] = []
+        for statement in statements:
+            self.add(statement)
+
+    @classmethod
+    def load(cls, db: Session, workspace_id: str) -> "KnownStatements":
+        proposals = db.scalars(
+            select(Proposal.statement).where(Proposal.workspace_id == workspace_id)
+        ).all()
+        canonical = db.scalars(
+            select(Knowledge.statement).where(Knowledge.workspace_id == workspace_id)
+        ).all()
+        return cls([*proposals, *canonical])
+
+    def add(self, statement: str) -> None:
+        key = statement_key(statement)
+        if key in self.keys:
+            return
+        self.keys.add(key)
+        terms = statement_terms(statement)
+        if terms:
+            self.terms.append(terms)
+
+    def contains(self, statement: str) -> bool:
+        if statement_key(statement) in self.keys:
+            return True
+        terms = statement_terms(statement)
+        return any(is_near_duplicate(terms, other) for other in self.terms)
 
 
 def add_source_version(
@@ -168,6 +229,24 @@ def add_source_version(
     )
     db.add(version)
     db.flush()
+    # Spans the previous version already had. Their text is unchanged, so they
+    # were already offered for review once and must not be offered again.
+    previous_hashes: set[str] = set()
+    if latest_number:
+        previous = db.scalar(
+            select(SourceVersion).where(
+                SourceVersion.source_id == source.id,
+                SourceVersion.version == latest_number,
+            )
+        )
+        if previous is not None:
+            previous_hashes = set(
+                db.scalars(
+                    select(SourceSpan.span_hash).where(SourceSpan.source_version_id == previous.id)
+                ).all()
+            )
+    candidates: list[tuple[float, int, SourceSpan, str, str]] = []
+    skipped_unchanged = 0
     for start, end, text in extract_spans(content):
         span = SourceSpan(
             id=new_id("span"),
@@ -178,54 +257,86 @@ def add_source_version(
             span_hash=content_hash(text),
         )
         db.add(span)
+        if not create_proposals or not 35 <= len(text) <= 600 or is_low_value_fragment(text):
+            continue
+        if span.span_hash in previous_hashes:
+            skipped_unchanged += 1
+            continue
+        statement = re.sub(r"\s+", " ", text)
+        kind = classify_statement(statement)
+        candidates.append(
+            (candidate_score(statement, kind), len(candidates), span, statement, kind)
+        )
+    db.flush()
+
+    known = KnownStatements.load(db, source.workspace_id) if candidates else None
+    selected: list[tuple[int, SourceSpan, str, str]] = []
+    skipped_duplicate = 0
+    for _score, order, span, statement, kind in sorted(
+        candidates, key=lambda row: (-row[0], row[1])
+    ):
+        if known is not None and known.contains(statement):
+            skipped_duplicate += 1
+            continue
+        if known is not None:
+            known.add(statement)
+        selected.append((order, span, statement, kind))
+    cap = get_settings().max_proposals_per_version
+    skipped_over_cap = max(len(selected) - cap, 0) if cap > 0 else 0
+    if skipped_over_cap:
+        selected = selected[:cap]
+    # Back into reading order, so the queue follows the source.
+    for _, span, statement, kind in sorted(selected, key=lambda row: row[0]):
+        proposal = Proposal(
+            id=new_id("prop"),
+            workspace_id=source.workspace_id,
+            source_id=source.id,
+            type=kind,
+            statement=statement,
+            rationale=_EXTRACTED_RATIONALE,
+            source_excerpt=span.text,
+            summary=summarize(statement),
+            tags=json.dumps(extract_tags(statement), ensure_ascii=False),
+        )
+        db.add(proposal)
         db.flush()
-        if create_proposals and 35 <= len(text) <= 600 and not is_task_fragment(text):
-            statement = re.sub(r"\s+", " ", text)
-            proposal = Proposal(
-                id=new_id("prop"),
-                workspace_id=source.workspace_id,
-                source_id=source.id,
-                type=classify_statement(statement),
-                statement=statement,
-                rationale=(
-                    "Candidate extracted from an immutable source span. "
-                    "Review wording and evidence before approval."
-                ),
-                source_excerpt=text,
-                summary=summarize(statement),
-                tags=json.dumps(extract_tags(statement), ensure_ascii=False),
+        # Run critic pass
+        assessment = assess_proposal(
+            proposal_id=proposal.id,
+            statement=statement,
+            declared_type=proposal.type,
+            source_excerpt=span.text,
+        )
+        if assessment.has_notes:
+            proposal.critic_notes = json.dumps(
+                [
+                    {"severity": n.severity, "category": n.category, "message": n.message}
+                    for n in assessment.notes
+                ],
+                ensure_ascii=False,
             )
-            db.add(proposal)
-            db.flush()
-            # Run critic pass
-            assessment = assess_proposal(
+        db.add(
+            ProposalEvidence(
                 proposal_id=proposal.id,
-                statement=statement,
-                declared_type=proposal.type,
-                source_excerpt=text,
+                source_version_id=version.id,
+                source_span_id=span.id,
             )
-            if assessment.has_notes:
-                proposal.critic_notes = json.dumps(
-                    [
-                        {"severity": n.severity, "category": n.category, "message": n.message}
-                        for n in assessment.notes
-                    ],
-                    ensure_ascii=False,
-                )
-            db.add(
-                ProposalEvidence(
-                    proposal_id=proposal.id,
-                    source_version_id=version.id,
-                    source_span_id=span.id,
-                )
-            )
+        )
+    intake = f"{len(selected)} proposed"
+    for count, label in (
+        (skipped_unchanged, "unchanged"),
+        (skipped_duplicate, "already known"),
+        (skipped_over_cap, "over the per-version cap"),
+    ):
+        if count:
+            intake += f", {count} {label}"
     audit(
         db,
         source.workspace_id,
         "source.versioned",
         "source",
         source.id,
-        f"Created source version {version.version}: {change_note}",
+        f"Created source version {version.version}: {change_note} ({intake})",
         actor=actor,
     )
     return version
@@ -328,16 +439,14 @@ def sync_derived_proposals(db: Session, scope: ReadScope, source_id: str, limit:
         return 0
 
     created = 0
+    known = KnownStatements.load(db, source.workspace_id)
     for fact in facts:
-        # One engine fact, one proposal: re-syncing must not duplicate the queue.
-        already = db.scalar(
-            select(func.count(Proposal.id)).where(
-                Proposal.source_id == source_id,
-                Proposal.statement == fact.text[:5_000],
-            )
-        )
-        if already:
+        # One engine fact, one proposal: re-syncing must not duplicate the
+        # queue, and a fact the workspace already holds (from this source or
+        # any other) is not worth a second review.
+        if known.contains(fact.text[:5_000]):
             continue
+        known.add(fact.text[:5_000])
         proposal = Proposal(
             id=new_id("prop"),
             workspace_id=source.workspace_id,
@@ -416,6 +525,7 @@ def approve_proposal(
     statement: str | None,
     rationale: str | None,
     actor: WorkspaceAccess | None = None,
+    tags: list[str] | None = None,
 ) -> Knowledge:
     if proposal.status != "proposed":
         raise ValueError("Only proposed knowledge can be approved")
@@ -438,6 +548,11 @@ def approve_proposal(
         statement=statement or proposal.statement,
         rationale=rationale if rationale is not None else proposal.rationale,
         source_excerpt=proposal.source_excerpt or version.content[:600],
+        summary=proposal.summary or "",
+        tags=json.dumps(
+            normalize_tags(tags) if tags is not None else parse_tags(proposal.tags),
+            ensure_ascii=False,
+        ),
     )
     # Embed the approved wording for hybrid retrieval (statement + rationale).
     # Best effort: an embedding failure never blocks a human's stored decision.
@@ -483,6 +598,34 @@ def approve_proposal(
     except Exception:
         pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return canonical
+
+
+def reject_proposal(
+    db: Session,
+    proposal: Proposal,
+    reason: str,
+    actor: WorkspaceAccess | None = None,
+    *,
+    commit: bool = True,
+) -> Proposal:
+    """Decline a pending proposal. The source and its spans are untouched."""
+    if proposal.status != "proposed":
+        raise ValueError("Only proposed knowledge can be rejected")
+    proposal.status = "rejected"
+    record_review_with_engine(proposal, "decline", proposal.engine_memory_id)
+    audit(
+        db,
+        proposal.workspace_id,
+        "proposal.rejected",
+        "proposal",
+        proposal.id,
+        reason,
+        actor=actor,
+    )
+    if commit:
+        db.commit()
+        db.refresh(proposal)
+    return proposal
 
 
 def supersede_knowledge(
@@ -643,14 +786,36 @@ def _query_terms(query: str) -> list[str]:
     ]
 
 
-def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20) -> list[Knowledge]:
-    """Search canonical knowledge.
+def _knowledge_filters(knowledge_type: str | None, tag: str | None) -> list:
+    filters = []
+    if knowledge_type:
+        filters.append(Knowledge.type == knowledge_type)
+    cleaned = normalize_tags([tag]) if tag else []
+    if cleaned:
+        # Tags are stored as a JSON list, so match the quoted element. LIKE
+        # wildcards in the tag itself are escaped so they match literally.
+        escaped = cleaned[0].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        filters.append(Knowledge.tags.like(f'%"{escaped}"%', escape="\\"))
+    return filters
+
+
+def search_knowledge(
+    db: Session,
+    scope: ReadScope,
+    query: str,
+    limit: int = 20,
+    *,
+    knowledge_type: str | None = None,
+    tag: str | None = None,
+) -> list[Knowledge]:
+    """Search canonical knowledge, optionally narrowed to one type and/or tag.
 
     Uses FTS5 BM25 ranking when available, falls back to ILIKE. Both paths
     respect workspace and sensitivity scoping through the same ReadScope.
     """
+    filters = _knowledge_filters(knowledge_type, tag)
     base = scope.apply(
-        select(Knowledge).where(Knowledge.status == "canonical"),
+        select(Knowledge).where(Knowledge.status == "canonical", *filters),
         Knowledge,
     )
     if not query.strip():
@@ -659,7 +824,9 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
     # Try hybrid retrieval first: reciprocal-rank fusion of the dialect's keyword
     # index (FTS5/BM25 or ts_rank_cd) with the vector channel. When neither
     # answers it returns [] and we fall through to ILIKE.
-    ranked_ids = hybrid_search(db, scope, query, limit=limit)
+    # Filters apply after ranking, so rank a wider pool when they are set.
+    pool = min(limit * 5, 200) if filters else limit
+    ranked_ids = hybrid_search(db, scope, query, limit=pool)
     if ranked_ids:
         # Preserve fused ranking order; filter by scope
         items = list(
@@ -668,6 +835,7 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
                     select(Knowledge).where(
                         Knowledge.id.in_(ranked_ids),
                         Knowledge.status == "canonical",
+                        *filters,
                     ),
                     Knowledge,
                 )
@@ -734,7 +902,23 @@ def knowledge_is_stale(db: Session, item: Knowledge) -> bool:
         .order_by(KnowledgeRevision.revision.desc())
     )
     latest = latest_source_version(db, item.source_id)
-    return bool(current_revision and latest and current_revision.source_version_id != latest.id)
+    if not (current_revision and latest) or current_revision.source_version_id == latest.id:
+        return False
+    # The source moved on. The fact is only stale if the sentence it rests on
+    # changed: fixing a typo elsewhere in a note must not flag every fact the
+    # note ever produced. A derived fact has no single span, so any new
+    # version still asks for a re-check.
+    if current_revision.source_span_id:
+        evidence = db.get(SourceSpan, current_revision.source_span_id)
+        if evidence is not None:
+            still_present = db.scalar(
+                select(func.count(SourceSpan.id)).where(
+                    SourceSpan.source_version_id == latest.id,
+                    SourceSpan.span_hash == evidence.span_hash,
+                )
+            )
+            return not still_present
+    return True
 
 
 def _conflict_key(statement: str) -> tuple[set[str], bool, str]:
@@ -856,15 +1040,102 @@ def integrity_snapshot(db: Session, scope: ReadScope) -> dict:
     }
 
 
+# Question words that carry no topic. Kept separate from `_query_terms`'s list
+# so search recall is unchanged; this only decides what an answer must cover.
+_QUESTION_WORDS = frozenset(
+    "who why whom whose did was were can could should would will tell know "
+    "explain describe give list show any some there their they them its".split()
+)
+
+
+def _stem(word: str) -> str:
+    """Crude shared prefix so 'pricing' meets 'price' and 'customers' meets 'customer'."""
+    return word[:5] if len(word) > 5 else word.rstrip("s") or word
+
+
+def _answer_terms(question: str) -> list[str]:
+    return list(
+        dict.fromkeys(term for term in _query_terms(question) if term not in _QUESTION_WORDS)
+    )
+
+
+def coverage(question_terms: list[str], item: Knowledge) -> float:
+    """Share of the question's topic terms that appear in an approved item."""
+    if not question_terms:
+        return 0.0
+    # A templated rationale ("Candidate extracted from an immutable source
+    # span…") is on almost every item. Counting it let any question containing
+    # "evidence", "source" or "review" match every fact in the brain.
+    rationale = "" if item.rationale.startswith(_TEMPLATED_RATIONALES) else item.rationale
+    words = {
+        _stem(word) for word in re.findall(r"[a-z0-9]+", f"{item.statement} {rationale}".lower())
+    }
+    hits = sum(1 for term in question_terms if _stem(term) in words)
+    return hits / len(question_terms)
+
+
+def _required_hits(term_count: int) -> int:
+    """Topic terms an item must contain to count as answering.
+
+    Short questions need one (a three-word question often has one decisive
+    term); longer ones need 40 percent: 4→2, 5→2, 6→3, 8→4.
+    """
+    if term_count <= 3:
+        return 1
+    return -(-term_count * 2 // 5)
+
+
+def _semantic_support(question: str, items: list[Knowledge]) -> set[str]:
+    """Ids whose stored embedding is close to the question, when embeddings exist.
+
+    Lets a paraphrase count as an answer when the words differ. Without an
+    embedding provider this is empty and the term check alone decides.
+    """
+    embedder = get_embedder()
+    if embedder is None:
+        return set()
+    query_vec = embedder.embed(question)
+    if not query_vec:
+        return set()
+    floor = get_settings().answer_min_similarity
+    supported: set[str] = set()
+    for item in items:
+        if not item.embedding:
+            continue
+        try:
+            vec = json.loads(item.embedding)
+        except Exception:  # noqa: BLE001 — a corrupt embedding must not 500 a read
+            continue
+        if (
+            len(vec) == len(query_vec)
+            and sum(a * b for a, b in zip(vec, query_vec, strict=True)) >= floor
+        ):
+            supported.add(item.id)
+    return supported
+
+
 def answer_question(db: Session, scope: ReadScope, question: str) -> ChatResponse:
-    matches = search_knowledge(db, scope, question, limit=3)
-    if not matches:
-        return ChatResponse(
-            answer="I could not find enough approved knowledge to answer that. Import a source or review the pending proposals first.",
-            citations=[],
-            grounded=False,
-        )
-    source_ids = {item.source_id for item in matches}
+    """Answer only from approved knowledge that actually addresses the question.
+
+    Search ORs its terms for recall, so a single shared word is enough to come
+    back as a match. That is right for browsing and wrong for answering:
+    abstention is this product's safety signal, and a confident, cited
+    non-answer is the failure it exists to prevent. An item therefore has to
+    cover most of the question's topic terms (or, with embeddings configured,
+    be semantically close) before it is cited as an answer. Matches that fall
+    short are returned as `near_matches`, never as citations.
+    """
+    candidates = search_knowledge(db, scope, question, limit=8)
+    terms = _answer_terms(question)
+    needed = _required_hits(len(terms))
+    semantic = _semantic_support(question, candidates)
+    matches = [
+        item
+        for item in candidates
+        if item.id in semantic or (terms and coverage(terms, item) * len(terms) >= needed - 1e-9)
+    ][:3]
+    near = [item for item in candidates if item not in matches][:3]
+    source_ids = {item.source_id for item in [*matches, *near]}
     # Scoped by the same permission as the matches, so a citation can never
     # name a source the caller was not allowed to read.
     sources = {
@@ -876,18 +1147,33 @@ def answer_question(db: Session, scope: ReadScope, question: str) -> ChatRespons
             )
         ).all()
     }
+
+    def cite(items: list[Knowledge]) -> list[Citation]:
+        return [
+            Citation(
+                knowledge_id=item.id,
+                source_id=item.source_id,
+                source_title=sources[item.source_id].title,
+                excerpt=item.source_excerpt,
+            )
+            for item in items
+            if item.source_id in sources
+        ]
+
+    if not matches:
+        if near:
+            answer = (
+                "I could not find approved knowledge that answers this. The closest approved "
+                "items are listed as near matches, but they do not answer the question as asked."
+            )
+        else:
+            answer = (
+                "I could not find enough approved knowledge to answer that. Import a source "
+                "or review the pending proposals first."
+            )
+        return ChatResponse(answer=answer, citations=[], grounded=False, near_matches=cite(near))
     statements = " ".join(item.statement.rstrip(".") + "." for item in matches)
-    citations = [
-        Citation(
-            knowledge_id=item.id,
-            source_id=item.source_id,
-            source_title=sources[item.source_id].title,
-            excerpt=item.source_excerpt,
-        )
-        for item in matches
-        if item.source_id in sources
-    ]
-    return ChatResponse(answer=statements, citations=citations, grounded=True)
+    return ChatResponse(answer=statements, citations=cite(matches), grounded=True)
 
 
 def seed_demo(db: Session, workspace_id: str) -> None:
@@ -1104,6 +1390,8 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "source_excerpt": row.source_excerpt,
                 "status": row.status,
                 "version": row.version,
+                "summary": row.summary or "",
+                "tags": row.tags or "[]",
                 "approved_at": timestamp(row.approved_at),
             }
             for row in knowledge
