@@ -12,6 +12,7 @@ import ArchitecturePage from "./ArchitecturePage";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { PeopleView } from "./People";
+import { WorkingMemoryView } from "./WorkingMemory";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
 import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, hasToken, setToken, Unauthorized } from "./api";
 
@@ -26,7 +27,7 @@ const workspaceNav: NavItem[] = [
 const knowledgeNav: NavItem[] = [
   { id: "brain", label: "Brain", icon: Brain },
   { id: "people", label: "People & projects", icon: Users },
-  { id: "working-memory", label: "Working Memory", icon: Layers3, future: true },
+  { id: "working-memory", label: "Working Memory", icon: Layers3 },
   { id: "graph", label: "Brain Graph", icon: GitBranch },
   { id: "sources", label: "Sources", icon: Archive },
   { id: "import", label: "Import", icon: Plus },
@@ -97,7 +98,7 @@ const titleMap: Record<View, { title: string; description: string }> = {
   },
   import: { title: "Import", description: "Add original material to your Brain. Text capture is available now." },
   workspaces: { title: "Workspaces", description: "Browse spaces for different teams and projects." },
-  "working-memory": { title: "Working Memory", description: "Explore interpretations and their links to original sources and approved knowledge." },
+  "working-memory": { title: "Working Memory", description: "Agents' expiring notes, and a search through source text nobody has reviewed yet." },
   graph: { title: "Brain Graph", description: "Explore the relationships between evidence, proposals, memory, and approved knowledge." },
   connectors: { title: "Connectors", description: "See providers that may bring content into the Brain." },
   connections: { title: "Connections", description: "Connected LinkedIn and X accounts, with staged actions awaiting approval." },
@@ -782,8 +783,9 @@ export default function App() {
               {view === "graph" && <GraphView />}
               {view === "people" && <PeopleView recordId={route.record} onSelect={id=>navigate("people", id ?? undefined)} onNotice={setNotice} onError={setError} />}
               {view === "connectors" && <ConnectorsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
+              {view === "working-memory" && <WorkingMemoryView onOpenKnowledge={id=>navigate("brain", id)} onOpenSource={id=>navigate("sources", id)} onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "connections" && <ConnectionsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
-              {(["import", "workspaces", "working-memory", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
+              {(["import", "workspaces", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>
           )}
         </main>

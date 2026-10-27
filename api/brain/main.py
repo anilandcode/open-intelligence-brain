@@ -93,6 +93,7 @@ from .models import (
 )
 from .retrieval import SEARCH_INDEX_VERSION, dialect_name, ensure_fts, rebuild_fts
 from .schemas import (
+    AgentNoteRead,
     ApprovalRequest,
     BatchApprovalRequest,
     BatchApprovalResponse,
@@ -101,6 +102,7 @@ from .schemas import (
     BatchReviewRequest,
     BatchReviewResult,
     BatchReviewSkip,
+    CaptureRequest,
     ChatRequest,
     ChatResponse,
     ConnectorIngestRequest,
@@ -128,6 +130,7 @@ from .schemas import (
     OverviewRead,
     ProactivityRead,
     ProactivityUpdate,
+    PromoteNoteRequest,
     ProposalRead,
     RejectRequest,
     RestorePreview,
@@ -135,6 +138,7 @@ from .schemas import (
     ResumeRequest,
     ReviewedRequest,
     SourceCreate,
+    SourceHitRead,
     SourceRead,
     SourceVersionCreate,
     SourceVersionRead,
@@ -156,6 +160,13 @@ from .schemas import (
     WorkspacePolicyRead,
     WorkspacePolicyUpdate,
     WorkspaceRead,
+)
+from .scratchpad import (
+    ScratchpadError,
+    list_notes,
+    promote_note,
+    readable_note,
+    search_sources,
 )
 from .services import (
     add_source_version,
@@ -191,11 +202,8 @@ from .services import (
     update_workspace_policy,
 )
 from .studio_api import router as studio_router
-
-# Imported at module level on purpose: UsageEvent must be registered on Base
-# before lifespan's create_all runs, or usage_events never exists on a fresh
-# database and every /api/v1/usage* route 500s. Do not make this lazy.
 from .usage import top_used, track_batch, unused_knowledge, usage_summary
+from .vectors import ensure_pgvector
 
 settings = get_settings()
 
@@ -289,6 +297,9 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info(
                 "No ranked full-text index on %s; using ILIKE fallback", dialect_name(db)
             )
+        # PostgreSQL with the vector extension searches embeddings in SQL.
+        if ensure_pgvector(db):
+            logging.getLogger(__name__).info("pgvector ready for embedding search")
     # Every deployment starts with a real workspace and a grant for the configured
     # token, so a single-company Brain works with no extra setup.
     with SessionLocal() as db:
@@ -939,6 +950,134 @@ def connector_ingest(
     except ConnectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return source
+
+
+def capture_content(payload: CaptureRequest) -> tuple[str, str]:
+    text = (payload.text or "").strip()
+    url = (payload.url or "").strip()
+    content = f"{text}\n\nSource: {url}" if text and url else text or url
+    title = (payload.title or "").strip()
+    if len(title) < 3:
+        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        if first_line and payload.kind != "transcript":
+            title = first_line if len(first_line) <= 80 else first_line[:79].rstrip() + "…"
+        elif url:
+            from urllib.parse import urlsplit
+
+            parts = urlsplit(url)
+            title = (parts.netloc + parts.path).rstrip("/")[:120]
+    if len(title) < 3:
+        label = "Meeting transcript" if payload.kind == "transcript" else "Quick capture"
+        title = f"{label} {datetime.now(UTC).date().isoformat()}"
+    return content, title
+
+
+@app.post("/api/v1/capture", response_model=SourceRead, status_code=201)
+def quick_capture(
+    payload: CaptureRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Capture a note, clipped page, shared link or voice note for review.
+
+    The text is kept as given (a link is appended as "Source: <url>"), so the
+    capture is an ordinary source: its sentences become proposals and nothing
+    is approved automatically.
+    """
+    require_scope(access, "sources:write")
+    content, title = capture_content(payload)
+    if len(content) < 20:
+        raise HTTPException(status_code=422, detail="Too short to capture: add a few words.")
+    source = create_source_with_proposals(
+        db,
+        SourceCreate(
+            title=title, kind=payload.kind, sensitivity=payload.sensitivity, content=content
+        ),
+        access.workspace_id,
+        actor=access,
+    )
+    audit(
+        db,
+        access.workspace_id,
+        "source.captured",
+        "source",
+        source.id,
+        f"via {payload.via}",
+        actor=access,
+    )
+    db.commit()
+    count = (
+        db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.source_id == source.id, Proposal.workspace_id == access.workspace_id
+            )
+        )
+        or 0
+    )
+    return source_view(db, source, count)
+
+
+@app.get("/api/v1/scratchpad", response_model=list[AgentNoteRead])
+def list_scratchpad(
+    topic: str = Query(default="", max_length=160),
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Agents' live working notes in this workspace, at sensitivities the caller may read."""
+    return list_notes(db, ReadScope.of(access), author=None, topic=topic, limit=200)
+
+
+@app.delete("/api/v1/scratchpad/{note_id}", status_code=204)
+def delete_scratch_note(
+    note_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    require_scope(access, "sources:write")
+    try:
+        note = readable_note(db, ReadScope.of(access), note_id, author=None)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    db.delete(note)
+    db.commit()
+
+
+@app.post("/api/v1/scratchpad/{note_id}/promote", response_model=SourceRead, status_code=201)
+def promote_scratch_note(
+    note_id: str,
+    payload: PromoteNoteRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """File a note as a source; its sentences go to the review queue."""
+    require_scope(access, "sources:write")
+    try:
+        note = readable_note(db, ReadScope.of(access), note_id, author=None)
+        source = promote_note(db, note, title=payload.title, actor=access)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ScratchpadError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    count = (
+        db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.source_id == source.id, Proposal.workspace_id == access.workspace_id
+            )
+        )
+        or 0
+    )
+    return source_view(db, source, count)
+
+
+@app.get("/api/v1/search/sources", response_model=list[SourceHitRead])
+def search_source_text(
+    q: str = Query(min_length=2, max_length=500),
+    limit: int = Query(default=10, ge=1, le=30),
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Sentences in readable sources, each labelled unreviewed or approved."""
+    return [hit.__dict__ for hit in search_sources(db, ReadScope.of(access), q, limit=limit)]
 
 
 @app.post("/api/v1/sources", response_model=SourceRead, status_code=201)

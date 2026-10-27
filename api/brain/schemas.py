@@ -58,6 +58,44 @@ class ConnectorIngestRequest(BaseModel):
     kind: str = Field(default="research", pattern="^(note|research|interview|decision|transcript)$")
 
 
+class CaptureRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+    title: str = Field(default="", max_length=240)
+    url: str = Field(default="", max_length=2_000, pattern=r"^(https?://\S+)?$")
+    kind: str = Field(default="note", pattern="^(note|research|interview|decision|transcript)$")
+    sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
+    via: str = Field(default="api", pattern="^(share|clipper|voice|console|api)$")
+
+
+class AgentNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    author: str
+    topic: str
+    content: str
+    sensitivity: str
+    created_at: datetime
+    expires_at: datetime
+    promoted_source_id: str | None = None
+    promoted_at: datetime | None = None
+
+
+class PromoteNoteRequest(BaseModel):
+    title: str = Field(default="", max_length=240)
+
+
+class SourceHitRead(BaseModel):
+    source_id: str
+    source_title: str
+    source_kind: str
+    version: int
+    excerpt: str
+    speaker: str | None = None
+    status: str
+    knowledge_id: str | None = None
+    score: float
+
+
 class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

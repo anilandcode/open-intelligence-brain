@@ -126,6 +126,15 @@ class Settings(BaseSettings):
     unused_after_days: int = 120
     # The weekly gardening digest is not re-sent within this many days.
     gardening_min_days: int = 6
+    # A folder sync fetches at most this many changed documents per run, so
+    # one large folder cannot hold the request (the next run picks up the rest).
+    watch_max_documents: int = 50
+    # Agent scratchpad: notes expire after this many days unless the agent
+    # asks for longer (never past the maximum), and each author keeps at most
+    # this many live notes.
+    scratchpad_default_days: int = 7
+    scratchpad_max_days: int = 30
+    scratchpad_max_notes: int = 200
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 

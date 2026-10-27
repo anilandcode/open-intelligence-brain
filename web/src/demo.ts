@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { BatchReviewResult, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Gardening, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy, Timeframe } from "./api";
+import type { AgentNote, BatchReviewResult, CapturePayload, Entity, EntityChip, EntityRef, EvalQuestion, EvalReport, EvalRun, Gardening, Source, SourceHit, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy, Timeframe } from "./api";
 
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
@@ -47,6 +47,8 @@ export function createDemoClient(): BrainClient {
   const flags = (k: Knowledge) => ({ due_for_review: !!k.review_by && new Date(k.review_by) <= new Date(), expired: !!k.expires_at && new Date(k.expires_at) <= new Date() });
   const dated = (dates?: { as_of?: string | null; review_by?: string | null; expires_at?: string | null }) => { const frame = { as_of: dates?.as_of ?? null, review_by: dates?.review_by ?? null, expires_at: dates?.expires_at ?? null }; return { ...frame, ...flags(frame as Knowledge) }; };
   const evalRuns: EvalRun[] = [];
+  const notes: AgentNote[] = [{ id: "sample-note-1", author: "obk_agent…", topic: "renewal research", content: "Three customers asked about multi-year renewal pricing this week; check whether the discount cap applies to them.", sensitivity: "private", created_at: date(), expires_at: new Date(Date.now() + 6 * 86_400_000).toISOString(), promoted_source_id: null, promoted_at: null }];
+
   const entityByName = (name: string) => entities.find(e => e.name.toLowerCase() === name.toLowerCase() || e.aliases.some(a => a.toLowerCase() === name.toLowerCase()));
   const chipsFor = (refs: (EntityRef | EntityChip)[]): EntityChip[] => refs.map(ref => {
     const existing = entityByName(ref.name) ?? (() => { const created: Entity = { id: id("entity"), name: ref.name, kind: ref.kind as Entity["kind"], aliases: [], item_count: 0 }; entities.push(created); return created; })();
@@ -186,6 +188,42 @@ export function createDemoClient(): BrainClient {
     },
     integrity: async () => ({ stale_count: knowledge.filter(k => k.stale).length, conflict_count: 0, issues: knowledge.filter(k => k.stale).map(k => ({kind: "stale_source" as const, knowledge_id: k.id, related_id: null, detail: "Sample source has a newer version. Review its approved knowledge."})) }),
     createSource: async payload => capture(payload),
+    capture: async (payload: CapturePayload) => {
+      const text = (payload.text || "").trim();
+      const content = payload.url ? `${text}\n\nSource: ${payload.url}` : text;
+      if (content.length < 20) throw new Error("Too short to capture: add a few words.");
+      const firstLine = text.split("\n").find(line => line.trim())?.trim() ?? "";
+      return capture({
+        title: payload.title?.trim() || (firstLine.length >= 3 ? firstLine.slice(0, 80) : payload.url || "Quick capture"),
+        kind: payload.kind ?? "note",
+        sensitivity: payload.sensitivity ?? "private",
+        content,
+      });
+    },
+    scratchpad: async (topic = "") => copy(notes.filter(n => !topic || n.topic === topic)),
+    deleteNote: async key => { notes.splice(notes.indexOf(find(notes, key)), 1); },
+    promoteNote: async (key, title = "") => {
+      const n = find(notes, key);
+      if (n.promoted_source_id) throw new Error("This note was already promoted");
+      const s = capture({ title: title || `Agent note: ${n.topic || n.content.slice(0, 60)}`, kind: "note", sensitivity: n.sensitivity, content: n.content });
+      n.promoted_source_id = s.id;
+      n.promoted_at = date();
+      return s;
+    },
+    searchSources: async (query, limit = 10) => {
+      const terms = query.toLowerCase().split(/\W+/).filter(t => t.length > 2);
+      if (!terms.length) return [];
+      const hits: SourceHit[] = [];
+      sources.forEach(s => s.content.split(/(?<=[.!?])\s+/).forEach(sentence => {
+        const score = terms.filter(t => sentence.toLowerCase().includes(t)).length / terms.length;
+        if (score > 0) {
+          const k = knowledge.find(item => item.status === "canonical" && item.source_excerpt === sentence);
+          hits.push({ source_id: s.id, source_title: s.title, source_kind: s.kind, version: s.current_version, excerpt: sentence, speaker: null, status: k ? "approved" : "unreviewed", knowledge_id: k?.id ?? null, score });
+        }
+      }));
+      return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+    },
+
     connectorIngest: async () => capture({ title: "Fetched provider document", kind: "research", sensitivity: "internal", content: "A document fetched from a connected provider, staged for human review before any of it becomes canonical knowledge." }),
     sourceVersions: async key => copy(versions.get(key) ?? []),
     addSourceVersion: async (key, content, changeNote) => { const s = find(sources,key); const v: SourceVersion = {id: id("version"),source_id:key,version:++s.current_version,content_hash:id("hash"),content,parser_version:"sample",change_note:changeNote,created_at:date(),span_count:1,proposal_count:1}; const p: Proposal = {id:id("proposal"),source_id:key,source_title:s.title,type:"lesson",statement:content.split(/[.!?]/)[0],rationale:"Sample interpretation of the updated source.",source_excerpt:content,status:"proposed",critic_notes:"Demo extraction only; review the source before approving.",created_at:date()}; proposals.unshift(p);proposalVersions.set(p.id,v.id);s.proposal_count++; s.content=content;s.content_hash=v.content_hash;versions.get(key)?.unshift(v);knowledge.filter(k=>k.source_id===key).forEach(k=>k.stale=true);event("source.versioned",s.title);return copy(v); },
