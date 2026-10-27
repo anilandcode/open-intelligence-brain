@@ -82,6 +82,7 @@ from .models import (
 )
 from .retrieval import SEARCH_INDEX_VERSION, dialect_name, ensure_fts, rebuild_fts
 from .schemas import (
+    AgentNoteRead,
     ApprovalRequest,
     BatchReviewRequest,
     BatchReviewResult,
@@ -113,6 +114,7 @@ from .schemas import (
     OverviewRead,
     ProactivityRead,
     ProactivityUpdate,
+    PromoteNoteRequest,
     ProposalRead,
     RejectRequest,
     RestorePreview,
@@ -120,6 +122,7 @@ from .schemas import (
     ResumeRequest,
     ReviewedRequest,
     SourceCreate,
+    SourceHitRead,
     SourceRead,
     SourceVersionCreate,
     SourceVersionRead,
@@ -143,6 +146,13 @@ from .schemas import (
     WatchSyncResult,
     WorkspaceCreate,
     WorkspaceRead,
+)
+from .scratchpad import (
+    ScratchpadError,
+    list_notes,
+    promote_note,
+    readable_note,
+    search_sources,
 )
 from .services import (
     add_source_version,
@@ -177,6 +187,7 @@ from .studio_api import router as studio_router
 # before lifespan's create_all runs, or usage_events never exists on a fresh
 # database and every /api/v1/usage* route 500s. Do not make this lazy.
 from .usage import top_used, track_batch, unused_knowledge, usage_summary
+from .vectors import ensure_pgvector
 from .watches import sync_watch
 
 settings = get_settings()
@@ -254,6 +265,9 @@ async def lifespan(app: FastAPI):
             logging.getLogger(__name__).info(
                 "No ranked full-text index on %s; using ILIKE fallback", dialect_name(db)
             )
+        # PostgreSQL with the vector extension searches embeddings in SQL.
+        if ensure_pgvector(db):
+            logging.getLogger(__name__).info("pgvector ready for embedding search")
     # Every deployment starts with a real workspace and a grant for the configured
     # token, so a single-company Brain works with no extra setup.
     with SessionLocal() as db:
@@ -987,6 +1001,69 @@ def sync_watch_route(
     except ConnectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return result.to_dict()
+
+
+@app.get("/api/v1/scratchpad", response_model=list[AgentNoteRead])
+def list_scratchpad(
+    topic: str = Query(default="", max_length=160),
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Agents' live working notes in this workspace, at sensitivities the caller may read."""
+    return list_notes(db, ReadScope.of(access), author=None, topic=topic, limit=200)
+
+
+@app.delete("/api/v1/scratchpad/{note_id}", status_code=204)
+def delete_scratch_note(
+    note_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    require_scope(access, "sources:write")
+    try:
+        note = readable_note(db, ReadScope.of(access), note_id, author=None)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    db.delete(note)
+    db.commit()
+
+
+@app.post("/api/v1/scratchpad/{note_id}/promote", response_model=SourceRead, status_code=201)
+def promote_scratch_note(
+    note_id: str,
+    payload: PromoteNoteRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """File a note as a source; its sentences go to the review queue."""
+    require_scope(access, "sources:write")
+    try:
+        note = readable_note(db, ReadScope.of(access), note_id, author=None)
+        source = promote_note(db, note, title=payload.title, actor=access)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ScratchpadError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    count = (
+        db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.source_id == source.id, Proposal.workspace_id == access.workspace_id
+            )
+        )
+        or 0
+    )
+    return source_view(db, source, count)
+
+
+@app.get("/api/v1/search/sources", response_model=list[SourceHitRead])
+def search_source_text(
+    q: str = Query(min_length=2, max_length=500),
+    limit: int = Query(default=10, ge=1, le=30),
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Sentences in readable sources, each labelled unreviewed or approved."""
+    return [hit.__dict__ for hit in search_sources(db, ReadScope.of(access), q, limit=limit)]
 
 
 @app.post("/api/v1/sources", response_model=SourceRead, status_code=201)

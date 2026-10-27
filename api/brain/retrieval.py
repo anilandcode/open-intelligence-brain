@@ -518,6 +518,13 @@ def vector_search(db: Session, query_vec: list[float], scope, limit: int = 20) -
     """
     if not query_vec:
         return []
+    from .vectors import pgvector_ready, pgvector_search
+
+    if pgvector_ready(db):
+        scope_sql, scope_params = _scope_clause(scope, "knowledge")
+        ids = pgvector_search(db, query_vec, scope_sql, scope_params, limit)
+        if ids is not None:
+            return ids
     try:
         rows = list(
             db.scalars(

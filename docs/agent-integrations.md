@@ -136,6 +136,10 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
 | `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. `kind="transcript"` keeps who said what on every evidence span. |
+| `scratch_write` | Keeps a short-lived working note for this agent (task state, findings). Expires (7 days by default), never searched or cited as knowledge. Gated by `memory:write`. |
+| `scratch_read` | This agent's own live notes, newest first, optionally by topic. Gated by `memory:read`. |
+| `scratch_promote` | Files one of the agent's notes as a source for human review. Gated by `sources:write`. |
+| `search_sources` | Read-only. Sentences from captured sources, including unreviewed ones, each labelled `unreviewed` or `approved` (with the knowledge id). Unreviewed text is evidence to check, never an answer. |
 | `get_knowledge` | One approved item in full: statement, rationale, evidence and its revision history |
 | `related_knowledge` | Approved items linked to one item: possible conflicts, similar wording, same source |
 | `context_pack` | A cited markdown brief of the approved knowledge relevant to a task, sized for a prompt (`max_chars`) |

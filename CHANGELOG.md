@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — agent working memory
+
+- **Agent scratchpad.** Agents keep short-lived working notes with the MCP
+  tools `scratch_write` and `scratch_read` (scopes `memory:write` /
+  `memory:read`). A note belongs to the credential that wrote it, expires
+  after 7 days by default (`BRAIN_SCRATCHPAD_DEFAULT_DAYS`, at most
+  `BRAIN_SCRATCHPAD_MAX_DAYS`), and is never searched, cited or answered
+  from. `scratch_promote` files a note as a source, so its claims reach the
+  review queue like any capture.
+- **Search over unreviewed sources.** `search_sources` (MCP) and
+  `GET /api/v1/search/sources` find sentences in the latest version of every
+  readable source, each labelled "unreviewed", or "approved" with the item
+  that rests on it. Agents are told to treat unreviewed text as evidence to
+  check, never as an answer.
+- **Working Memory page.** The console's Working Memory view is now live: it
+  lists agents' notes (promote or delete) and searches source text with the
+  same labels.
+- **pgvector.** On PostgreSQL with the `vector` extension, embeddings are
+  mirrored into a `vector` column by a trigger and searched in SQL with an
+  HNSW index per dimension, instead of loading every embedding into Python.
+  Without the extension nothing changes. CI's Postgres job now runs on
+  `pgvector/pgvector:pg16`, so both paths are tested.
+
 ## Unreleased — easier capture
 
 - **A Capture page.** One place to type, paste or dictate anything worth

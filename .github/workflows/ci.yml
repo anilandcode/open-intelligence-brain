@@ -34,7 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        # PostgreSQL 16 with the pgvector extension, so the SQL vector path is tested.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: brain
           POSTGRES_PASSWORD: brain-ci-only

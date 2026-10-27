@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { BatchReviewResult, Gardening, Watch, EvalQuestion, EvalReport, EvalRun, Entity, EntityChip, EntityRef, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction } from "./api";
+import type { AgentNote, BatchReviewResult, Gardening, SourceHit, Watch, EvalQuestion, EvalReport, EvalRun, Entity, EntityChip, EntityRef, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -47,6 +47,7 @@ export function createDemoClient(): BrainClient {
   const dated = (dates?: { as_of?: string | null; review_by?: string | null; expires_at?: string | null }) => { const frame = { as_of: dates?.as_of ?? null, review_by: dates?.review_by ?? null, expires_at: dates?.expires_at ?? null }; return { ...frame, ...flags(frame as Knowledge) }; };
   const evalRuns: EvalRun[] = [];
   const watches: Watch[] = [];
+  const notes: AgentNote[] = [{ id: "sample-note-1", author: "obk_agent…", topic: "renewal research", content: "Three customers asked about multi-year renewal pricing this week; check whether the discount cap applies to them.", sensitivity: "private", created_at: date(), expires_at: new Date(Date.now() + 6 * 86_400_000).toISOString(), promoted_source_id: null, promoted_at: null }];
   const entityByName = (name: string) => entities.find(e => e.name.toLowerCase() === name.toLowerCase() || e.aliases.some(a => a.toLowerCase() === name.toLowerCase()));
   const chipsFor = (refs: (EntityRef | EntityChip)[]): EntityChip[] => refs.map(ref => {
     const existing = entityByName(ref.name) ?? (() => { const created: Entity = { id: id("entity"), name: ref.name, kind: ref.kind as Entity["kind"], aliases: [], item_count: 0 }; entities.push(created); return created; })();
@@ -166,6 +167,10 @@ export function createDemoClient(): BrainClient {
     sources: async () => copy(sources), proposals: async () => copy(proposals.filter(p => p.status === "proposed")), knowledge: async (q = "") => copy(knowledge.filter(k => k.statement.toLowerCase().includes(q.toLowerCase()))),
     integrity: async () => ({ stale_count: knowledge.filter(k => k.stale).length, conflict_count: 0, issues: knowledge.filter(k => k.stale).map(k => ({kind: "stale_source" as const, knowledge_id: k.id, related_id: null, detail: "Sample source has a newer version. Review its approved knowledge."})) }),
     createSource: async payload => capture(payload),
+    scratchpad: async (topic = "") => copy(notes.filter(n => !topic || n.topic === topic)),
+    deleteNote: async key => {notes.splice(notes.indexOf(find(notes,key)),1);},
+    promoteNote: async (key, title = "") => {const n=find(notes,key);if(n.promoted_source_id)throw new Error("This note was already promoted");const s=capture({title:title||`Agent note: ${n.topic||n.content.slice(0,60)}`,kind:"note",sensitivity:n.sensitivity,content:n.content});n.promoted_source_id=s.id;n.promoted_at=date();return s;},
+    searchSources: async (query, limit = 10) => {const terms=query.toLowerCase().split(/\W+/).filter(t=>t.length>2);if(!terms.length)return [];const hits:SourceHit[]=[];sources.forEach(s=>s.content.split(/(?<=[.!?])\s+/).forEach(sentence=>{const score=terms.filter(t=>sentence.toLowerCase().includes(t)).length/terms.length;if(score>0){const k=knowledge.find(item=>item.status==="canonical"&&item.source_excerpt===sentence);hits.push({source_id:s.id,source_title:s.title,source_kind:s.kind,version:s.current_version,excerpt:sentence,speaker:null,status:k?"approved":"unreviewed",knowledge_id:k?.id ?? null,score});}}));return hits.sort((a,b)=>b.score-a.score).slice(0,limit);},
     capture: async payload => {const text=payload.text.trim();const content=payload.url?`${text}\n\nSource: ${payload.url}`:text;if(content.length<20)throw new Error("Too short to capture: add a few words.");const firstLine=text.split("\n").find(line=>line.trim())?.trim() ?? "";return capture({title:payload.title?.trim()||(firstLine.length>=3?firstLine.slice(0,80):payload.url||"Quick capture"),kind:payload.kind ?? "note",sensitivity:payload.sensitivity ?? "private",content});},
     watches: async () => copy(watches),
     createWatch: async payload => {if(watches.some(w=>w.provider===payload.provider&&w.folder_id===payload.folder_id))throw new Error("This folder is already watched");const w:Watch={id:id("watch"),provider:payload.provider,folder_id:payload.folder_id,label:payload.label ?? "",kind:payload.kind ?? "research",sensitivity:payload.sensitivity ?? "private",last_synced_at:null,last_result:"",created_at:date(),document_count:0};watches.push(w);event("watch.created",w.label||w.folder_id);return copy(w);},
