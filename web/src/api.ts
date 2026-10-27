@@ -140,6 +140,29 @@ export type Watch = {
 };
 export type WatchSyncResult = { added: string[]; updated: string[]; unchanged: number; deferred: number; errors: string[]; summary: string };
 
+export type AgentNote = {
+  id: string;
+  author: string;
+  topic: string;
+  content: string;
+  sensitivity: string;
+  created_at: string;
+  expires_at: string;
+  promoted_source_id: string | null;
+  promoted_at: string | null;
+};
+export type SourceHit = {
+  source_id: string;
+  source_title: string;
+  source_kind: string;
+  version: number;
+  excerpt: string;
+  speaker: string | null;
+  status: "unreviewed" | "approved";
+  knowledge_id: string | null;
+  score: number;
+};
+
 export type SourceVersion = {
   id: string;
   source_id: string;
@@ -561,6 +584,12 @@ export const api = {
   deleteWatch: (id: string) => request<void>(`/api/v1/watches/${id}`, { method: "DELETE" }),
   syncWatch: (id: string, accessToken: string) =>
     request<WatchSyncResult>(`/api/v1/watches/${id}/sync`, { method: "POST", body: JSON.stringify({ access_token: accessToken }) }),
+  scratchpad: (topic = "") => request<AgentNote[]>(`/api/v1/scratchpad${topic ? `?${new URLSearchParams({ topic })}` : ""}`),
+  deleteNote: (id: string) => request<void>(`/api/v1/scratchpad/${id}`, { method: "DELETE" }),
+  promoteNote: (id: string, title = "") =>
+    request<Source>(`/api/v1/scratchpad/${id}/promote`, { method: "POST", body: JSON.stringify({ title }) }),
+  searchSources: (query: string, limit = 10) =>
+    request<SourceHit[]>(`/api/v1/search/sources?${new URLSearchParams({ q: query, limit: String(limit) })}`),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
   approveProposal: (id: string, statement: string, rationale: string, tags?: string[], asNew?: boolean, entities?: EntityRef[], dates?: Timeframe) =>

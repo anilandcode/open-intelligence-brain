@@ -110,6 +110,35 @@ class WatchSyncResult(BaseModel):
     summary: str
 
 
+class AgentNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    author: str
+    topic: str
+    content: str
+    sensitivity: str
+    created_at: datetime
+    expires_at: datetime
+    promoted_source_id: str | None = None
+    promoted_at: datetime | None = None
+
+
+class PromoteNoteRequest(BaseModel):
+    title: str = Field(default="", max_length=240)
+
+
+class SourceHitRead(BaseModel):
+    source_id: str
+    source_title: str
+    source_kind: str
+    version: int
+    excerpt: str
+    speaker: str | None = None
+    status: str
+    knowledge_id: str | None = None
+    score: float
+
+
 class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

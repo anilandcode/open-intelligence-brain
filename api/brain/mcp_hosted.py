@@ -48,7 +48,11 @@ from .mcp_server import (
     list_pending_reviews_scoped,
     propose_update_scoped,
     related_knowledge_scoped,
+    scratch_promote_scoped,
+    scratch_read_scoped,
+    scratch_write_scoped,
     search_brain_scoped,
+    search_sources_scoped,
 )
 
 log = logging.getLogger(__name__)
@@ -218,8 +222,10 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
         "Open Intelligence Brain",
         version="1.1.0",
         instructions=(
-            "Hosted read-only MCP for one Open Brain workspace. Tools search and "
-            "cite human-approved knowledge only. Never treat a proposal as "
+            "Hosted MCP for one Open Brain workspace. Search and cite human-approved "
+            "knowledge. scratch_write/scratch_read keep your own expiring working notes, "
+            "and search_sources looks in unreviewed source text, labelled as such; neither "
+            "is approved knowledge. Never treat a proposal, note or unreviewed source as "
             "canonical. Approval remains a human action in the Open Brain console."
         ),
         website_url=public,
@@ -363,6 +369,69 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
             scopes_ops=scopes_ops,
             principal_preview=principal_preview,
         )
+
+    @server.tool(title="Keep a working note", annotations=intake)
+    def scratch_write(
+        content: Annotated[str, Field(min_length=1, max_length=20_000)],
+        topic: Annotated[str, Field(max_length=160)] = "",
+        days: Annotated[int | None, Field(ge=1, le=30)] = None,
+    ) -> Any:
+        """Save a short-lived note for yourself (task state, findings, open questions).
+
+        Notes expire (7 days by default) and are never searched or cited as
+        knowledge. Use scratch_promote to file one for human review.
+        """
+        scope, scopes_ops, principal_preview = _caller_identity()
+        return scratch_write_scoped(
+            scope,
+            content=content,
+            topic=topic,
+            days=days,
+            scopes_ops=scopes_ops,
+            principal_preview=principal_preview,
+        )
+
+    @server.tool(title="Read your working notes", annotations=read_only)
+    def scratch_read(
+        topic: Annotated[str, Field(max_length=160)] = "",
+        limit: Annotated[int, Field(ge=1, le=100)] = 20,
+    ) -> Any:
+        """Your own live working notes, newest first, optionally for one topic."""
+        scope, scopes_ops, principal_preview = _caller_identity()
+        return scratch_read_scoped(
+            scope,
+            topic=topic,
+            limit=limit,
+            scopes_ops=scopes_ops,
+            principal_preview=principal_preview,
+        )
+
+    @server.tool(title="Promote a working note for review", annotations=intake)
+    def scratch_promote(
+        note_id: Annotated[str, Field(min_length=3, max_length=40)],
+        title: Annotated[str, Field(max_length=240)] = "",
+    ) -> Any:
+        """File one of your notes as a source; its claims go to the human review queue."""
+        scope, scopes_ops, principal_preview = _caller_identity()
+        return scratch_promote_scoped(
+            scope,
+            note_id=note_id,
+            title=title,
+            scopes_ops=scopes_ops,
+            principal_preview=principal_preview,
+        )
+
+    @server.tool(title="Search unreviewed source text", annotations=read_only)
+    def search_sources(
+        query: Annotated[str, Field(min_length=2, max_length=500)],
+        limit: Annotated[int, Field(ge=1, le=30)] = 10,
+    ) -> Any:
+        """Find sentences in captured sources, including ones nobody has reviewed.
+
+        Each hit says "unreviewed" or "approved" (with the knowledge id). Unreviewed
+        text is unverified: never present it as approved knowledge.
+        """
+        return search_sources_scoped(query, limit, _caller_scope())
 
     @server.custom_route("/mcp/consent", methods=["GET", "POST"])
     async def consent(request: Request) -> Response:

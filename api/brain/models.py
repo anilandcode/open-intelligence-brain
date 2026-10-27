@@ -390,6 +390,30 @@ class WatchedDocument(Base):
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class AgentNote(Base):
+    """An agent's short-lived working note. Never knowledge, never cited as an answer.
+
+    A note expires on its own. Promoting one files it as an ordinary source,
+    so anything worth keeping still goes through review.
+    """
+
+    __tablename__ = "agent_notes"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    # Who wrote it: the credential's non-secret preview, so an agent reads its own notes.
+    author: Mapped[str] = mapped_column(String(120), index=True)
+    topic: Mapped[str] = mapped_column(String(160), default="", index=True)
+    content: Mapped[str] = mapped_column(Text)
+    sensitivity: Mapped[str] = mapped_column(String(40), default="private")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    promoted_source_id: Mapped[str | None] = mapped_column(ForeignKey("sources.id"), nullable=True)
+    promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class KnowledgeRevision(Base):
     __tablename__ = "knowledge_revisions"
     __table_args__ = (
