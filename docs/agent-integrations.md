@@ -132,7 +132,7 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | --- | --- |
 | `brain_status` | Counts sources, proposals, canonical items, and pending reviews |
 | `search_brain` | Searches only approved knowledge and returns exact evidence. Filters: `type`, `tag`, and `about` (an entity name) |
-| `ask_brain` | Produces a grounded synthesis with citations or abstains |
+| `ask_brain` | Produces a grounded answer with citations or abstains. With a chat model configured the answer is written in plain words, each sentence listing the knowledge ids it relies on (`sentences`); sentences that cannot be traced to their items are dropped |
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
 | `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. |

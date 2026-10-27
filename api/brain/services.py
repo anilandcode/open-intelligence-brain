@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
+from .answers import write_answer
 from .claims import CanonIndex, extract_claims
 from .config import get_settings
 from .critic import assess_proposal
@@ -45,6 +46,7 @@ from .llm import get_chat_model
 from .models import (
     AuditEvent,
     Entity,
+    EvalQuestion,
     Knowledge,
     KnowledgeEntity,
     KnowledgeRevision,
@@ -60,7 +62,7 @@ from .retrieval import (
     sync_fts_insert,
     sync_fts_update,
 )
-from .schemas import ChatResponse, Citation, SourceCreate
+from .schemas import AnswerSentence, ChatResponse, Citation, SourceCreate
 
 log = logging.getLogger(__name__)
 
@@ -1413,7 +1415,9 @@ def _semantic_support(question: str, items: list[Knowledge]) -> set[str]:
     return supported
 
 
-def answer_question(db: Session, scope: ReadScope, question: str) -> ChatResponse:
+def answer_question(
+    db: Session, scope: ReadScope, question: str, *, write: bool = True
+) -> ChatResponse:
     """Answer only from approved knowledge that actually addresses the question.
 
     Search ORs its terms for recall, so a single shared word is enough to come
@@ -1423,16 +1427,26 @@ def answer_question(db: Session, scope: ReadScope, question: str) -> ChatRespons
     cover most of the question's topic terms (or, with embeddings configured,
     be semantically close) before it is cited as an answer. Matches that fall
     short are returned as `near_matches`, never as citations.
+
+    With a chat model configured (and `write`), the answer is written in the
+    model's words from the matching items and checked sentence by sentence
+    (`answers.py`); otherwise it quotes the approved statements.
     """
-    candidates = search_knowledge(db, scope, question, limit=8)
+    candidates = search_knowledge(db, scope, question, limit=12)
     terms = _answer_terms(question)
     needed = _required_hits(len(terms))
     semantic = _semantic_support(question, candidates)
-    matches = [
+    scores = {item.id: coverage(terms, item) if terms else 0.0 for item in candidates}
+    answering = [
         item
         for item in candidates
-        if item.id in semantic or (terms and coverage(terms, item) * len(terms) >= needed - 1e-9)
-    ][:3]
+        if item.id in semantic or (terms and scores[item.id] * len(terms) >= needed - 1e-9)
+    ]
+    # Rerank: the fused search rank favours items that repeat one rare word;
+    # an answer should lead with the item that covers most of the question.
+    # Stable, so search order breaks ties.
+    answering.sort(key=lambda item: (-scores[item.id], item.id not in semantic))
+    matches = answering[:5]
     near = [item for item in candidates if item not in matches][:3]
     source_ids = {item.source_id for item in [*matches, *near]}
     # Scoped by the same permission as the matches, so a citation can never
@@ -1471,8 +1485,37 @@ def answer_question(db: Session, scope: ReadScope, question: str) -> ChatRespons
                 "or review the pending proposals first."
             )
         return ChatResponse(answer=answer, citations=[], grounded=False, near_matches=cite(near))
-    statements = " ".join(item.statement.rstrip(".") + "." for item in matches)
-    return ChatResponse(answer=statements, citations=cite(matches), grounded=True)
+    written = write_answer(question, matches) if write else None
+    if written is not None and written.sentences:
+        cited_ids = list(
+            dict.fromkeys(i for sentence in written.sentences for i in sentence.knowledge_ids)
+        )
+        by_id = {item.id: item for item in matches}
+        cited = [by_id[i] for i in cited_ids]
+        citations = cite(cited)
+        readable = {citation.knowledge_id for citation in citations}
+        sentences = [
+            AnswerSentence(text=sentence.text, knowledge_ids=list(sentence.knowledge_ids))
+            for sentence in written.sentences
+            if all(i in readable for i in sentence.knowledge_ids)
+        ]
+        if sentences:
+            return ChatResponse(
+                answer=" ".join(sentence.text for sentence in sentences),
+                citations=citations,
+                grounded=True,
+                written=True,
+                sentences=sentences,
+                dropped_sentences=written.dropped + len(written.sentences) - len(sentences),
+            )
+    quoted = matches[:3]
+    statements = " ".join(item.statement.rstrip(".") + "." for item in quoted)
+    return ChatResponse(
+        answer=statements,
+        citations=cite(quoted),
+        grounded=True,
+        dropped_sentences=written.dropped if written is not None else 0,
+    )
 
 
 def seed_demo(db: Session, workspace_id: str) -> None:
@@ -1622,6 +1665,19 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
         ).all(),
         key=lambda row: row.created_at,
     )
+    # The question set travels only with an export that can read everything
+    # it may cite; a member's export leaves it out.
+    eval_questions = (
+        list(
+            db.scalars(
+                select(EvalQuestion)
+                .where(EvalQuestion.workspace_id == workspace_id)
+                .order_by(EvalQuestion.created_at)
+            )
+        )
+        if {"public", "internal", "private"} <= scope.permitted
+        else []
+    )
     events = sorted(
         db.scalars(
             select(AuditEvent)
@@ -1746,6 +1802,17 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
         ],
         "knowledge_entities": [
             {"knowledge_id": row.knowledge_id, "entity_id": row.entity_id} for row in entity_links
+        ],
+        "eval_questions": [
+            {
+                "id": row.id,
+                "question": row.question,
+                "expected_ids": row.expected_ids or "[]",
+                "expect_abstain": row.expect_abstain,
+                "note": row.note or "",
+                "created_at": timestamp(row.created_at),
+            }
+            for row in eval_questions
         ],
         "audit_events": [
             {
@@ -1914,6 +1981,19 @@ def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
     db.flush()
     for row in backup.get("knowledge_entities", []):
         db.add(KnowledgeEntity(knowledge_id=row["knowledge_id"], entity_id=row["entity_id"]))
+    db.flush()
+    for row in backup.get("eval_questions", []):
+        db.add(
+            EvalQuestion(
+                **{
+                    key: value
+                    for key, value in row.items()
+                    if key not in ("created_at", "workspace_id")
+                },
+                workspace_id=workspace_id,
+                created_at=_parse_timestamp(row["created_at"]),
+            )
+        )
     db.flush()
     for row in backup["audit_events"]:
         db.add(

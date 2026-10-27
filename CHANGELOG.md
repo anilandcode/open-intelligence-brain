@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased — written answers and a question test set
+
+- **Answers in plain words, checked sentence by sentence.** With a chat model
+  configured, answers are written from the approved items that answer the
+  question, and every sentence lists the items it relies on. A sentence is
+  dropped if it cites nothing it was given, uses mostly words its items do
+  not contain, or has a number its items do not contain. If nothing
+  survives, the answer quotes the approved statements as before. The
+  Playground shows citation numbers per sentence and how many were dropped;
+  `ask_brain` returns the same `sentences`. `BRAIN_LLM_WRITE_ANSWERS=false`
+  turns this off.
+- **Better first citation.** Answering items are reranked by how much of the
+  question they cover, and up to five go to the writer.
+- **Question test set.** "Save as test question" in the Playground records
+  the question with the items it cited (or as one the Brain should not
+  answer). "Run" scores the whole set: passed, answered correctly, found in
+  the top 8, abstained correctly, false answers, and questions that need
+  updating. Runs are kept so changes can be compared. Owners and admins only;
+  also `python -m brain.answer_eval <workspace>` from a shell. The set is
+  included in full backups.
+
 ## Unreleased — people, companies and projects
 
 - **Entities.** Approved knowledge can now be linked to the people,

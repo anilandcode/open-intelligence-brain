@@ -296,6 +296,41 @@ class KnowledgeEntity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class EvalQuestion(Base):
+    """A question with a known answer, used to score retrieval and answers.
+
+    `expected_ids` lists approved items a correct answer cites (any one is
+    enough); `expect_abstain` marks a question the brain should not answer.
+    """
+
+    __tablename__ = "eval_questions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    question: Mapped[str] = mapped_column(Text)
+    expected_ids: Mapped[str] = mapped_column(Text, default="[]")
+    expect_abstain: Mapped[bool] = mapped_column(Boolean, default=False)
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class EvalRun(Base):
+    """One scored run of the question set, kept so changes can be compared."""
+
+    __tablename__ = "eval_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    label: Mapped[str] = mapped_column(String(120), default="")
+    # The run's summary metrics as JSON (see `answer_eval.summarize`).
+    summary: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class KnowledgeRevision(Base):
     __tablename__ = "knowledge_revisions"
     __table_args__ = (
