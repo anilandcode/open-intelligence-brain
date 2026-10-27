@@ -53,6 +53,11 @@ const developerNav: NavItem[] = [
 const settingsNav: NavItem[] = [{ id: "settings", label: "Settings", icon: ShieldCheck, future: true }];
 const navGroups = [{ label: "Workspace", items: workspaceNav }, { label: "Knowledge", items: knowledgeNav }, { label: "Operations", items: operationsNav }, { label: "Developer", items: developerNav }, { label: "Settings", items: settingsNav }];
 
+/** Preview pages are mock-ups: the demo shows them, the live console leaves them out. */
+function visibleNav(showPreviews: boolean) {
+  return navGroups.map(group => ({ ...group, items: group.items.filter(item => showPreviews || !item.future) })).filter(group => group.items.length > 0);
+}
+
 const navLabel = Object.fromEntries(
   navGroups.flatMap(group => group.items).map((item) => [item.id, item.label]),
 ) as Record<View, string>;
@@ -162,7 +167,8 @@ type PaletteItem = {
   run: () => void;
 };
 
-function CommandPalette({ knowledge, sources, onNavigate, onClose, focusFallbackRef }: {
+function CommandPalette({ knowledge, sources, showPreviews, onNavigate, onClose, focusFallbackRef }: {
+  showPreviews: boolean;
   knowledge: Knowledge[]; sources: Source[]; onNavigate: (view: View, record?: string) => void; onClose: () => void; focusFallbackRef: RefObject<HTMLButtonElement | null>;
 }) {
   const [query, setQuery] = useState("");
@@ -188,7 +194,7 @@ function CommandPalette({ knowledge, sources, onNavigate, onClose, focusFallback
   const items = useMemo<PaletteItem[]>(() => {
     const needle = query.toLowerCase().trim();
     const hit = (value: string) => !needle || value.toLowerCase().includes(needle);
-    const navRows = navGroups.flatMap(({label,items}) => items.map(item => ({ item, group: label })));
+    const navRows = visibleNav(showPreviews).flatMap(({label,items}) => items.map(item => ({ item, group: label })));
     const nav: PaletteItem[] = navRows.map(({ item, group }) => {
       const Icon = item.icon;
       return {
@@ -224,7 +230,7 @@ function CommandPalette({ knowledge, sources, onNavigate, onClose, focusFallback
       }));
     const filteredNav = nav.filter((item) => hit(item.label));
     return [...filteredNav, ...canon, ...library];
-  }, [query, knowledge, sources, onNavigate]);
+  }, [query, knowledge, sources, onNavigate, showPreviews]);
 
   function handleKey(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
@@ -744,7 +750,7 @@ export default function App() {
           <span className="nav-label">Personal</span>
           <button className={settingsSection === "Account" ? "active" : ""} aria-current={settingsSection === "Account" ? "page" : undefined} onClick={() => setSettingsSection("Account")}><span>Account</span> <small>Preview</small></button>
         </nav> : <nav aria-label="Primary navigation">
-          {navGroups.map(group => <AppNav key={group.label} label={group.label} items={group.items} view={view} proposalCount={loadedClient === client ? proposals.length : 0} onNavigate={navigate} />)}
+          {visibleNav(route.screen === "demo").map(group => <AppNav key={group.label} label={group.label} items={group.items} view={view} proposalCount={loadedClient === client ? proposals.length : 0} onNavigate={navigate} />)}
         </nav>}
         <div className="sidebar-footer">
           <div className="rail-status">
@@ -831,6 +837,7 @@ export default function App() {
         <CommandPalette
           knowledge={loadedClient === client ? knowledge : []}
           sources={loadedClient === client ? sources : []}
+          showPreviews={route.screen === "demo"}
           onNavigate={navigate}
           focusFallbackRef={menuButtonRef}
           onClose={() => setPaletteOpen(false)}

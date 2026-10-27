@@ -73,7 +73,7 @@ export function CaptureView({ onChanged, onNotice, onError }: { onChanged: () =>
       <section className="panel-card capture-card" aria-labelledby="quick-capture-heading">
         <h2 id="quick-capture-heading">New capture</h2>
         <p className="section-sub">Type, paste or dictate anything worth keeping. It is saved as a source and its sentences go to the Inbox for review. Nothing is approved automatically.</p>
-        {shared && <p className="capture-shared" role="status">Shared from {shared.url ? <strong>{shared.url}</strong> : "another app"}. Check it and save.</p>}
+        {shared?.question ? <p className="capture-shared" role="status">The Brain couldn’t answer <strong>“{shared.question}”</strong>. Write what you know; once the answer is approved, the question closes on its own.</p> : shared && <p className="capture-shared" role="status">Shared from {shared.url ? <strong>{shared.url}</strong> : "another app"}. Check it and save.</p>}
         <form onSubmit={save} className="capture-form">
           <div className="form-field">
             <div className="capture-text-heading"><label htmlFor="capture-text">What to capture</label>{Recognition && <button type="button" className={`secondary-button${listening ? " is-listening" : ""}`} onClick={dictate} aria-pressed={listening}>{listening ? <MicOff size={15} aria-hidden="true" /> : <Mic size={15} aria-hidden="true" />}{listening ? "Stop dictating" : "Dictate"}</button>}</div>

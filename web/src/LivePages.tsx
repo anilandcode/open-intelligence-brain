@@ -7,6 +7,7 @@ import { formatEntityText, parseEntityText } from "./entities";
 import { addDays, dateInput, fromDateInput, shortDate } from "./dates";
 import { GardeningPanel } from "./Gardening";
 import { EvalPanel } from "./Eval";
+import { TodayPanel, UnansweredPanel } from "./Today";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
 import { Button } from "@/components/arc/button/button";
@@ -102,6 +103,7 @@ export function OverviewView({
   const attentionCount = (integrity?.stale_count ?? 0) + (integrity?.conflict_count ?? 0);
   return (
     <div className="overview-layout">
+      <TodayPanel onNavigate={onNavigate} />
       <section className="workspace-brief" aria-label="Workspace guide">
         <div className="workspace-brief-copy">
           <span className="section-kicker">Sources → review → knowledge</span>
@@ -194,7 +196,7 @@ export function OverviewView({
           ) : <EmptyState icon={<BookOpen />} title="No canonical knowledge">Approve a proposal to begin building the Brain.</EmptyState>}
         </div>
       </section>
-      <GardeningPanel />
+      <div id="gardening"><GardeningPanel /></div>
     </div>
   );
 }
@@ -766,12 +768,13 @@ export function AskView() {
   const [asked, setAsked] = useState("");
   const [saved, setSaved] = useState("");
   const [evalVersion, setEvalVersion] = useState(0);
+  const [askCount, setAskCount] = useState(0);
   const suggestions = ["What position do we hold most strongly?", "Which lessons are supported by evidence?", "What has changed recently?"];
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setAsking(true); setError(""); setSaved("");
-    try { setResult(await client.chat(question)); setAsked(question); }
+    try { setResult(await client.chat(question)); setAsked(question); setAskCount((value) => value + 1); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "The question failed."); }
     finally { setAsking(false); }
   }
@@ -810,6 +813,7 @@ export function AskView() {
           {result.citations.length > 0 && <div className="citations"><h2>Evidence used</h2>{result.citations.map((citation, index) => <EvidenceCitation key={`${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
         </section>
       )}
+      <UnansweredPanel version={askCount} />
       <EvalPanel version={evalVersion} />
     </div>
   );

@@ -270,6 +270,18 @@ describe("App", () => {
     expect(captures).toBe(2); expect(content).toHaveValue("");
   });
 
+  it("leaves preview pages out of the live console but keeps them in the demo", async () => {
+    window.history.replaceState(null, "", "#/console/overview");
+    const { unmount } = render(<App/>);
+    await screen.findByRole("button", { name: "Working Memory" });
+    expect(screen.queryByRole("button", { name: "Turns Preview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Settings Preview" })).toBeNull();
+    unmount();
+    window.history.replaceState(null, "", "#/demo/overview");
+    render(<App/>);
+    expect(await screen.findByRole("button", { name: "Turns Preview" })).toBeInTheDocument();
+  });
+
   it("opens a source deep link and reports an unavailable record", async () => {
     window.history.replaceState(null, "", "#/demo/sources?record=missing-record");
     render(<App/>);

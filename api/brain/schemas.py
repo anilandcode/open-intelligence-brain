@@ -139,6 +139,32 @@ class SourceHitRead(BaseModel):
     score: float
 
 
+class UnansweredRead(BaseModel):
+    id: str
+    question: str
+    times_asked: int
+    via: str
+    near_ids: list[str]
+    status: str
+    first_asked_at: datetime
+    last_asked_at: datetime
+    resolved_at: datetime | None = None
+
+
+class TodayItemRead(BaseModel):
+    key: str
+    count: int
+    label: str
+    view: str
+    detail: str = ""
+
+
+class TodayRead(BaseModel):
+    generated_at: str
+    items: list[TodayItemRead]
+    top_unanswered: list[dict]
+
+
 class SourceRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

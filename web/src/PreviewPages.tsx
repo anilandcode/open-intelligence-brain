@@ -13,11 +13,6 @@ const providers = [
   { name: "OneDrive", kind: "Workspace", detail: "Organization files", icon: "OD" },
   { name: "Web URL", kind: "Web", detail: "Public articles and pages", icon: "↗" },
 ];
-const memories = [
-  { id: "mem-1", title: "Onboarding needs one named owner", source: "Customer interview", status: "Awaiting review", date: "Sep 22", related: "Assign one owner for the first customer week." },
-  { id: "mem-2", title: "Teams reuse decisions when rationale travels with them", source: "Product notes", status: "Linked to approved knowledge", date: "Sep 19", related: "Decision records include original rationale." },
-  { id: "mem-3", title: "Support requests cluster around setup handoff", source: "Support synthesis", status: "Awaiting review", date: "Sep 17", related: "No approved link yet" },
-];
 const requests = [
   { id: "req-a31", operation: "Search", status: "Success", latency: "42 ms", time: "10:42", detail: "Returned three cited knowledge items" },
   { id: "req-a30", operation: "Capture", status: "Success", latency: "210 ms", time: "10:38", detail: "Created a new versioned source" },
@@ -46,7 +41,6 @@ function PreviewContent({ view, demo, onImported, theme, onTheme, settingsSectio
 
   const filteredProviders = useMemo(() => providers.filter(p => `${p.name} ${p.kind}`.toLowerCase().includes(search.toLowerCase()) && (tab === "All" || p.kind === tab)), [search, tab]);
   const selectedProvider = providers.find(p => p.name === selected);
-  const selectedMemory = memories.find(m => m.id === selected);
   const selectedRequest = requests.find(r => r.id === selected);
   const selectedTurn = turns.find(t => t.id === selected);
 
@@ -72,7 +66,6 @@ function PreviewContent({ view, demo, onImported, theme, onTheme, settingsSectio
 
   if (view === "workspaces") return <div className="preview-page narrow-page"><Banner demo={demo}>Workspace browsing is a design preview. Tags organize material; they are not authorization boundaries.</Banner><Panel title="Workspaces" action={<button className="secondary-button" onClick={()=>setSelected("New workspace")}>New workspace · Preview</button>}><div className="preview-table-head"><span>Workspace</span><span>Knowledge</span><span>Activity</span></div><Row onClick={()=>setSelected("Personal Brain")}><strong>Personal Brain</strong><span>63 approved items</span><small>Today</small></Row><Row onClick={()=>setSelected("Product research")}><strong>Product research</strong><span>18 approved items</span><small>Yesterday</small></Row></Panel>{selected && <Detail title={selected} onClose={()=>setSelected(null)}><p>Sample workspace details and member roles. Management actions are not connected.</p><div className="detail-stat"><span>Sources</span><strong>24</strong></div><div className="detail-stat"><span>Approved knowledge</span><strong>63</strong></div></Detail>}</div>;
 
-  if (view === "working-memory") return <div className="preview-page narrow-page"><Banner demo={demo}/><div className="preview-toolbar"><label className="search-field"><Search size={17}/><input type="search" placeholder="Search working memory" value={search} onChange={e=>setSearch(e.target.value)}/></label><select aria-label="Memory status" value={tab} onChange={e=>setTab(e.target.value)}><option>All</option><option>Awaiting review</option><option>Linked to approved knowledge</option></select></div><Panel title="Working memory"><div className="preview-table-head"><span>Memory</span><span>Source</span><span>Status</span></div>{memories.filter(m=>`${m.title} ${m.source}`.toLowerCase().includes(search.toLowerCase())&&(tab==="All"||m.status===tab)).map(m=><Row key={m.id} onClick={()=>setSelected(m.id)}><strong>{m.title}</strong><span>{m.source}</span><small>{m.status}</small></Row>)}</Panel>{selectedMemory && <Detail title={selectedMemory.title} onClose={()=>setSelected(null)}><p>{selectedMemory.status}</p><div className="detail-stat"><span>Original source</span><strong>{selectedMemory.source}</strong></div><div className="detail-stat"><span>Date</span><strong>{selectedMemory.date}</strong></div><h3>Relationship to approved knowledge</h3><p>{selectedMemory.related}</p></Detail>}</div>;
 
   if (view === "graph") return <div className="preview-page graph-page"><Banner demo={demo}/><GraphPreview/></div>;
 
