@@ -1,5 +1,5 @@
 /** What a share sheet, bookmarklet or shortcut handed the console, if anything. */
-export type SharedCapture = { title: string; text: string; url: string; via: "share" | "clipper" };
+export type SharedCapture = { title: string; text: string; url: string; via: "share" | "clipper" | "console"; question?: string };
 
 const firstUrl = (value: string) => value.match(/https?:\/\/\S+/)?.[0] ?? "";
 
@@ -11,6 +11,9 @@ const firstUrl = (value: string) => value.match(/https?:\/\/\S+/)?.[0] ?? "";
  */
 export function readSharedCapture(location: Pick<Location, "search" | "hash"> = window.location): SharedCapture | null {
   const hashQuery = location.hash.includes("?") ? location.hash.slice(location.hash.indexOf("?") + 1) : "";
+  // "Capture an answer" from the couldn't-answer log.
+  const question = new URLSearchParams(hashQuery).get("question")?.trim();
+  if (question) return { title: question.slice(0, 240), text: "", url: "", via: "console", question };
   const sources: [string, SharedCapture["via"]][] = [[location.search.replace(/^\?/, ""), "share"], [hashQuery, "clipper"]];
   for (const [query, via] of sources) {
     const params = new URLSearchParams(query);

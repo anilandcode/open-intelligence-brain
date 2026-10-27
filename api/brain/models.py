@@ -414,6 +414,33 @@ class AgentNote(Base):
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class UnansweredQuestion(Base):
+    """A question the Brain could not answer from approved knowledge.
+
+    Repeats of the same question (same significant words) add to one row, so
+    the log shows what people keep asking. Asking again after the answer is
+    approved closes the row on its own.
+    """
+
+    __tablename__ = "unanswered_questions"
+    __table_args__ = (UniqueConstraint("workspace_id", "key", name="uq_unanswered_key"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    key: Mapped[str] = mapped_column(String(240))
+    question: Mapped[str] = mapped_column(Text)
+    times_asked: Mapped[int] = mapped_column(Integer, default=1)
+    via: Mapped[str] = mapped_column(String(20), default="console")
+    # JSON list of approved item ids that came close but did not answer it.
+    near_ids: Mapped[str] = mapped_column(Text, default="[]")
+    status: Mapped[str] = mapped_column(String(20), default="open", index=True)
+    first_asked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_asked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class KnowledgeRevision(Base):
     __tablename__ = "knowledge_revisions"
     __table_args__ = (

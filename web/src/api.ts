@@ -163,6 +163,20 @@ export type SourceHit = {
   score: number;
 };
 
+export type Unanswered = {
+  id: string;
+  question: string;
+  times_asked: number;
+  via: string;
+  near_ids: string[];
+  status: "open" | "answered" | "dismissed";
+  first_asked_at: string;
+  last_asked_at: string;
+  resolved_at: string | null;
+};
+export type TodayItem = { key: string; count: number; label: string; view: string; detail: string };
+export type Today = { generated_at: string; items: TodayItem[]; top_unanswered: { id: string; question: string; times_asked: number }[] };
+
 export type SourceVersion = {
   id: string;
   source_id: string;
@@ -584,6 +598,11 @@ export const api = {
   deleteWatch: (id: string) => request<void>(`/api/v1/watches/${id}`, { method: "DELETE" }),
   syncWatch: (id: string, accessToken: string) =>
     request<WatchSyncResult>(`/api/v1/watches/${id}/sync`, { method: "POST", body: JSON.stringify({ access_token: accessToken }) }),
+  today: () => request<Today>("/api/v1/today"),
+  unanswered: (status: "open" | "answered" | "dismissed" | "all" = "open") =>
+    request<Unanswered[]>(`/api/v1/unanswered?${new URLSearchParams({ status })}`),
+  dismissUnanswered: (id: string) =>
+    request<Unanswered>(`/api/v1/unanswered/${id}/dismiss`, { method: "POST" }),
   scratchpad: (topic = "") => request<AgentNote[]>(`/api/v1/scratchpad${topic ? `?${new URLSearchParams({ topic })}` : ""}`),
   deleteNote: (id: string) => request<void>(`/api/v1/scratchpad/${id}`, { method: "DELETE" }),
   promoteNote: (id: string, title = "") =>
