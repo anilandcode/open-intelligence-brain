@@ -72,7 +72,17 @@ class ProposalRead(BaseModel):
     critic_notes: str = ""
     summary: str = ""
     tags: str = "[]"
+    relation: str = "new"
+    target_knowledge_id: str | None = None
+    # Wording of the target, only when the caller may read it.
+    target_statement: str = ""
+    confidence: float | None = None
     created_at: datetime
+
+    @field_validator("relation", mode="before")
+    @classmethod
+    def _relation_text(cls, value):
+        return value or "new"
 
 
 class ApprovalRequest(BaseModel):
@@ -80,6 +90,9 @@ class ApprovalRequest(BaseModel):
     rationale: str | None = Field(default=None, max_length=10_000)
     # None keeps the proposal's tags; a list (even empty) replaces them.
     tags: list[str] | None = Field(default=None, max_length=12)
+    # An `update` or `contradiction` proposal revises its target by default.
+    # True adds it as a separate approved item instead.
+    as_new: bool = False
 
 
 class RejectRequest(BaseModel):

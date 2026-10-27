@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — model-written claims and agent tools
+
+- **Claims written by a model, pinned to exact quotes.** Set
+  `BRAIN_LLM_BASE_URL` (plus `BRAIN_LLM_API_KEY`, `BRAIN_LLM_MODEL`) to any
+  OpenAI-compatible chat endpoint and intake proposes self-contained claims
+  instead of raw sentences. Every claim must quote the source verbatim or it is
+  dropped, and the quote is stored as the proposal's span. Proposals carry the
+  model's confidence. Without a model, or when it fails, the deterministic
+  extractor runs as before. Limits: `BRAIN_LLM_WINDOW_CHARS`,
+  `BRAIN_LLM_MAX_WINDOWS`, `BRAIN_LLM_MAX_CLAIMS_PER_VERSION`.
+- **Updates instead of duplicates.** A proposal that changes an approved fact
+  is labelled "Updates existing" (or "Contradicts existing") and shows the
+  current wording. Approving it revises that item, keeping its history and
+  recording the new source on the revision. "Add as a separate item" keeps the
+  old behaviour (`as_new: true` on approve).
+- **Agent tools.** `get_knowledge`, `related_knowledge` and `context_pack` let
+  agents read an item in depth, follow its links and get a cited brief for a
+  task. `propose_update` lets an agent suggest a correction with evidence; it
+  lands in the review queue and changes nothing until approved.
+
 ## Unreleased — a reviewable intake and honest answers
 
 - **Intake proposes less, and better.** A source version no longer turns every

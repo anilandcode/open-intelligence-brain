@@ -78,6 +78,20 @@ class Settings(BaseSettings):
     # (cosine, 0..1) counts as answering it even when the wording differs.
     answer_min_similarity: float = 0.55
 
+    # Optional chat model (any OpenAI-compatible `/chat/completions`) used to
+    # extract self-contained claims at capture. Unset keeps the deterministic
+    # extractor. On the VM this can be the LLM proxy: http://127.0.0.1:6799/v1
+    llm_base_url: str = ""
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout: float = 45.0
+    # Model extraction reads the source in windows of this many characters,
+    # at most `llm_max_windows` per version, and proposes at most
+    # `llm_max_claims_per_version` claims.
+    llm_window_chars: int = 4000
+    llm_max_windows: int = 8
+    llm_max_claims_per_version: int = 25
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property

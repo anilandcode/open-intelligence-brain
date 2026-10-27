@@ -56,4 +56,23 @@ describe("review inbox", () => {
     fireEvent.click(dismiss);
     await waitFor(() => expect(dismissSourceProposals).toHaveBeenCalledWith("s1", expect.any(String)));
   });
+
+  it("shows what an update would revise and can add it as a separate item", async () => {
+    const approveProposal = vi.fn(async () => ({}) as Awaited<ReturnType<BrainClient["approveProposal"]>>);
+    const update: Proposal = { ...proposal("p9", "s9", "Pricing 2026", "Enterprise customers pay 1500 per seat."), relation: "update", target_knowledge_id: "k1", target_statement: "Enterprise customers pay 1200 per seat.", confidence: 0.82 };
+    const onNotice = vi.fn();
+    render(
+      <BrainClientContext.Provider value={{ ...createDemoClient(), approveProposal } as BrainClient}>
+        <InboxView proposals={[update]} onChanged={vi.fn(async () => {})} onNotice={onNotice} onError={vi.fn()} />
+      </BrainClientContext.Provider>,
+    );
+    expect(screen.getByText("Updates existing")).toBeTruthy();
+    expect(screen.getByText("82% confident")).toBeTruthy();
+    expect(screen.getByText("Enterprise customers pay 1200 per seat.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Approve as revision/ }));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p9", update.statement, "", [], false));
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Approved. The existing item was revised and keeps its history."));
+    fireEvent.click(screen.getByLabelText("Add as a separate item instead of revising it"));
+    expect(screen.getByRole("button", { name: /Approve to Brain/ })).toBeTruthy();
+  });
 });

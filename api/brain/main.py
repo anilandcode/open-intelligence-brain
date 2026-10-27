@@ -43,6 +43,7 @@ from .migrate import (
     add_knowledge_embedding,
     add_knowledge_summary_tags,
     add_nullable_evidence_span,
+    add_proposal_relation,
     add_proposal_summary_tags,
     add_workspace_columns,
 )
@@ -178,6 +179,10 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).info(
             "Added proposal summary/tags columns: %s", ", ".join(enriched)
         )
+    # Records how each proposal relates to approved knowledge (new/update/contradiction).
+    related = add_proposal_relation()
+    if related:
+        logging.getLogger(__name__).info("Added proposal relation columns: %s", ", ".join(related))
     # Carries proposal summary/tags onto approved knowledge for topic filters.
     tagged = add_knowledge_summary_tags()
     if tagged:
@@ -307,8 +312,52 @@ def read_scope(access: WorkspaceAccess = Depends(resolve_access)) -> ReadScope:
     return ReadScope.of(access)
 
 
-def proposal_view(proposal: Proposal, source_title: str) -> ProposalRead:
-    return ProposalRead.model_validate(proposal).model_copy(update={"source_title": source_title})
+def proposal_view(
+    proposal: Proposal, source_title: str, targets: dict[str, str] | None = None
+) -> ProposalRead:
+    """`targets` maps knowledge ids the caller may read to their wording.
+
+    A target outside the caller's scope is reported as a plain `new` proposal
+    with no id, so an update proposal never reveals private knowledge.
+    """
+    view = ProposalRead.model_validate(proposal).model_copy(update={"source_title": source_title})
+    target = proposal.target_knowledge_id
+    if target and targets is not None and target in targets:
+        return view.model_copy(update={"target_statement": targets[target]})
+    if target:
+        return view.model_copy(update={"relation": "new", "target_knowledge_id": None})
+    return view
+
+
+def readable_targets(db: Session, scope: ReadScope, proposals: list[Proposal]) -> dict[str, str]:
+    ids = {p.target_knowledge_id for p in proposals if p.target_knowledge_id}
+    if not ids:
+        return {}
+    rows = db.execute(
+        scope.apply(
+            select(Knowledge.id, Knowledge.statement).where(
+                Knowledge.id.in_(ids), Knowledge.status == "canonical"
+            ),
+            Knowledge,
+        )
+    ).all()
+    return dict(rows)
+
+
+def update_target_for(
+    db: Session, access: WorkspaceAccess, proposal: Proposal, as_new: bool
+) -> Knowledge | None:
+    """The approved item this proposal should revise, or None to add it as new."""
+    if as_new or proposal.relation not in ("update", "contradiction"):
+        return None
+    if not proposal.target_knowledge_id:
+        return None
+    try:
+        return require_in_workspace(db, access, Knowledge, proposal.target_knowledge_id)
+    except HTTPException:
+        # Not readable by this reviewer (or gone): they cannot judge the
+        # change, so the proposal is approved as a separate item.
+        return None
 
 
 def source_view(db: Session, source: Source, proposal_count: int = 0) -> SourceRead:
@@ -877,7 +926,8 @@ def list_proposals(
             Proposal,
         ).order_by(Proposal.created_at.desc())
     ).all()
-    return [proposal_view(proposal, title) for proposal, title in rows]
+    targets = readable_targets(db, scope, [proposal for proposal, _ in rows])
+    return [proposal_view(proposal, title, targets) for proposal, title in rows]
 
 
 @app.post("/api/v1/proposals/{proposal_id}/approve", response_model=KnowledgeRead)
@@ -891,7 +941,13 @@ def approve(
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     try:
         item = approve_proposal(
-            db, proposal, payload.statement, payload.rationale, actor=access, tags=payload.tags
+            db,
+            proposal,
+            payload.statement,
+            payload.rationale,
+            actor=access,
+            tags=payload.tags,
+            update_target=update_target_for(db, access, proposal, payload.as_new),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -943,7 +999,14 @@ def review_batch(
             continue
         try:
             if payload.action == "approve":
-                item = approve_proposal(db, proposal, None, None, actor=access)
+                item = approve_proposal(
+                    db,
+                    proposal,
+                    None,
+                    None,
+                    actor=access,
+                    update_target=update_target_for(db, access, proposal, as_new=False),
+                )
                 record_review_with_engine(proposal, "approve", proposal.engine_memory_id)
                 result.approved.append(item.id)
             else:

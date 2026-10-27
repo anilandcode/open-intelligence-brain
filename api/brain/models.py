@@ -1,7 +1,16 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -190,6 +199,15 @@ class Proposal(Base):
     # the review queue is useful with no provider. `tags` is a JSON string list.
     summary: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[str] = mapped_column(Text, default="[]")
+    # How this candidate relates to approved knowledge, decided at intake:
+    # `new`, `update` (same subject, changed content) or `contradiction`
+    # (opposite polarity). For the latter two `target_knowledge_id` names the
+    # item; approving revises that item with this proposal's evidence instead
+    # of adding a near-copy. Advisory only: the reviewer can approve as new.
+    relation: Mapped[str] = mapped_column(String(20), default="new", server_default="new")
+    target_knowledge_id: Mapped[str | None] = mapped_column(String(32), nullable=True, default=None)
+    # The extractor's own 0..1 confidence, when a model produced the claim.
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")

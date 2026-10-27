@@ -40,8 +40,12 @@ from .mcp_server import (
     ask_brain_scoped,
     brain_status_scoped,
     capture_source_scoped,
+    context_pack_scoped,
+    get_knowledge_scoped,
     inspect_brain_integrity_scoped,
     list_pending_reviews_scoped,
+    propose_update_scoped,
+    related_knowledge_scoped,
     search_brain_scoped,
 )
 
@@ -284,6 +288,53 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
             content=content,
             kind=kind,
             sensitivity=sensitivity,
+            scopes_ops=scopes_ops,
+            principal_preview=principal_preview,
+        )
+
+    @server.tool(title="Get one approved knowledge item", annotations=read_only)
+    def get_knowledge(
+        knowledge_id: Annotated[str, Field(min_length=3, max_length=40)],
+    ) -> Any:
+        """Return one approved item with its evidence and full revision history."""
+        return get_knowledge_scoped(knowledge_id, _caller_scope())
+
+    @server.tool(title="Find related approved knowledge", annotations=read_only)
+    def related_knowledge(
+        knowledge_id: Annotated[str, Field(min_length=3, max_length=40)],
+        limit: Annotated[int, Field(ge=1, le=20)] = 8,
+    ) -> Any:
+        """List approved items from the same source, with similar wording, or possibly conflicting."""
+        return related_knowledge_scoped(knowledge_id, limit, _caller_scope())
+
+    @server.tool(title="Build a context pack for a task", annotations=read_only)
+    def context_pack(
+        task: Annotated[str, Field(min_length=3, max_length=1_000)],
+        limit: Annotated[int, Field(ge=1, le=20)] = 10,
+        max_chars: Annotated[int, Field(ge=200, le=12_000)] = 3_000,
+    ) -> Any:
+        """Return a compact, cited brief of approved knowledge relevant to a task, sized for a prompt."""
+        return context_pack_scoped(task, limit, max_chars, _caller_scope())
+
+    @server.tool(title="Suggest a correction for review", annotations=intake)
+    def propose_update(
+        knowledge_id: Annotated[str, Field(min_length=3, max_length=40)],
+        statement: Annotated[str, Field(min_length=10, max_length=2_000)],
+        reason: Annotated[str, Field(min_length=3, max_length=1_000)],
+        evidence: Annotated[str, Field(min_length=20, max_length=20_000)],
+    ) -> Any:
+        """Suggest new wording for an approved item, with the evidence for it, for HUMAN review.
+
+        Never changes approved knowledge: a person must approve the suggestion in
+        the console, which then revises the item with this evidence.
+        """
+        scope, scopes_ops, principal_preview = _caller_identity()
+        return propose_update_scoped(
+            scope,
+            knowledge_id=knowledge_id,
+            statement=statement,
+            reason=reason,
+            evidence=evidence,
             scopes_ops=scopes_ops,
             principal_preview=principal_preview,
         )
