@@ -56,6 +56,7 @@ from .migrate import (
     add_grant_scope_and_expiry,
     add_knowledge_embedding,
     add_knowledge_summary_tags,
+    add_knowledge_timeframe,
     add_nullable_evidence_span,
     add_proposal_relation,
     add_proposal_summary_tags,
@@ -114,6 +115,7 @@ from .schemas import (
     RestorePreview,
     RestoreRequest,
     ResumeRequest,
+    ReviewedRequest,
     SourceCreate,
     SourceRead,
     SourceVersionCreate,
@@ -124,6 +126,7 @@ from .schemas import (
     StopRequest,
     SupersedeRequest,
     SuspendRequest,
+    TimeframeUpdate,
     TokenCreate,
     TokenListRead,
     TokenRead,
@@ -143,9 +146,12 @@ from .services import (
     create_source_with_proposals,
     export_workspace_data,
     integrity_snapshot,
+    is_due_for_review,
+    is_expired,
     knowledge_is_stale,
     knowledge_revision_count,
     latest_source_version,
+    mark_reviewed,
     overview,
     record_review_with_engine,
     reject_proposal,
@@ -153,6 +159,7 @@ from .services import (
     restore_workspace,
     search_knowledge,
     seed_demo,
+    set_timeframe,
     supersede_knowledge,
     sync_derived_proposals,
 )
@@ -211,6 +218,11 @@ async def lifespan(app: FastAPI):
     related = add_proposal_relation()
     if related:
         logging.getLogger(__name__).info("Added proposal relation columns: %s", ", ".join(related))
+    timeframe = add_knowledge_timeframe()
+    if timeframe:
+        logging.getLogger(__name__).info(
+            "Added knowledge time frame columns: %s", ", ".join(timeframe)
+        )
     # Carries proposal summary/tags onto approved knowledge for topic filters.
     tagged = add_knowledge_summary_tags()
     if tagged:
@@ -417,6 +429,8 @@ def knowledge_view(
                 EntityChip(id=entity.id, name=entity.name, kind=entity.kind)
                 for entity in entities or []
             ],
+            "due_for_review": is_due_for_review(item),
+            "expired": is_expired(item),
         }
     )
 
@@ -1018,6 +1032,7 @@ def approve(
                 if payload.entities is not None
                 else None
             ),
+            timeframe=payload.timeframe(),
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1162,6 +1177,40 @@ def supersede(
         item = supersede_knowledge(
             db, item, payload.statement, payload.rationale, payload.change_note, actor=access
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return knowledge_views(db, ReadScope.of(access), [item])[0]
+
+
+@app.patch("/api/v1/knowledge/{knowledge_id}/timeframe", response_model=KnowledgeRead)
+def patch_timeframe(
+    knowledge_id: str,
+    payload: TimeframeUpdate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Set or clear an item's as-of, review-by and expiry dates (audited)."""
+    require_scope(access, "reviews:write")
+    item = require_in_workspace(db, access, Knowledge, knowledge_id)
+    try:
+        item = set_timeframe(db, item, payload.changes(), actor=access)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return knowledge_views(db, ReadScope.of(access), [item])[0]
+
+
+@app.post("/api/v1/knowledge/{knowledge_id}/reviewed", response_model=KnowledgeRead)
+def post_reviewed(
+    knowledge_id: str,
+    payload: ReviewedRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """A person confirms the item still holds; schedules the next check."""
+    require_scope(access, "reviews:write")
+    item = require_in_workspace(db, access, Knowledge, knowledge_id)
+    try:
+        item = mark_reviewed(db, item, payload.next_review_days, actor=access)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return knowledge_views(db, ReadScope.of(access), [item])[0]
@@ -1581,6 +1630,42 @@ def get_routine_digest(
         "summary": digest.summary,
         "formatted": format_digest(digest),
     }
+
+
+@app.get("/api/v1/gardening")
+def get_gardening(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
+    """Approved knowledge that needs a person: due, expired, changed, conflicting,
+    duplicated or unused. Scoped like every read."""
+    from .gardening import build_gardening
+
+    return build_gardening(db, scope).to_dict()
+
+
+@app.post("/api/v1/routines/gardening/send")
+def send_gardening_digest(
+    force: bool = False,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Send the gardening report through Hermes (owners and admins).
+
+    Not re-sent within `BRAIN_GARDENING_MIN_DAYS` unless `force`, so a weekly
+    cron that fires twice does not message twice.
+    """
+    from .gardening import send_gardening
+
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can send the gardening digest",
+        )
+    return send_gardening(
+        db,
+        ReadScope.of(access),
+        workspace_name=access.workspace.name,
+        force=force,
+        actor=access,
+    )
 
 
 @app.get("/api/v1/usage")

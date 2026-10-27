@@ -4,6 +4,8 @@ import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, Arrow
 import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion, StagedAction } from "./api";
 import { useBrainClient } from "./client";
 import { formatEntityText, parseEntityText } from "./entities";
+import { addDays, dateInput, fromDateInput, shortDate } from "./dates";
+import { GardeningPanel } from "./Gardening";
 import { EvalPanel } from "./Eval";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
@@ -180,7 +182,7 @@ export function OverviewView({
                       <td><span className="version-chip">v{item.version}</span></td>
                       <td className="num overview-table-age">{timeAgo(item.approved_at)}</td>
                       <td className="num">
-                        {item.stale || item.conflict_ids.length
+                        {needsAttention(item)
                           ? <TriangleAlert size={16} className="attention-icon" aria-label="Needs attention" />
                           : <CheckCircle2 size={16} className="verified-icon" aria-label="Verified" />}
                       </td>
@@ -192,6 +194,7 @@ export function OverviewView({
           ) : <EmptyState icon={<BookOpen />} title="No canonical knowledge">Approve a proposal to begin building the Brain.</EmptyState>}
         </div>
       </section>
+      <GardeningPanel />
     </div>
   );
 }
@@ -395,13 +398,15 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const target = proposal.relation && proposal.relation !== "new" && proposal.target_knowledge_id ? proposal.target_statement || "" : null;
   const [asNew, setAsNew] = useState(false);
   const [entityText, setEntityText] = useState(formatEntityText(proposal.entities));
+  const [reviewBy, setReviewBy] = useState(proposal.time_sensitive ? dateInput(addDays(90)) : "");
+  const [asOf, setAsOf] = useState("");
 
   async function approve(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
     try {
       const edited = tagText.split(",").map((tag) => tag.trim()).filter(Boolean);
-      await client.approveProposal(proposal.id, statement, rationale, edited, asNew, parseEntityText(entityText));
+      await client.approveProposal(proposal.id, statement, rationale, edited, asNew, parseEntityText(entityText), { review_by: fromDateInput(reviewBy), ...(asOf ? { as_of: fromDateInput(asOf) } : {}) });
       onNotice(target !== null && !asNew ? "Approved. The existing item was revised and keeps its history." : "Proposal approved and added to canonical knowledge.");
       await onChanged();
     } catch (requestError) {
@@ -439,6 +444,10 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
             <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
             <Textarea id={`rationale-${proposal.id}`} label="Why we believe this" description="Internal reasoning" value={rationale} onChange={(event) => setRationale(event.target.value)} rows={4} />
             <Input id={`tags-${proposal.id}`} label="Tags" description="Comma separated. Used to filter the Brain and agent searches." value={tagText} onChange={(event) => setTagText(event.target.value)} placeholder="pricing, onboarding" />
+            <div className="date-row">
+              <Input id={`as-of-${proposal.id}`} type="date" label="True as of" description="Optional. Leave blank to use the approval date." value={asOf} onChange={(event) => setAsOf(event.target.value)} />
+              <Input id={`review-by-${proposal.id}`} type="date" label="Review by" description={proposal.time_sensitive ? "Suggested: this looks like something that changes." : "Optional. When someone should check it again."} value={reviewBy} onChange={(event) => setReviewBy(event.target.value)} />
+            </div>
             <Input id={`entities-${proposal.id}`} label="People, companies and projects" description="Comma separated. Add the kind in brackets: person, company or project. Anything else is a topic." value={entityText} onChange={(event) => setEntityText(event.target.value)} placeholder="Dana Lee (person), Acme (company)" />
           </section>
           <aside className="evidence-panel">
@@ -487,6 +496,8 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   );
 }
 
+const needsAttention = (item: Knowledge) => item.stale || item.conflict_ids.length > 0 || !!item.due_for_review || !!item.expired;
+
 export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, onError }: { recordId?: string; onSelect: (id: string | null) => void; initial: Knowledge[]; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   const [query, setQuery] = useState("");
   const selectedId = recordId;
@@ -496,7 +507,7 @@ export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, on
     const needle = query.toLowerCase().trim();
     const rows = initial.filter((item) => {
       const matchesText = !needle || `${item.statement} ${item.rationale} ${item.type} ${item.source_title}`.toLowerCase().includes(needle);
-      const matchesFilter = filter === "all" || item.stale || item.conflict_ids.length > 0;
+      const matchesFilter = filter === "all" || needsAttention(item);
       return matchesText && matchesFilter;
     });
     return rows.sort(BRAIN_SORTS[sort].compare);
@@ -508,7 +519,7 @@ export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, on
         <search><form action="/" method="get" onSubmit={(event) => event.preventDefault()}><label className="sr-only" htmlFor="brain-search">Search approved knowledge</label><div className="search-field"><Search size={18} aria-hidden="true" /><input id="brain-search" name="q" type="search" placeholder="Search claims, decisions, stories, language…" value={query} onChange={(event) => setQuery(event.target.value)} /></div></form></search>
         <div className="filter-tabs" aria-label="Knowledge filters">
           <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All knowledge <span>{initial.length}</span></button>
-          <button className={filter === "attention" ? "active" : ""} onClick={() => setFilter("attention")}>Needs attention <span>{initial.filter((item) => item.stale || item.conflict_ids.length).length}</span></button>
+          <button className={filter === "attention" ? "active" : ""} onClick={() => setFilter("attention")}>Needs attention <span>{initial.filter(needsAttention).length}</span></button>
         </div>
         <div className="segmented segmented--sort" role="group" aria-label="Sort approved knowledge">
           {BRAIN_SORT_ORDER.map((key) => (
@@ -556,15 +567,49 @@ function KnowledgeCard({ item, onChanged, onNotice, onError }: { item: Knowledge
     } finally { setSaving(false); }
   }
 
-  const attention = item.stale || item.conflict_ids.length > 0;
+  const attention = needsAttention(item);
+  const [dates, setDates] = useState({ as_of: dateInput(item.as_of), review_by: dateInput(item.review_by), expires_at: dateInput(item.expires_at) });
+  const [dating, setDating] = useState(false);
+
+  async function confirmStillTrue() {
+    setDating(true);
+    try { await client.markReviewed(item.id, 90); onNotice("Marked as still true. Next review in 90 days."); await onChanged(); }
+    catch (requestError) { onError(requestError instanceof Error ? requestError.message : "Could not mark it reviewed."); }
+    finally { setDating(false); }
+  }
+
+  async function saveDates(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDating(true);
+    try {
+      await client.setTimeframe(item.id, { as_of: fromDateInput(dates.as_of), review_by: fromDateInput(dates.review_by), expires_at: fromDateInput(dates.expires_at) });
+      onNotice("Dates saved. The wording and its history are unchanged.");
+      await onChanged();
+    } catch (requestError) { onError(requestError instanceof Error ? requestError.message : "Could not save the dates."); }
+    finally { setDating(false); }
+  }
   return (
     <article className={`knowledge-card ${attention ? "knowledge-card--attention" : ""}`}>
       <div className="knowledge-card-icon">{attention ? <TriangleAlert size={18} /> : <BookOpen size={18} />}</div>
       <div className="knowledge-card-main">
-        <div className="knowledge-card-meta"><span className="type-chip">{item.type}</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span>{item.stale && <span className="warning-chip">Source updated</span>}{item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}</div>
+        <div className="knowledge-card-meta"><span className="type-chip">{item.type}</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span>{item.stale && <span className="warning-chip">Source updated</span>}{item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}{item.expired && <span className="warning-chip">Expired {shortDate(item.expires_at)}</span>}{!item.expired && item.due_for_review && <span className="warning-chip">Due for review</span>}{item.as_of && <span>As of {shortDate(item.as_of)}</span>}{!item.due_for_review && item.review_by && <span>Review by {shortDate(item.review_by)}</span>}</div>
         <h2>{item.statement}</h2><p>{item.rationale}</p>
         {(item.entities ?? []).length > 0 && <p className="entity-chips" aria-label="About">{(item.entities ?? []).map((chip) => <a key={chip.id ?? chip.name} className="entity-chip" href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/people?record=${encodeURIComponent(chip.id ?? "")}`}>{chip.name}<small>{chip.kind}</small></a>)}</p>}
         <section className="knowledge-evidence" aria-label="Exact source evidence"><h3>Exact source evidence</h3><blockquote>{item.source_excerpt}</blockquote><a href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(item.source_id)}`}>Inspect original source and versions</a></section>
+        <details className="history-disclosure">
+          <summary><Clock3 size={15} aria-hidden="true" /> Dates{item.last_reviewed_at ? ` · last confirmed ${shortDate(item.last_reviewed_at)}` : ""}</summary>
+          <div className="dates-panel">
+            <button className="secondary-button" type="button" disabled={dating} onClick={confirmStillTrue}><CheckCircle2 size={15} aria-hidden="true" /> Still true, review again in 90 days</button>
+            <form className="revision-form" onSubmit={saveDates}>
+              <div className="date-row">
+                <div className="form-field"><label htmlFor={`as-of-${item.id}`}>True as of</label><input id={`as-of-${item.id}`} type="date" value={dates.as_of} onChange={(event) => setDates({ ...dates, as_of: event.target.value })} /></div>
+                <div className="form-field"><label htmlFor={`review-by-${item.id}`}>Review by</label><input id={`review-by-${item.id}`} type="date" value={dates.review_by} onChange={(event) => setDates({ ...dates, review_by: event.target.value })} /></div>
+                <div className="form-field"><label htmlFor={`expires-${item.id}`}>Stop using after</label><input id={`expires-${item.id}`} type="date" value={dates.expires_at} onChange={(event) => setDates({ ...dates, expires_at: event.target.value })} /></div>
+              </div>
+              <button className="primary-button" type="submit" disabled={dating}>Save dates</button>
+            </form>
+          </div>
+        </details>
         <details className="history-disclosure" onToggle={(event) => { if (event.currentTarget.open) void loadHistory(); }}>
           <summary><History size={15} aria-hidden="true" /> {item.revision_count} {item.revision_count === 1 ? "revision" : "revisions"} · inspect or supersede</summary>
           <div className="history-layout">

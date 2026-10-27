@@ -27,6 +27,8 @@ from .services import (
     conflict_map,
     create_source_with_proposals,
     integrity_snapshot,
+    is_due_for_review,
+    is_expired,
     knowledge_is_stale,
     knowledge_revision_count,
     overview,
@@ -66,6 +68,10 @@ class BrainHit(BaseModel):
     tags: list[str] = Field(default_factory=list)
     # Names of the people, companies, projects and topics this item is about.
     entities: list[str] = Field(default_factory=list)
+    # Time frame: when it was true, and whether a person should recheck it.
+    as_of: str | None = None
+    due_for_review: bool = False
+    expired: bool = False
 
 
 class BrainSearchResult(BaseModel):
@@ -79,6 +85,8 @@ class CitationResult(BaseModel):
     source_id: str
     source_title: str
     excerpt: str
+    due_for_review: bool = False
+    expired: bool = False
 
 
 class AnswerSentenceResult(BaseModel):
@@ -292,6 +300,9 @@ def _hits(db, scope: ReadScope, matches: list[Knowledge]) -> list[BrainHit]:
                 stale=knowledge_is_stale(db, match),
                 tags=parse_tags(match.tags),
                 entities=[entity.name for entity in linked.get(match.id, [])],
+                as_of=match.as_of.date().isoformat() if match.as_of else None,
+                due_for_review=is_due_for_review(match),
+                expired=is_expired(match),
             )
         )
     return items
@@ -511,8 +522,21 @@ def context_pack_scoped(task: str, limit: int, max_chars: int, scope: ReadScope)
     used: list[BrainHit] = []
     length = sum(len(line) + 1 for line in lines)
     for hit in result.items:
-        stale = " (source changed since approval; verify)" if hit.stale else ""
-        line = f"- [{hit.knowledge_id}] ({hit.type}) {hit.statement} (source: {hit.source_title}){stale}"
+        notes = [
+            note
+            for flag, note in (
+                (hit.stale, "source changed since approval; verify"),
+                (hit.due_for_review, "due for review; may be out of date"),
+                (hit.expired, "expired; do not rely on it"),
+            )
+            if flag
+        ]
+        dated = f" as of {hit.as_of}" if hit.as_of else ""
+        flags = f" ({'; '.join(notes)})" if notes else ""
+        line = (
+            f"- [{hit.knowledge_id}] ({hit.type}) {hit.statement}"
+            f" (source: {hit.source_title}{dated}){flags}"
+        )
         if used and length + len(line) + 1 > max_chars:
             break
         lines.append(line)

@@ -3,7 +3,7 @@ import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Protocol
 
@@ -36,6 +36,7 @@ from .extraction import (
     extract_tags,
     is_low_value_fragment,
     is_near_duplicate,
+    looks_time_sensitive,
     normalize_tags,
     parse_tags,
     statement_key,
@@ -88,6 +89,7 @@ class _Candidate:
     confidence: float | None
     rationale: str
     entities: tuple[EntityRef, ...] = ()
+    time_sensitive: bool = False
 
 
 class _HasWorkspace(Protocol):
@@ -327,6 +329,7 @@ def add_source_version(
                         "an exact source quote. Review wording and evidence before approval."
                     ),
                     entities=claim.entities,
+                    time_sensitive=claim.time_sensitive,
                 )
             )
     elif create_proposals:
@@ -348,6 +351,7 @@ def add_source_version(
                     kind=kind,
                     confidence=None,
                     rationale=_EXTRACTED_RATIONALE,
+                    time_sensitive=looks_time_sensitive(statement),
                 )
             )
     db.flush()
@@ -394,6 +398,7 @@ def add_source_version(
                 if known_entities
                 else list(candidate.entities)
             ),
+            time_sensitive=candidate.time_sensitive,
         )
         db.add(proposal)
         db.flush()
@@ -722,8 +727,13 @@ def approve_proposal(
     tags: list[str] | None = None,
     update_target: Knowledge | None = None,
     entities: list[EntityRef] | None = None,
+    timeframe: dict[str, datetime | None] | None = None,
 ) -> Knowledge:
     """Make a proposal canonical.
+
+    `timeframe` holds the reviewer's `as_of`, `review_by` and `expires_at`
+    (only the keys present are applied). A time-sensitive proposal with no
+    review-by date gets one `default_review_days` out.
 
     `entities` are the reviewer's choice of people, companies, projects and
     topics; None keeps the proposal's suggestions. Approval links them.
@@ -748,7 +758,16 @@ def approve_proposal(
         raise ValueError("Proposal evidence points at a source version that is gone")
     if update_target is not None:
         return _approve_as_update(
-            db, proposal, update_target, evidence, statement, rationale, tags, actor, entities
+            db,
+            proposal,
+            update_target,
+            evidence,
+            statement,
+            rationale,
+            tags,
+            actor,
+            entities,
+            timeframe,
         )
     canonical = Knowledge(
         id=new_id("know"),
@@ -765,6 +784,7 @@ def approve_proposal(
             ensure_ascii=False,
         ),
     )
+    apply_timeframe(canonical, timeframe, proposal.time_sensitive)
     # Embed the approved wording for hybrid retrieval (statement + rationale).
     # Best effort: an embedding failure never blocks a human's stored decision.
     embedder = get_embedder()
@@ -814,6 +834,82 @@ def approve_proposal(
     return canonical
 
 
+TIMEFRAME_FIELDS = ("as_of", "review_by", "expires_at")
+
+
+def apply_timeframe(
+    item: Knowledge, timeframe: dict[str, datetime | None] | None, time_sensitive: bool
+) -> None:
+    timeframe = timeframe or {}
+    for key in TIMEFRAME_FIELDS:
+        if key in timeframe:
+            setattr(item, key, timeframe[key])
+    if "review_by" not in timeframe and item.review_by is None and time_sensitive:
+        item.review_by = datetime.now(UTC) + timedelta(days=get_settings().default_review_days)
+
+
+def aware_utc(value: datetime | None) -> datetime | None:
+    # SQLite hands back naive datetimes even for timezone-aware columns.
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value
+
+
+def is_expired(item: Knowledge, now: datetime | None = None) -> bool:
+    expires = aware_utc(item.expires_at)
+    return expires is not None and expires <= (now or datetime.now(UTC))
+
+
+def is_due_for_review(item: Knowledge, now: datetime | None = None) -> bool:
+    due = aware_utc(item.review_by)
+    return due is not None and due <= (now or datetime.now(UTC))
+
+
+def set_timeframe(
+    db: Session,
+    item: Knowledge,
+    changes: dict[str, datetime | None],
+    actor: WorkspaceAccess | None,
+) -> Knowledge:
+    """Change an item's dates. Metadata only: the wording and revisions stay."""
+    if item.status != "canonical":
+        raise ValueError("Only approved knowledge has a time frame")
+    applied = {key: value for key, value in changes.items() if key in TIMEFRAME_FIELDS}
+    for key, value in applied.items():
+        setattr(item, key, value)
+    detail = ", ".join(
+        f"{key}={value.date().isoformat() if value else 'cleared'}"
+        for key, value in applied.items()
+    )
+    audit(db, item.workspace_id, "knowledge.timeframe", "knowledge", item.id, detail, actor=actor)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def mark_reviewed(
+    db: Session, item: Knowledge, next_review_days: int | None, actor: WorkspaceAccess | None
+) -> Knowledge:
+    """Record that a person checked the item and it still holds."""
+    if item.status != "canonical":
+        raise ValueError("Only approved knowledge can be reviewed")
+    now = datetime.now(UTC)
+    item.last_reviewed_at = now
+    item.review_by = now + timedelta(days=next_review_days) if next_review_days else None
+    audit(
+        db,
+        item.workspace_id,
+        "knowledge.reviewed",
+        "knowledge",
+        item.id,
+        f"Confirmed; next review {item.review_by.date().isoformat() if item.review_by else 'none'}",
+        actor=actor,
+    )
+    db.commit()
+    db.refresh(item)
+    return item
+
+
 def _approve_as_update(
     db: Session,
     proposal: Proposal,
@@ -824,6 +920,7 @@ def _approve_as_update(
     tags: list[str] | None,
     actor: WorkspaceAccess | None,
     entities: list[EntityRef] | None = None,
+    timeframe: dict[str, datetime | None] | None = None,
 ) -> Knowledge:
     if item.workspace_id != proposal.workspace_id or item.status != "canonical":
         raise ValueError("The knowledge this proposal updates is not available")
@@ -862,6 +959,12 @@ def _approve_as_update(
     item.summary = proposal.summary or item.summary
     item.tags = json.dumps(merged, ensure_ascii=False)
     item.version = revision
+    # New evidence restarts the clock: the old as-of date and review date
+    # described the previous wording.
+    item.as_of = None
+    item.review_by = None
+    apply_timeframe(item, timeframe, proposal.time_sensitive)
+    item.last_reviewed_at = datetime.now(UTC)
     link_entities(
         db, item, entities if entities is not None else clean_refs(proposal.entities), actor
     )
@@ -1437,10 +1540,13 @@ def answer_question(
     needed = _required_hits(len(terms))
     semantic = _semantic_support(question, candidates)
     scores = {item.id: coverage(terms, item) if terms else 0.0 for item in candidates}
+    # An expired item stays in the Brain but is never cited as an answer;
+    # it can still show up as a near match, labelled.
     answering = [
         item
         for item in candidates
-        if item.id in semantic or (terms and scores[item.id] * len(terms) >= needed - 1e-9)
+        if not is_expired(item)
+        and (item.id in semantic or (terms and scores[item.id] * len(terms) >= needed - 1e-9))
     ]
     # Rerank: the fused search rank favours items that repeat one rare word;
     # an answer should lead with the item that covers most of the question.
@@ -1468,6 +1574,9 @@ def answer_question(
                 source_id=item.source_id,
                 source_title=sources[item.source_id].title,
                 excerpt=item.source_excerpt,
+                as_of=item.as_of,
+                due_for_review=is_due_for_review(item),
+                expired=is_expired(item),
             )
             for item in items
             if item.source_id in sources
@@ -1744,6 +1853,7 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "target_knowledge_id": row.target_knowledge_id,
                 "confidence": row.confidence,
                 "entities": row.entities or "[]",
+                "time_sensitive": bool(row.time_sensitive),
                 "created_at": timestamp(row.created_at),
             }
             for row in proposals
@@ -1770,6 +1880,10 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "summary": row.summary or "",
                 "tags": row.tags or "[]",
                 "approved_at": timestamp(row.approved_at),
+                **{
+                    key: timestamp(getattr(row, key)) if getattr(row, key) else None
+                    for key in (*TIMEFRAME_FIELDS, "last_reviewed_at")
+                },
             }
             for row in knowledge
         ],
@@ -1944,14 +2058,16 @@ def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
     for row in backup["proposal_evidence"]:
         db.add(ProposalEvidence(**row))
     db.flush()
+    dated = (*TIMEFRAME_FIELDS, "last_reviewed_at")
     for row in backup["knowledge"]:
         db.add(
             Knowledge(
                 **{
                     key: value
                     for key, value in row.items()
-                    if key not in ("approved_at", "workspace_id")
+                    if key not in ("approved_at", "workspace_id", *dated)
                 },
+                **{key: _parse_timestamp(row[key]) for key in dated if row.get(key)},
                 workspace_id=workspace_id,
                 approved_at=_parse_timestamp(row["approved_at"]),
             )

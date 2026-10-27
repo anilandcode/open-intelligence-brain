@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased — keeping knowledge current
+
+- **Dates on approved knowledge.** Each item can say when it was true
+  ("as of"), when someone should check it again ("review by"), and when to
+  stop using it. Claims that look like they change (prices, owners, plans,
+  "currently") get a review date 90 days out at approval, editable in the
+  review editor. Approving an update restarts the clock.
+- **"Still true" in one click.** The knowledge card's Dates section confirms
+  an item and schedules the next review, or edits the dates. Neither creates
+  a revision, and both are audited.
+- **Answers respect dates.** Expired items are never cited as answers (they
+  can show as near matches, labelled). Items due for review are cited with a
+  flag, and agents see "as of" and "due for review" in `search_brain` and
+  `context_pack`.
+- **Gardening.** A report of what needs a person: due for review, expired,
+  source changed, possible conflicts, possible duplicates and items not used
+  in 120 days, each linking to the item. It's on the Overview, at
+  `GET /api/v1/gardening`, and sent weekly through Hermes via
+  `POST /api/v1/routines/gardening/send` or
+  `python -m brain.gardening <workspace> --send` (see docs/operations.md).
+- **Fix: the daily digest is scoped.** `/api/v1/routines/digest` counted and
+  listed proposals and knowledge across every sensitivity, so a member's
+  digest could quote private proposals. It now reads through the caller's
+  scope.
+
 ## Unreleased — written answers and a question test set
 
 - **Answers in plain words, checked sentence by sentence.** With a chat model

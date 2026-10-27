@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -212,6 +213,12 @@ class Proposal(Base):
     # {"name", "kind"}. Proposal metadata only: approval (with the reviewer's
     # edits) is what links an approved item to entities.
     entities: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    # Whether the claim is the kind that changes (a price, a role, a plan, a
+    # current state). Approval then sets a review-by date unless the reviewer
+    # chooses one.
+    time_sensitive: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")
@@ -263,6 +270,16 @@ class Knowledge(Base):
     tags: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
     version: Mapped[int] = mapped_column(Integer, default=1)
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    # Time frame, all optional metadata set by a reviewer (never by a model):
+    # `as_of` is when the statement was true; `review_by` is when someone
+    # should check it again; after `expires_at` it is no longer cited as an
+    # answer. `last_reviewed_at` records the last "still true" check.
+    as_of: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_by: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Entity(Base):

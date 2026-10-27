@@ -96,6 +96,14 @@ class Settings(BaseSettings):
     # False keeps answers as quotes of the approved statements.
     llm_write_answers: bool = True
 
+    # Keeping knowledge current. A time-sensitive claim (price, owner, plan)
+    # gets a review-by date this many days after approval. The gardening
+    # report calls an item unused when nothing cited it for `unused_after_days`.
+    default_review_days: int = 90
+    unused_after_days: int = 120
+    # The weekly gardening digest is not re-sent within this many days.
+    gardening_min_days: int = 6
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property

@@ -462,3 +462,19 @@
 .eval-runs { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
 .eval-runs th, .eval-runs td { padding: 0.375rem 0.5rem; border-top: 1px solid var(--line); text-align: left; font-variant-numeric: tabular-nums; }
 .eval-runs th { color: var(--muted); font-weight: 500; font-size: var(--fs-micro); }
+
+/* Keeping knowledge current */
+.date-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
+.date-row input[type="date"] { width: 100%; }
+.dates-panel { display: grid; gap: 0.75rem; padding-top: 0.75rem; }
+.dates-panel > .secondary-button { justify-self: start; }
+.gardening-panel { display: grid; gap: 0.75rem; }
+.gardening-panel h2 { display: flex; gap: 0.375rem; align-items: center; }
+.gardening-send { display: grid; gap: 0.25rem; justify-items: end; }
+.gardening-send small { color: var(--muted); font-size: var(--fs-micro); max-width: 18rem; text-align: right; }
+.gardening-section h3 { display: flex; gap: 0.375rem; align-items: center; margin: 0 0 0.375rem; color: var(--muted); font-size: var(--fs-label); font-weight: 600; }
+.gardening-section h3 span { padding: 0 0.375rem; border-radius: 999px; background: var(--surface-soft); color: var(--ink); font-size: var(--fs-micro); }
+.gardening-section ul { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.gardening-section li { display: grid; gap: 0.125rem; }
+.gardening-section a { color: var(--ink); font-size: var(--fs-small); line-height: 1.45; }
+.gardening-section small { color: var(--muted); font-size: var(--fs-micro); }
