@@ -1,6 +1,7 @@
 import { hasToken } from "./api";
+import { isShareLanding } from "./captureLinks";
 
-export const liveViews = ["overview", "inbox", "brain", "ask", "studio", "activate", "sources", "analytics", "audit", "import", "graph", "connectors", "connections", "people"] as const;
+export const liveViews = ["overview", "inbox", "brain", "ask", "studio", "activate", "sources", "analytics", "audit", "import", "graph", "connectors", "connections", "people", "capture"] as const;
 export const previewViews = ["workspaces", "working-memory", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"] as const;
 export type View = typeof liveViews[number] | typeof previewViews[number];
 export type Screen = "landing" | "login" | "console" | "demo" | "architecture";
@@ -64,6 +65,8 @@ export function readRoute(): Route {
     return { screen: "demo", view: [...liveViews, ...previewViews].includes(requested) ? requested : "overview", record };
   }
   if (hasToken()) {
+    // A phone share sheet opens `/?text=…&url=…`; the capture view reads it.
+    if (isShareLanding()) return { screen: "console", view: "capture" };
     // A broker verification return carries ?session_uri=; land on the
     // connections view so it is redeemed exactly once, on screen.
     const verifying = window.location.search.includes("session_uri=") || window.location.search.includes("error=");

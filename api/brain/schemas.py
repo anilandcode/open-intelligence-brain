@@ -40,7 +40,7 @@ class EntityRefIn(BaseModel):
 
 class SourceCreate(BaseModel):
     title: str = Field(min_length=3, max_length=240)
-    kind: str = Field(default="note", pattern="^(note|research|interview|decision)$")
+    kind: str = Field(default="note", pattern="^(note|research|interview|decision|transcript)$")
     sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
     content: str = Field(min_length=20, max_length=100_000)
 
@@ -55,7 +55,59 @@ class ConnectorIngestRequest(BaseModel):
     document_id: str = Field(min_length=1, max_length=500)
     access_token: str = Field(min_length=1, max_length=4000)
     sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
-    kind: str = Field(default="research", pattern="^(note|research|interview|decision)$")
+    kind: str = Field(default="research", pattern="^(note|research|interview|decision|transcript)$")
+
+
+class CaptureRequest(BaseModel):
+    """Quick capture from a share sheet, a browser clipper, a voice note or a script.
+
+    Only `text` is required; a title is made from the first line or the link
+    when none is given. Voice notes arrive as text (the phone transcribes them).
+    """
+
+    text: str = Field(min_length=1, max_length=100_000)
+    title: str = Field(default="", max_length=240)
+    url: str = Field(default="", max_length=2_000, pattern=r"^(https?://\S+)?$")
+    kind: str = Field(default="note", pattern="^(note|research|interview|decision|transcript)$")
+    sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
+    via: str = Field(default="api", pattern="^(share|clipper|voice|console|api)$")
+
+
+class WatchCreate(BaseModel):
+    provider: str = Field(pattern="^(google-drive|notion|onedrive)$")
+    folder_id: str = Field(min_length=1, max_length=500)
+    label: str = Field(default="", max_length=160)
+    kind: str = Field(default="research", pattern="^(note|research|interview|decision|transcript)$")
+    sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
+
+
+class WatchRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    provider: str
+    folder_id: str
+    label: str
+    kind: str
+    sensitivity: str
+    last_synced_at: datetime | None = None
+    last_result: str = ""
+    created_at: datetime
+    document_count: int = 0
+
+
+class WatchSyncRequest(BaseModel):
+    """`access_token` is used for this sync only — never stored, logged or echoed."""
+
+    access_token: str = Field(min_length=1, max_length=4000)
+
+
+class WatchSyncResult(BaseModel):
+    added: list[str]
+    updated: list[str]
+    unchanged: int
+    deferred: int
+    errors: list[str]
+    summary: str
 
 
 class SourceRead(BaseModel):

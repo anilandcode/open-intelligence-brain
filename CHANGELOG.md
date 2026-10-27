@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — easier capture
+
+- **A Capture page.** One place to type, paste or dictate anything worth
+  keeping, with an optional title and link. Dictation uses the browser's own
+  speech-to-text, so no audio reaches the Brain. It saves through the new
+  `POST /api/v1/capture` (`sources:write`), which makes a title from the first
+  line or the link when none is given, keeps the link on the source, and
+  sends the sentences to the Inbox like any other capture.
+- **Browser clipper and phone share.** The Capture page gives a bookmarklet
+  that opens it with the page's title, link and selected text filled in. The
+  console is now installable on Android, and once installed it appears in the
+  share sheet (`manifest.webmanifest`, Web Share Target). On iPhone, a
+  Shortcut can post to `/api/v1/capture` with an API key.
+- **Meeting transcripts.** A new source type, "Meeting transcript", accepts
+  Zoom, Teams and Meet caption files (WebVTT/SRT), Otter exports and plain
+  "Name: text" lines. Caption numbers and timings are dropped, each turn
+  keeps its speaker, every evidence span records who said it, and each
+  suggestion's rationale says "Said by …".
+- **Watched folders.** Connectors can now watch a Google Drive folder, a
+  Notion page's sub-pages or a OneDrive folder. Each sync brings new
+  documents in for review and adds a new source version when one changes, so
+  only new sentences are suggested and approved items resting on a changed
+  sentence show up in gardening. One failing document doesn't stop the rest,
+  and large folders sync in batches (`BRAIN_WATCH_MAX_DOCUMENTS`, default
+  50). Provider tokens are used per sync and never stored; a cron can run
+  `python -m brain.watches <workspace>` with tokens in its environment.
+  Watch Google Meet's transcript folder as "Meeting transcripts" to bring
+  every meeting in.
+
 ## Unreleased — keeping knowledge current
 
 - **Dates on approved knowledge.** Each item can say when it was true

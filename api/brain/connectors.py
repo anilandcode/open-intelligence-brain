@@ -16,11 +16,17 @@ connection-registry masking pattern (``token_preview``). A provider outage raise
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from urllib.parse import urlsplit
 
 import httpx
 
 FETCH_TIMEOUT = 30.0
 NOTION_VERSION = "2022-06-28"
+# Pages of a folder listing read per sync (100 entries each).
+MAX_LIST_PAGES = 10
+GOOGLE_DOC = "application/vnd.google-apps.document"
+GOOGLE_FOLDER = "application/vnd.google-apps.folder"
 
 
 class ConnectorError(RuntimeError):
@@ -35,6 +41,15 @@ class FetchedDocument:
     content: str
     kind: str = "research"
     external_id: str = ""
+
+
+@dataclass
+class FolderEntry:
+    """One document in a watched folder, with the provider's modified time."""
+
+    external_id: str
+    title: str
+    modified: str
 
 
 def _http_get(url: str, token: str, *, params=None, headers=None) -> httpx.Response:
@@ -59,7 +74,7 @@ class GoogleDriveConnector:
             params={"fields": "name,mimeType"},
         ).json()
         title = meta.get("name") or document_id
-        if meta.get("mimeType") == "application/vnd.google-apps.document":
+        if meta.get("mimeType") == GOOGLE_DOC:
             content = _http_get(
                 f"https://www.googleapis.com/drive/v3/files/{document_id}/export",
                 access_token,
@@ -72,6 +87,32 @@ class GoogleDriveConnector:
                 params={"alt": "media"},
             ).text
         return FetchedDocument(title=title, content=content, external_id=document_id)
+
+    def list_folder(self, folder_id: str, access_token: str) -> list[FolderEntry]:
+        """Google Docs and plain-text files directly inside the folder."""
+        entries: list[FolderEntry] = []
+        page_token = ""
+        for _ in range(MAX_LIST_PAGES):
+            params = {
+                "q": f"'{folder_id.replace(chr(39), '')}' in parents and trashed = false",
+                "fields": "nextPageToken, files(id,name,mimeType,modifiedTime)",
+                "pageSize": 100,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            page = _http_get(
+                "https://www.googleapis.com/drive/v3/files", access_token, params=params
+            ).json()
+            for item in page.get("files", []):
+                mime = item.get("mimeType", "")
+                if mime == GOOGLE_DOC or mime.startswith("text/"):
+                    entries.append(
+                        FolderEntry(item["id"], item.get("name", ""), item.get("modifiedTime", ""))
+                    )
+            page_token = page.get("nextPageToken", "")
+            if not page_token:
+                break
+        return entries
 
 
 class NotionConnector:
@@ -92,6 +133,35 @@ class NotionConnector:
         content = "\n".join(_block_text(b) for b in blocks.get("results", []))
         return FetchedDocument(title=title, content=content, external_id=document_id)
 
+    def list_folder(self, folder_id: str, access_token: str) -> list[FolderEntry]:
+        """The sub-pages of a Notion page (the page acts as the folder)."""
+        headers = {"Notion-Version": NOTION_VERSION}
+        entries: list[FolderEntry] = []
+        cursor = ""
+        for _ in range(MAX_LIST_PAGES):
+            params: dict = {"page_size": 100}
+            if cursor:
+                params["start_cursor"] = cursor
+            page = _http_get(
+                f"https://api.notion.com/v1/blocks/{folder_id}/children",
+                access_token,
+                headers=headers,
+                params=params,
+            ).json()
+            for block in page.get("results", []):
+                if block.get("type") == "child_page":
+                    entries.append(
+                        FolderEntry(
+                            block["id"],
+                            block.get("child_page", {}).get("title", ""),
+                            block.get("last_edited_time", ""),
+                        )
+                    )
+            cursor = page.get("next_cursor") or ""
+            if not page.get("has_more") or not cursor:
+                break
+        return entries
+
 
 class OneDriveConnector:
     name = "onedrive"
@@ -105,6 +175,25 @@ class OneDriveConnector:
             f"https://graph.microsoft.com/v1.0/me/drive/items/{document_id}/content", access_token
         ).text
         return FetchedDocument(title=title, content=content, external_id=document_id)
+
+    def list_folder(self, folder_id: str, access_token: str) -> list[FolderEntry]:
+        """Files directly inside the OneDrive folder (sub-folders are skipped)."""
+        entries: list[FolderEntry] = []
+        url = f"https://graph.microsoft.com/v1.0/me/drive/items/{folder_id}/children"
+        for _ in range(MAX_LIST_PAGES):
+            page = _http_get(url, access_token).json()
+            for item in page.get("value", []):
+                if "folder" in item:
+                    continue
+                entries.append(
+                    FolderEntry(
+                        item["id"], item.get("name", ""), item.get("lastModifiedDateTime", "")
+                    )
+                )
+            url = page.get("@odata.nextLink", "")
+            if not url:
+                break
+        return entries
 
 
 def _notion_title(page: dict) -> str:
@@ -158,3 +247,27 @@ def ingest_fetched(
         title=title[:240], kind=fetched.kind, sensitivity=sensitivity, content=content
     )
     return create_source_with_proposals(db, payload, workspace_id, actor=actor)
+
+
+def capture_content(payload) -> tuple[str, str]:
+    """Content and title for a quick capture (share sheet, clipper, voice note).
+
+    The text is kept as given, with the link appended so the source says where
+    it came from. Without a title, the first line (or the link's host and
+    path) names it.
+    """
+    text = (payload.text or "").strip()
+    url = (payload.url or "").strip()
+    content = f"{text}\n\nSource: {url}" if text and url else text or url
+    title = (payload.title or "").strip()
+    if len(title) < 3:
+        first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+        if first_line and payload.kind != "transcript":
+            title = first_line if len(first_line) <= 80 else first_line[:79].rstrip() + "…"
+        elif url:
+            parts = urlsplit(url)
+            title = (parts.netloc + parts.path).rstrip("/")[:120]
+    if len(title) < 3:
+        label = "Meeting transcript" if payload.kind == "transcript" else "Quick capture"
+        title = f"{label} {datetime.now(UTC).date().isoformat()}"
+    return content, title[:240]

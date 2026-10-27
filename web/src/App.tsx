@@ -1,6 +1,6 @@
 import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, ConnectionsView, CaptureDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, Users, X } from "lucide-react";
+import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, Send, ShieldCheck, Sparkles, Sun, TriangleAlert, Users, X } from "lucide-react";
 import { BrainClientContext } from "./client";
 import { createDemoClient } from "./demo";
 import { buildGoogleAuthUrl, consumeGoogleRedirect, googleSignInAvailable } from "./google-signin";
@@ -12,6 +12,7 @@ import ArchitecturePage from "./ArchitecturePage";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { PeopleView } from "./People";
+import { CaptureView, WatchesPanel } from "./Capture";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
 import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, getToken, hasToken, setToken, Unauthorized } from "./api";
 
@@ -20,6 +21,7 @@ type NavItem = { id: View; label: string; icon: typeof Home; future?: boolean };
 const workspaceNav: NavItem[] = [
   { id: "overview", label: "Overview", icon: Home },
   { id: "workspaces", label: "Workspaces", icon: Boxes, future: true },
+  { id: "capture", label: "Capture", icon: Send },
   { id: "inbox", label: "Inbox", icon: Inbox },
   { id: "ask", label: "Playground", icon: MessageSquareText },
 ];
@@ -62,6 +64,10 @@ const titleMap: Record<View, { title: string; description: string }> = {
   inbox: {
     title: "Review inbox",
     description: "Inspect every proposal beside its original evidence before it becomes part of the Brain.",
+  },
+  capture: {
+    title: "Capture",
+    description: "Notes, shared pages, clipped text, voice notes and meeting transcripts, saved for review.",
   },
   people: {
     title: "People & projects",
@@ -772,7 +778,7 @@ export default function App() {
           </div>
         </header>
 
-        <main id="main-content" data-layout={["import", "connectors", "connections", "agents", "insights", "proactivity", "settings"].includes(view) ? "narrow" : "wide"} tabIndex={-1}>
+        <main id="main-content" data-layout={["import", "capture", "connectors", "connections", "agents", "insights", "proactivity", "settings"].includes(view) ? "narrow" : "wide"} tabIndex={-1}>
           <header className="page-heading">
             <div><h1>{view === "settings" ? settingsSection : current.title}</h1><p>{current.description}</p></div>
             {view === "brain" && <button className="secondary-button btn--pill" onClick={() => navigate("ask")}><MessageSquareText size={17} /> Ask the Brain</button>}
@@ -784,7 +790,7 @@ export default function App() {
           {notice && <div className="alert alert--success" role="status"><Check size={18} /><span>{notice}</span><button onClick={() => setNotice("")}>Dismiss</button></div>}
 
           {route.screen === "demo" && ["overview", "inbox", "brain", "sources", "ask", "studio", "activate", "analytics", "audit"].includes(view) && <div className="preview-banner"><Sparkles size={16}/><strong>Demo workspace</strong><span>Synthetic data. All interactions stay in this page; no production API or AI service is connected.</span></div>}
-          {(loading || loadedClient !== client) && !["import", "workspaces", "working-memory", "graph", "connectors", "connections", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"].includes(view) ? error ? <EmptyState icon={<TriangleAlert />} title="Workspace unavailable">Loading failed. Use Retry loading above to try again. No sample data has replaced your workspace.</EmptyState> : <LoadingState /> : (
+          {(loading || loadedClient !== client) && !["import", "capture", "workspaces", "working-memory", "graph", "connectors", "connections", "api-keys", "agents", "requests", "insights", "turns", "proactivity", "settings"].includes(view) ? error ? <EmptyState icon={<TriangleAlert />} title="Workspace unavailable">Loading failed. Use Retry loading above to try again. No sample data has replaced your workspace.</EmptyState> : <LoadingState /> : (
             <>
               {view === "overview" && overview && <OverviewView overview={overview} proposals={proposals} knowledge={knowledge} integrity={integrity} onNavigate={navigate} />}
               {view === "inbox" && <InboxView proposals={proposals} onChanged={refresh} onNotice={setNotice} onError={setError} />}
@@ -798,7 +804,8 @@ export default function App() {
               {view === "agents" && <AgentsView connections={mcpConnections} />}
               {view === "graph" && <GraphView />}
               {view === "people" && <PeopleView recordId={route.record} onSelect={id=>navigate("people", id ?? undefined)} onNotice={setNotice} onError={setError} />}
-              {view === "connectors" && <ConnectorsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
+              {view === "connectors" && <><ConnectorsView onChanged={refresh} onNotice={setNotice} onError={setError} /><WatchesPanel onChanged={refresh} onNotice={setNotice} onError={setError} /></>}
+              {view === "capture" && <CaptureView onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {view === "connections" && <ConnectionsView onChanged={refresh} onNotice={setNotice} onError={setError} />}
               {(["import", "workspaces", "working-memory", "api-keys", "requests", "insights", "turns", "proactivity", "settings"] as View[]).includes(view) && <PreviewPage key={view} view={view} demo={route.screen === "demo"} onNavigate={navigate} onImported={refresh} theme={theme} onTheme={changeTheme} settingsSection={settingsSection} />}
             </>

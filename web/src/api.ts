@@ -123,6 +123,23 @@ export type Source = {
   content_hash: string;
 };
 
+export type CaptureVia = "share" | "clipper" | "voice" | "console" | "api";
+export type CapturePayload = { text: string; title?: string; url?: string; kind?: string; sensitivity?: string; via?: CaptureVia };
+export type WatchProvider = "google-drive" | "notion" | "onedrive";
+export type Watch = {
+  id: string;
+  provider: WatchProvider;
+  folder_id: string;
+  label: string;
+  kind: string;
+  sensitivity: string;
+  last_synced_at: string | null;
+  last_result: string;
+  created_at: string;
+  document_count: number;
+};
+export type WatchSyncResult = { added: string[]; updated: string[]; unchanged: number; deferred: number; errors: string[]; summary: string };
+
 export type SourceVersion = {
   id: string;
   source_id: string;
@@ -536,6 +553,14 @@ export const api = {
   integrity: () => request<Integrity>("/api/v1/integrity"),
   createSource: (payload: Pick<Source, "title" | "kind" | "sensitivity" | "content">) =>
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
+  capture: (payload: CapturePayload) =>
+    request<Source>("/api/v1/capture", { method: "POST", body: JSON.stringify(payload) }),
+  watches: () => request<Watch[]>("/api/v1/watches"),
+  createWatch: (payload: { provider: WatchProvider; folder_id: string; label?: string; kind?: string; sensitivity?: string }) =>
+    request<Watch>("/api/v1/watches", { method: "POST", body: JSON.stringify(payload) }),
+  deleteWatch: (id: string) => request<void>(`/api/v1/watches/${id}`, { method: "DELETE" }),
+  syncWatch: (id: string, accessToken: string) =>
+    request<WatchSyncResult>(`/api/v1/watches/${id}/sync`, { method: "POST", body: JSON.stringify({ access_token: accessToken }) }),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
   approveProposal: (id: string, statement: string, rationale: string, tags?: string[], asNew?: boolean, entities?: EntityRef[], dates?: Timeframe) =>

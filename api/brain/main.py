@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from . import turns as harness_turns
@@ -25,7 +25,7 @@ from .access import (
 from .auth_api import router as auth_router
 from .config import get_settings
 from .connections_api import router as connections_router
-from .connectors import ConnectorError, get_connector, ingest_fetched
+from .connectors import ConnectorError, capture_content, get_connector, ingest_fetched
 from .database import Base, SessionLocal, engine, get_db
 from .entities import (
     clean_refs,
@@ -64,6 +64,7 @@ from .migrate import (
 )
 from .models import (
     AuditEvent,
+    ConnectorWatch,
     Entity,
     EvalQuestion,
     EvalRun,
@@ -74,6 +75,7 @@ from .models import (
     Source,
     SourceSpan,
     SourceVersion,
+    WatchedDocument,
     Workspace,
     WorkspaceGrant,
     new_id,
@@ -84,6 +86,7 @@ from .schemas import (
     BatchReviewRequest,
     BatchReviewResult,
     BatchReviewSkip,
+    CaptureRequest,
     ChatRequest,
     ChatResponse,
     ConnectorIngestRequest,
@@ -134,6 +137,10 @@ from .schemas import (
     TurnDetail,
     TurnRead,
     TurnStepRead,
+    WatchCreate,
+    WatchRead,
+    WatchSyncRequest,
+    WatchSyncResult,
     WorkspaceCreate,
     WorkspaceRead,
 )
@@ -141,6 +148,7 @@ from .services import (
     add_source_version,
     answer_question,
     approve_proposal,
+    audit,
     backfill_provenance,
     conflict_map,
     create_source_with_proposals,
@@ -169,6 +177,7 @@ from .studio_api import router as studio_router
 # before lifespan's create_all runs, or usage_events never exists on a fresh
 # database and every /api/v1/usage* route 500s. Do not make this lazy.
 from .usage import top_used, track_batch, unused_knowledge, usage_summary
+from .watches import sync_watch
 
 settings = get_settings()
 
@@ -823,6 +832,161 @@ def connector_ingest(
     except ConnectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return source
+
+
+@app.post("/api/v1/capture", response_model=SourceRead, status_code=201)
+def quick_capture(
+    payload: CaptureRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Capture a note, clipped page, shared link or voice note for review.
+
+    The text is kept as given (a link is appended as "Source: <url>"), so the
+    capture is an ordinary source: its sentences become proposals and nothing
+    is approved automatically.
+    """
+    require_scope(access, "sources:write")
+    content, title = capture_content(payload)
+    if len(content) < 20:
+        raise HTTPException(status_code=422, detail="Too short to capture: add a few words.")
+    source = create_source_with_proposals(
+        db,
+        SourceCreate(
+            title=title, kind=payload.kind, sensitivity=payload.sensitivity, content=content
+        ),
+        access.workspace_id,
+        actor=access,
+    )
+    audit(
+        db,
+        access.workspace_id,
+        "source.captured",
+        "source",
+        source.id,
+        f"via {payload.via}",
+        actor=access,
+    )
+    db.commit()
+    count = (
+        db.scalar(
+            select(func.count(Proposal.id)).where(
+                Proposal.source_id == source.id, Proposal.workspace_id == access.workspace_id
+            )
+        )
+        or 0
+    )
+    return source_view(db, source, count)
+
+
+def _watch_view(db: Session, watch: ConnectorWatch) -> WatchRead:
+    count = (
+        db.scalar(
+            select(func.count(WatchedDocument.id)).where(WatchedDocument.watch_id == watch.id)
+        )
+        or 0
+    )
+    return WatchRead.model_validate(watch).model_copy(update={"document_count": count})
+
+
+def _require_watch(db: Session, access: WorkspaceAccess, watch_id: str) -> ConnectorWatch:
+    watch = db.get(ConnectorWatch, watch_id)
+    if watch is None or watch.workspace_id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Watched folder not found")
+    return watch
+
+
+@app.get("/api/v1/watches", response_model=list[WatchRead])
+def list_watches(access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)):
+    require_scope(access, "sources:write")
+    watches = db.scalars(
+        select(ConnectorWatch)
+        .where(ConnectorWatch.workspace_id == access.workspace_id)
+        .order_by(ConnectorWatch.created_at)
+    ).all()
+    return [_watch_view(db, watch) for watch in watches]
+
+
+@app.post("/api/v1/watches", response_model=WatchRead, status_code=201)
+def create_watch(
+    payload: WatchCreate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Watch a provider folder. Nothing is fetched until the first sync."""
+    require_scope(access, "sources:write")
+    folder_id = payload.folder_id.strip()
+    exists = db.scalar(
+        select(ConnectorWatch.id).where(
+            ConnectorWatch.workspace_id == access.workspace_id,
+            ConnectorWatch.provider == payload.provider,
+            ConnectorWatch.folder_id == folder_id,
+        )
+    )
+    if exists:
+        raise HTTPException(status_code=409, detail="This folder is already watched")
+    watch = ConnectorWatch(
+        id=new_id("watch"),
+        workspace_id=access.workspace_id,
+        provider=payload.provider,
+        folder_id=folder_id,
+        label=payload.label.strip(),
+        kind=payload.kind,
+        sensitivity=payload.sensitivity,
+    )
+    db.add(watch)
+    audit(
+        db,
+        access.workspace_id,
+        "watch.created",
+        "connector_watch",
+        watch.id,
+        f"{watch.provider} {watch.label or folder_id}",
+        actor=access,
+    )
+    db.commit()
+    db.refresh(watch)
+    return _watch_view(db, watch)
+
+
+@app.delete("/api/v1/watches/{watch_id}", status_code=204)
+def delete_watch(
+    watch_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Stop watching. Sources already brought in, and their proposals, stay."""
+    require_scope(access, "sources:write")
+    watch = _require_watch(db, access, watch_id)
+    db.execute(delete(WatchedDocument).where(WatchedDocument.watch_id == watch.id))
+    audit(
+        db,
+        access.workspace_id,
+        "watch.deleted",
+        "connector_watch",
+        watch.id,
+        f"{watch.provider} {watch.label or watch.folder_id}",
+        actor=access,
+    )
+    db.delete(watch)
+    db.commit()
+
+
+@app.post("/api/v1/watches/{watch_id}/sync", response_model=WatchSyncResult)
+def sync_watch_route(
+    watch_id: str,
+    payload: WatchSyncRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Pull new and changed documents into review. The token is used once, not stored."""
+    require_scope(access, "sources:write")
+    watch = _require_watch(db, access, watch_id)
+    try:
+        result = sync_watch(db, watch, payload.access_token, actor=access)
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return result.to_dict()
 
 
 @app.post("/api/v1/sources", response_model=SourceRead, status_code=201)
