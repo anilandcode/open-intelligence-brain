@@ -54,7 +54,7 @@ export function createDemoClient(): BrainClient {
     ],
     startConnectionLink: async () => ({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" }),
     renameConnection: async (accountId: string, alias: string) => ({ connected_account_id: accountId, alias }),
-    appConfig: async () => ({ redirect_uri: "https://bridge-129-158-45-154.sslip.io/oauth/callback" }),
+    appConfig: async () => ({ redirect_uri: "https://bridge.trulyagentic.io/oauth/callback" }),
     setAppCredentials: async (toolkitSlug: string, clientId: string, _secret: string | null, environment: string, scopes: string | null) => ({
       toolkit_slug: toolkitSlug,
       client_id: clientId,

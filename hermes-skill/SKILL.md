@@ -9,8 +9,11 @@ Query approved knowledge, grounded answers, and citations. Read-only MCP only â€
 
 ## Live production
 
-- UI/API: `https://digital-brain-168827050380.us-central1.run.app`
-- Hosted DB: Neon (same data the Cloud Run API uses)
+- UI/API/MCP: `https://brain.trulyagentic.io` (Oracle Always Free VM;
+  `https://brain-129-158-45-154.sslip.io` still works as an alias)
+- Broker (OAuth/tool broker, LinkedIn callback): `https://bridge.trulyagentic.io`
+- DB: local PostgreSQL 18 on the same VM (Neon is retired after its credential rotation)
+- Cloud Run `digital-brain-168827050380.us-central1.run.app` is rollback-only
 - Auth for HTTP adapter: `X-Brain-Token` from `~/.digital-brain/owner-token.txt` (never paste into chat logs)
 
 ## Hermes MCP (stdio â€” preferred)

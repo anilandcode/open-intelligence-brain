@@ -31,7 +31,7 @@ and governance boundary:
 Public URL shape (after deploy with `BRAIN_PUBLIC_BASE_URL` set):
 
 ```text
-https://digital-brain-168827050380.us-central1.run.app/mcp
+https://brain.trulyagentic.io/mcp
 ```
 
 Client config (Cursor / Claude / similar):
@@ -40,7 +40,7 @@ Client config (Cursor / Claude / similar):
 {
   "mcpServers": {
     "open-brain": {
-      "url": "https://digital-brain-168827050380.us-central1.run.app/mcp"
+      "url": "https://brain.trulyagentic.io/mcp"
     }
   }
 }

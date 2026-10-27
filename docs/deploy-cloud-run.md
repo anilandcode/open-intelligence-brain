@@ -69,9 +69,11 @@ curl -s -H "X-Brain-Token: $TOKEN" "$URL/api/v1/overview" | head -c 200  # data
   environment) and stores it in Secret Manager as `brain-database-url`, mounted
   into the service as `BRAIN_DATABASE_URL`. Never put the URL in a plain service
   env var — those are readable in the console. The Neon project used here is
-  `digital-brain` (`ancient-queen-28972054`, aws-us-east-1, pooled). Restart
-  proof against that project: capture → approve → new process → search +
-  grounded chat still work. Local day-to-day stays SQLite or Compose Postgres.
+  `digital-brain` (`ancient-queen-28972054`, aws-us-east-1, pooled). Free Plan
+  capacity as of 2026-10-02: **1 GB storage/project** (was 0.5 GB), 100
+  projects. Restart proof against that project: capture → approve → new process
+  → search + grounded chat still work. Local day-to-day stays SQLite or Compose
+  Postgres.
 - **The token is not in the bundle.** The image is built tokenless, so the served
   JavaScript contains no credential: an unauthenticated visitor gets an access
   gate that requests nothing and discloses nothing. The token lives only in the

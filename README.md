@@ -49,7 +49,7 @@ This starts PostgreSQL, the API at `http://localhost:8000`, and the workbench at
 
 ### Cloud Run (free tier)
 
-See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md). The `Dockerfile` builds a single image serving both the API and the frontend from one origin. Cloud Build configs and a deploy script are included. A live deployment exists at `digital-brain-7wyy76ncea-uc.a.run.app`.
+See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md). The `Dockerfile` builds a single image serving both the API and the frontend from one origin. Cloud Build configs and a deploy script are included. The live deployment runs on an Oracle Always Free VM at `https://brain.trulyagentic.io` (marketing site on Vercel; the OAuth/tool broker at `https://bridge.trulyagentic.io`).
 
 ## Verify
 

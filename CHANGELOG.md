@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.1 — developer-app credentials onboarding + custom domain
+
+- Composio-style developer-app credentials panel in the Connections hub:
+  copyable redirect URL with portal instructions, prefilled removable OAuth
+  scopes (LinkedIn org scope behind a Community Management warning),
+  per-credential hints, verb-phrase tool names. Scopes are editable on the
+  broker independently of credentials.
+- Custom domain: `brain.trulyagentic.io` (console + MCP) and
+  `bridge.trulyagentic.io` (broker, LinkedIn callback), TLS via Caddy on the
+  Oracle Always Free VM. Zoho mail and the Vercel `www` record preserved.
+- The site's console CTA (`build:site` / `vercel.json`) now targets the new
+  console origin.
+
 ## 1.6.0 — mcp-auth-bridge integration (connections + staged actions)
 
 Open Brain becomes the human control plane for the OAuth/tool broker:

@@ -1,0 +1,1 @@
+[2026-10-24T10:21:45.496Z] fatal during startup: No model provider API key configured. Set one of OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GROQ_API_KEY or run the server in a terminal to save one to /Users/macmini/Projects/Digital Brain/.supermemory/env.enc.

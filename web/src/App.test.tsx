@@ -50,7 +50,7 @@ describe("App", () => {
       if (url.includes("/studio/drafts")) return mockJson([]);
       if (url.includes("/connectors/ingest")) return mockJson(source);
       if (url.includes("/mcp/connections")) return mockJson([]);
-      if (url.includes("/connections/app-config")) return mockJson({ redirect_uri: "https://bridge-129-158-45-154.sslip.io/oauth/callback" });
+      if (url.includes("/connections/app-config")) return mockJson({ redirect_uri: "https://bridge.trulyagentic.io/oauth/callback" });
       if (url.includes("/connections/app-credentials")) return mockJson({ toolkit_slug: "x", client_id: "cid", environment: "production", scopes: "tweet.read tweet.write", saved: true });
       if (url.includes("/connections/link")) return mockJson({ authorization_url: "https://example.com/authorize", session_uri: "su_sample" });
       if (url.includes("/oauth/verify")) return mockJson({ connected_account_id: "cac_sample", status: "ACTIVE" });
@@ -168,7 +168,7 @@ describe("App", () => {
     // Composio-style onboarding: verb-phrase tools, copyable redirect URL, editable scopes.
     expect(screen.getByRole("option", { name: "Create a post (X)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("https://bridge-129-158-45-154.sslip.io/oauth/callback")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("https://bridge.trulyagentic.io/oauth/callback")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Scopes" })).toBeInTheDocument();
   });
   it("renders a broker collision as a friendly message, not a dead end", async () => {

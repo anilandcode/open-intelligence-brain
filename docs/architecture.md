@@ -85,7 +85,11 @@ into the caller's.
 - Hermes messaging (`messaging.py`) for digest and alert delivery.
 - Database migration support (`migrate.py`) for workspace, engine-link, and grant columns.
 - Read-only stdio MCP server for compatible local agents.
-- Single-image Dockerfile for Cloud Run deployment with Cloud Build configs.
+- Single-image Dockerfile for Cloud Run deployment with Cloud Build configs
+  (rollback path). The live home is an Oracle Always Free VM: Caddy TLS in
+  front of `brain.trulyagentic.io` (console + API + MCP) and
+  `bridge.trulyagentic.io` (the mcp-auth-bridge broker), with local
+  PostgreSQL 18 on the same box.
 - Self-hosted LLM proxy (`engine/`) for optional engine deployment.
 
 ### mcp-auth-bridge control plane

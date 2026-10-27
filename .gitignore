@@ -17,3 +17,4 @@ playwright-report/
 
 # third-party reference clones — never part of this project
 /supermemoryai/
+.gstack/

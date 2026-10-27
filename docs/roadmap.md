@@ -128,9 +128,16 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
       stored for listing only).
 - [x] mcp-auth-bridge integration: connections hub API, OAuth verifier,
       staged action queue with exactly-once approval and recorded post URNs.
-- [ ] Connections + staged actions console UI (Arc).
-- [ ] End-to-end launch test: sign in, connect an account, stage and approve a
-      cross-account post through Open Brain.
+- [x] Connections + staged actions console UI (Arc): accounts, staged queue,
+      friendly collision handling, and a Composio-style developer-app
+      credentials panel (copyable redirect URL, prefilled removable scopes,
+      verb-phrase tool names).
+- [ ] End-to-end launch test: connect a real account, stage and approve a
+      cross-account post through Open Brain (LinkedIn app created and callback
+      registered; the account connect and 72h burn-in remain).
+- [ ] Playwright suite codification for the connections hub flows.
+- [x] Custom domain: `brain.trulyagentic.io` (console) and
+      `bridge.trulyagentic.io` (broker + LinkedIn callback), TLS via Caddy.
 - [ ] Four-week personal usage study.
 
 Enterprise tenancy, automatic publishing, broad connectors, graph databases, and autonomous browser work remain later decisions triggered by observed need.

@@ -59,6 +59,9 @@ and re-establishing that it still exists. For a demo that will be left alone,
 Neon is the better fit. Supabase is the better fit if the team later wants auth
 and storage in the same place.
 
+**Neon Free Plan capacity (2026-10-02):** **1 GB storage per project** (was
+0.5 GB; 2×), still **100 projects**. Budget demo/corpus size against 1 GB.
+
 **Cloudflare Workers — ruled out for the backend.** Free plan gives 10 ms of
 CPU per request. The overview endpoint alone does an auth check, a workspace
 count, an activity query, and an engine probe. Persistence would also mean
