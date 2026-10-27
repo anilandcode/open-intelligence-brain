@@ -2,7 +2,7 @@
 
 install:
 	python3 -m venv .venv
-	.venv/bin/pip install -e './api[dev]'
+	.venv/bin/pip install -e './api[dev,identity]'
 	npm --prefix web install
 
 dev-api:
