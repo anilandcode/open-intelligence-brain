@@ -18,3 +18,7 @@ playwright-report/
 # third-party reference clones — never part of this project
 /supermemoryai/
 .gstack/
+
+# engine store + generated review exports — never committed
+/.supermemory/
+/docs/review-shortlist*
