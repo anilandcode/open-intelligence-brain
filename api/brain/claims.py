@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from .config import get_settings
 from .entities import EntityRef, clean_refs
-from .extraction import is_near_duplicate, statement_terms
+from .extraction import is_near_duplicate, looks_time_sensitive, statement_terms
 from .llm import get_chat_model
 from .models import Knowledge
 
@@ -46,7 +46,8 @@ SYSTEM_PROMPT = """You extract durable knowledge from a person's notes for their
 personal knowledge base. A human reviews every claim before it is kept.
 
 Return JSON only: {"claims": [{"statement": str, "type": str, "quote": str, \
-"confidence": number, "entities": [{"name": str, "kind": str}]}]}
+"confidence": number, "entities": [{"name": str, "kind": str}], \
+"time_sensitive": bool}]}
 
 Rules:
 - One idea per claim. Write the statement so it stands alone: name the subject, \
@@ -59,6 +60,8 @@ contiguous text that supports the claim, at most 300 characters.
 - "entities" lists the specific people, companies, projects and named topics the \
 claim is about, each with "kind" one of: person, company, project, topic. Use the \
 fullest name the passage gives. Leave it empty when the claim names none.
+- "time_sensitive" is true when the claim is likely to change: prices, amounts, \
+roles and owners, plans, dates, or the current state of something.
 - Skip headings, to-do items, greetings, boilerplate and anything trivial or temporary.
 - Return {"claims": []} when nothing is worth keeping."""
 
@@ -71,6 +74,7 @@ class Claim:
     end: int
     confidence: float | None
     entities: tuple[EntityRef, ...] = ()
+    time_sensitive: bool = False
 
 
 def windows(content: str, size: int) -> list[tuple[int, str]]:
@@ -167,6 +171,8 @@ def extract_claims(content: str) -> list[Claim] | None:
                     end=offset + located[1],
                     confidence=_confidence(raw.get("confidence")),
                     entities=tuple(clean_refs(raw.get("entities"))),
+                    time_sensitive=raw.get("time_sensitive") is True
+                    or looks_time_sensitive(statement),
                 )
             )
     return claims if answered else None

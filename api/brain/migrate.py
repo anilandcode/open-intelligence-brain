@@ -152,6 +152,7 @@ def add_proposal_relation() -> list[str]:
         ("target_knowledge_id", "VARCHAR(32)"),
         ("confidence", "FLOAT"),
         ("entities", "TEXT NOT NULL DEFAULT '[]'"),
+        ("time_sensitive", "BOOLEAN NOT NULL DEFAULT false"),
     )
     with engine.begin() as connection:
         for column, definition in wanted:
@@ -387,4 +388,24 @@ def add_proposal_critic_notes() -> list[str]:
             text("ALTER TABLE proposals ADD COLUMN critic_notes TEXT NOT NULL DEFAULT ''")
         )
         added.append("proposals.critic_notes")
+    return added
+
+
+def add_knowledge_timeframe() -> list[str]:
+    """Optional as-of, review-by, expiry and last-reviewed dates on knowledge.
+
+    Additive and idempotent. Existing items get no dates, which reads as
+    "true as of approval, no review scheduled", the old behaviour.
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    if "knowledge" not in columns:
+        return added
+    kind = "TIMESTAMP WITH TIME ZONE" if engine.dialect.name == "postgresql" else "DATETIME"
+    with engine.begin() as connection:
+        for column in ("as_of", "review_by", "expires_at", "last_reviewed_at"):
+            if column in columns["knowledge"]:
+                continue
+            connection.execute(text(f"ALTER TABLE knowledge ADD COLUMN {column} {kind}"))
+            added.append(f"knowledge.{column}")
     return added
