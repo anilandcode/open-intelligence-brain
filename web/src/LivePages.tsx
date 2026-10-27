@@ -4,6 +4,7 @@ import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, Arrow
 import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion, StagedAction } from "./api";
 import { useBrainClient } from "./client";
 import { formatEntityText, parseEntityText } from "./entities";
+import { EvalPanel } from "./Eval";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
 import { Button } from "@/components/arc/button/button";
@@ -717,15 +718,28 @@ export function AskView() {
   const [result, setResult] = useState<ChatResult | null>(null);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState("");
+  const [asked, setAsked] = useState("");
+  const [saved, setSaved] = useState("");
+  const [evalVersion, setEvalVersion] = useState(0);
   const suggestions = ["What position do we hold most strongly?", "Which lessons are supported by evidence?", "What has changed recently?"];
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setAsking(true); setError("");
-    try { setResult(await client.chat(question)); }
+    setAsking(true); setError(""); setSaved("");
+    try { setResult(await client.chat(question)); setAsked(question); }
     catch (requestError) { setError(requestError instanceof Error ? requestError.message : "The question failed."); }
     finally { setAsking(false); }
   }
+
+  async function saveAsTest() {
+    if (!result) return;
+    try {
+      await client.addEvalQuestion(result.grounded ? { question: asked, expected_ids: result.citations.map((citation) => citation.knowledge_id) } : { question: asked, expect_abstain: true });
+      setSaved(result.grounded ? "Saved. A future run passes if the answer cites one of these items." : "Saved as a question the Brain should not answer.");
+      setEvalVersion((value) => value + 1);
+    } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "Could not save the question."); }
+  }
+  const citationNumber = (knowledgeId: string) => (result?.citations.findIndex((citation) => citation.knowledge_id === knowledgeId) ?? -1) + 1;
 
   return (
     <div className="ask-workspace">
@@ -742,11 +756,16 @@ export function AskView() {
       {result && (
         <section className="answer-card panel-card">
           <header><span className={result.grounded ? "grounded-badge" : "ungrounded-badge"}>{result.grounded ? <ShieldCheck size={15} /> : <CircleDot size={15} />}{result.grounded ? "Grounded answer" : "Not enough approved knowledge"}</span></header>
-          <p className="answer-text">{result.answer}</p>
+          {result.written && result.sentences?.length ? (
+            <p className="answer-text">{result.sentences.map((sentence, index) => <span key={index}>{sentence.text}{sentence.knowledge_ids.map((knowledgeId) => <sup key={knowledgeId} className="answer-cite">[{citationNumber(knowledgeId)}]</sup>)}{" "}</span>)}</p>
+          ) : <p className="answer-text">{result.answer}</p>}
+          {result.written && <p className="section-sub answer-note">Written by the model from the approved items below. Each sentence was checked against the items it cites{result.dropped_sentences ? `; ${result.dropped_sentences} that could not be traced ${result.dropped_sentences === 1 ? "was" : "were"} left out` : ""}.</p>}
+          <div className="answer-save"><button className="secondary-button" type="button" onClick={saveAsTest} disabled={!asked || !!saved}>Save as test question</button>{saved && <span role="status">{saved}</span>}</div>
           {!result.grounded && (result.near_matches?.length ?? 0) > 0 && <div className="citations near-matches"><h2>Close, but not an answer</h2><p className="section-sub">These approved items share words with your question. Check them before relying on them.</p>{result.near_matches!.map((citation, index) => <EvidenceCitation key={`near-${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
           {result.citations.length > 0 && <div className="citations"><h2>Evidence used</h2>{result.citations.map((citation, index) => <EvidenceCitation key={`${citation.knowledge_id}-${index}`} index={index+1} title={citation.source_title} excerpt={citation.excerpt} knowledgeId={citation.knowledge_id} href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(citation.source_id)}`}/>)}</div>}
         </section>
       )}
+      <EvalPanel version={evalVersion} />
     </div>
   );
 }

@@ -434,3 +434,31 @@
 .entity-items li { display: grid; gap: 0.125rem; }
 .entity-items a { color: var(--ink); line-height: 1.45; }
 .entity-items small { color: var(--muted); font-size: var(--fs-micro); }
+
+/* Written answers and the question test set */
+.answer-cite { margin-left: 0.125rem; color: var(--accent); font-size: 0.7em; }
+.answer-note { margin: 0.25rem 0 0; }
+.answer-save { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-top: 0.75rem; font-size: var(--fs-small); color: var(--muted); }
+.eval-panel { display: grid; gap: 0.875rem; padding: 1rem 1.25rem; }
+.eval-header { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start; justify-content: space-between; }
+.eval-header h2 { display: flex; gap: 0.5rem; align-items: center; margin: 0; font-size: 0.9375rem; }
+.eval-header p { margin: 0.25rem 0 0; }
+.eval-run { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.eval-run input { min-height: 32px; min-width: 12rem; padding: 0 0.625rem; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--ink); }
+.eval-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.5rem; margin: 0; }
+.eval-metrics div { padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.eval-metrics dt { color: var(--muted); font-size: var(--fs-micro); }
+.eval-metrics dd { margin: 0.125rem 0 0; font-size: 1.125rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.eval-metrics .eval-bad dd { color: var(--danger, var(--amber)); }
+.eval-failures { display: grid; gap: 0.5rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.eval-failures li { display: flex; gap: 0.5rem; align-items: flex-start; color: var(--amber); }
+.eval-failures span { display: grid; gap: 0.125rem; color: var(--ink); font-size: var(--fs-small); }
+.eval-failures small, .eval-questions small { color: var(--muted); font-size: var(--fs-micro); }
+.eval-ok { display: flex; gap: 0.375rem; align-items: center; margin: 0.75rem 0 0; color: var(--muted); font-size: var(--fs-small); }
+.eval-questions summary { cursor: pointer; color: var(--muted); font-size: var(--fs-small); }
+.eval-questions ul { display: grid; gap: 0.375rem; margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.eval-questions li { display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; font-size: var(--fs-small); }
+.eval-questions li span { display: grid; gap: 0.125rem; }
+.eval-runs { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+.eval-runs th, .eval-runs td { padding: 0.375rem 0.5rem; border-top: 1px solid var(--line); text-align: left; font-variant-numeric: tabular-nums; }
+.eval-runs th { color: var(--muted); font-weight: 500; font-size: var(--fs-micro); }

@@ -81,6 +81,11 @@ class CitationResult(BaseModel):
     excerpt: str
 
 
+class AnswerSentenceResult(BaseModel):
+    text: str
+    knowledge_ids: list[str]
+
+
 class GroundedAnswer(BaseModel):
     answer: str
     grounded: bool
@@ -88,6 +93,10 @@ class GroundedAnswer(BaseModel):
     # When grounded is false: approved items that share words with the
     # question but do not answer it. Never cite these as the answer.
     near_matches: list[CitationResult] = Field(default_factory=list)
+    # True when a model wrote the answer; each sentence then lists the
+    # knowledge ids it relies on, and untraceable sentences were dropped.
+    written: bool = False
+    sentences: list[AnswerSentenceResult] = Field(default_factory=list)
 
 
 class ReviewItem(BaseModel):
@@ -341,6 +350,10 @@ def ask_brain_scoped(question: str, scope: ReadScope) -> GroundedAnswer:
             ],
             near_matches=[
                 CitationResult.model_validate(item.model_dump()) for item in result.near_matches
+            ],
+            written=result.written,
+            sentences=[
+                AnswerSentenceResult.model_validate(item.model_dump()) for item in result.sentences
             ],
         )
 

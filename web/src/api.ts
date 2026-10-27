@@ -223,7 +223,31 @@ export type ChatResult = {
   citations: ChatCitation[];
   /** Approved items that share words with the question but do not answer it. */
   near_matches?: ChatCitation[];
+  /** True when a model wrote the answer; each sentence names the items it relies on. */
+  written?: boolean;
+  sentences?: { text: string; knowledge_ids: string[] }[];
+  /** Model sentences dropped because they could not be traced to their items. */
+  dropped_sentences?: number;
 };
+
+export type EvalQuestion = { id: string; question: string; expected_ids: string[]; expect_abstain: boolean; note: string; created_at: string };
+export type EvalSummary = {
+  questions: number;
+  passed: number;
+  pass_rate: number | null;
+  answerable: number;
+  answered_correctly: number;
+  mrr: number | null;
+  abstain_questions: number;
+  abstained_correctly: number;
+  false_answers: number;
+  stale_questions: number;
+  write_answers?: boolean;
+  [metric: string]: number | boolean | null | undefined;
+};
+export type EvalResult = { id: string; question: string; expect_abstain: boolean; expected_ids: string[]; passed: boolean; grounded: boolean; cited_ids: string[]; retrieved_ids: string[]; hit_rank: number | null; stale_ids: string[]; reason: string };
+export type EvalRun = { id: string; label: string; summary: EvalSummary; created_at: string };
+export type EvalReport = EvalRun & { results: EvalResult[] };
 
 export type BatchReviewResult = {
   approved: string[];
@@ -527,6 +551,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  evalQuestions: () => request<EvalQuestion[]>("/api/v1/eval/questions"),
+  addEvalQuestion: (payload: { question: string; expected_ids?: string[]; expect_abstain?: boolean; note?: string }) =>
+    request<EvalQuestion>("/api/v1/eval/questions", { method: "POST", body: JSON.stringify(payload) }),
+  deleteEvalQuestion: (id: string) => request<void>(`/api/v1/eval/questions/${id}`, { method: "DELETE" }),
+  runEval: (label = "", writeAnswers = false) =>
+    request<EvalReport>("/api/v1/eval/run", { method: "POST", body: JSON.stringify({ label, write_answers: writeAnswers }) }),
+  evalRuns: () => request<EvalRun[]>("/api/v1/eval/runs"),
   chat: (question: string) =>
     request<ChatResult>("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) }),
   exportUrl: `${API_URL}/api/v1/export`,

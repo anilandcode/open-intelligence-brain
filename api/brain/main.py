@@ -1,3 +1,4 @@
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -63,6 +64,8 @@ from .migrate import (
 from .models import (
     AuditEvent,
     Entity,
+    EvalQuestion,
+    EvalRun,
     Knowledge,
     KnowledgeRevision,
     Proposal,
@@ -91,6 +94,11 @@ from .schemas import (
     EntityMerge,
     EntityRead,
     EntityUpdate,
+    EvalQuestionCreate,
+    EvalQuestionRead,
+    EvalReport,
+    EvalRunRead,
+    EvalRunRequest,
     EventCreate,
     EventIntake,
     EventRead,
@@ -1621,6 +1629,146 @@ def run_jev_evaluation(
 
     report = run_evaluation(jev_url=settings.jev_url or None)
     return report.to_dict()
+
+
+# --- answer evaluation: the person's own questions with known answers ----------
+
+
+def _require_admin(access: WorkspaceAccess) -> None:
+    # Questions name approved items and the runner reads with its own scope,
+    # so the set is managed by those who can read everything it may cite.
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can manage the question set",
+        )
+
+
+def _eval_question_view(row: EvalQuestion) -> EvalQuestionRead:
+    from .answer_eval import parse_ids
+
+    return EvalQuestionRead(
+        id=row.id,
+        question=row.question,
+        expected_ids=parse_ids(row.expected_ids),
+        expect_abstain=row.expect_abstain,
+        note=row.note or "",
+        created_at=row.created_at,
+    )
+
+
+@app.get("/api/v1/eval/questions", response_model=list[EvalQuestionRead])
+def list_eval_questions(
+    access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)
+):
+    _require_admin(access)
+    rows = db.scalars(
+        select(EvalQuestion)
+        .where(EvalQuestion.workspace_id == access.workspace_id)
+        .order_by(EvalQuestion.created_at)
+    )
+    return [_eval_question_view(row) for row in rows]
+
+
+@app.post("/api/v1/eval/questions", response_model=EvalQuestionRead, status_code=201)
+def add_eval_question(
+    payload: EvalQuestionCreate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    from .answer_eval import readable_ids
+
+    _require_admin(access)
+    expected = list(dict.fromkeys(payload.expected_ids))
+    if payload.expect_abstain and expected:
+        raise HTTPException(status_code=422, detail="An abstain question has no expected items")
+    if not payload.expect_abstain and not expected:
+        raise HTTPException(
+            status_code=422, detail="Name at least one expected item, or mark it as abstain"
+        )
+    unknown = set(expected) - readable_ids(db, ReadScope.of(access), expected)
+    if unknown:
+        raise HTTPException(status_code=409, detail="Expected items must be approved knowledge")
+    row = EvalQuestion(
+        id=new_id("evq"),
+        workspace_id=access.workspace_id,
+        question=payload.question.strip(),
+        expected_ids=json.dumps(expected),
+        expect_abstain=payload.expect_abstain,
+        note=payload.note.strip(),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _eval_question_view(row)
+
+
+@app.delete("/api/v1/eval/questions/{question_id}", status_code=204)
+def delete_eval_question(
+    question_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    _require_admin(access)
+    row = db.get(EvalQuestion, question_id)
+    if row is None or row.workspace_id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Not found")
+    db.delete(row)
+    db.commit()
+
+
+@app.post("/api/v1/eval/run", response_model=EvalReport)
+def run_answer_eval(
+    payload: EvalRunRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Ask every question in the set and score the answers. The run is kept."""
+    from dataclasses import asdict
+
+    from .answer_eval import run_eval
+
+    _require_admin(access)
+    summary, results = run_eval(db, ReadScope.of(access), write=payload.write_answers)
+    summary["write_answers"] = payload.write_answers
+    run = EvalRun(
+        id=new_id("evr"),
+        workspace_id=access.workspace_id,
+        label=payload.label.strip(),
+        summary=json.dumps(summary),
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return EvalReport(
+        id=run.id,
+        label=run.label,
+        summary=summary,
+        created_at=run.created_at,
+        results=[asdict(result) for result in results],
+    )
+
+
+@app.get("/api/v1/eval/runs", response_model=list[EvalRunRead])
+def list_eval_runs(
+    access: WorkspaceAccess = Depends(resolve_access), db: Session = Depends(get_db)
+):
+    _require_admin(access)
+    rows = db.scalars(
+        select(EvalRun)
+        .where(EvalRun.workspace_id == access.workspace_id)
+        .order_by(EvalRun.created_at.desc())
+        .limit(20)
+    )
+    return [
+        EvalRunRead(
+            id=row.id,
+            label=row.label,
+            summary=json.loads(row.summary or "{}"),
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
 
 
 @app.get("/api/v1/messaging/status")

@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     llm_window_chars: int = 4000
     llm_max_windows: int = 8
     llm_max_claims_per_version: int = 25
+    # With a model configured, `/api/v1/chat` and `ask_brain` answer in the
+    # model's words, every sentence cited and checked against its items.
+    # False keeps answers as quotes of the approved statements.
+    llm_write_answers: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
