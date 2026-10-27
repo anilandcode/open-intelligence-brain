@@ -18,9 +18,15 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import bindparam, text
+from sqlalchemy.dialects.postgresql.base import ischema_names
 from sqlalchemy.orm import Session
+from sqlalchemy.types import NullType
 
 log = logging.getLogger(__name__)
+
+# Let schema inspection (the additive migrations) read the shadow column
+# without warning; the ORM never maps it.
+ischema_names.setdefault("vector", NullType)
 
 COLUMN = "embedding_vec"
 MAX_INDEXED_DIMENSIONS = 4
