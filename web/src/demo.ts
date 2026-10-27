@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { BatchReviewResult, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, AppConfig, AppCredentialsResult } from "./api";
+import type { BatchReviewResult, Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {

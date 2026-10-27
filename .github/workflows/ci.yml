@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e './api[dev]'
+      - run: pip install -e './api[dev,identity]'
       - run: ruff check api
       - run: ruff format --check api
       - run: pytest api/tests
@@ -62,7 +62,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -e './api[dev]'
+      - run: pip install -e './api[dev,identity]'
       # Fail loudly if the service did not come up, before pytest can skip.
       - name: Assert PostgreSQL is reachable
         run: |

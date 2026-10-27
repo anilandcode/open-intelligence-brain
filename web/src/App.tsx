@@ -598,18 +598,18 @@ export default function App() {
   useEffect(() => {
     const result = consumeGoogleRedirect();
     if (result.kind === "none") return;
-    if (result.kind === "error") {
-      setTokenRequired(true);
-      setTokenRefused(true);
-      return;
-    }
-    api.login(result.idToken)
+    // A failed redirect takes the same refusal path as a failed exchange, so
+    // state only changes in the promise callback, never synchronously here.
+    const exchange =
+      result.kind === "error"
+        ? Promise.reject(new Error("Google redirect failed"))
+        : api.login(result.idToken);
+    exchange
       .then(() => unlock())
       .catch(() => {
         setTokenRequired(true);
         setTokenRefused(true);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
