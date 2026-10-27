@@ -346,6 +346,12 @@ class Citation(BaseModel):
     excerpt: str
 
 
+class AnswerSentence(BaseModel):
+    text: str
+    # The approved items this sentence relies on; always among `citations`.
+    knowledge_ids: list[str]
+
+
 class ChatResponse(BaseModel):
     answer: str
     citations: list[Citation]
@@ -353,6 +359,12 @@ class ChatResponse(BaseModel):
     # Approved items that share words with the question but do not answer it.
     # Only set when `grounded` is false; never counted as citations or usage.
     near_matches: list[Citation] = Field(default_factory=list)
+    # True when a model wrote the answer from the cited items. Each sentence
+    # then names its items, and sentences that could not be traced to them
+    # were dropped (counted here). False means the answer quotes the items.
+    written: bool = False
+    sentences: list[AnswerSentence] = Field(default_factory=list)
+    dropped_sentences: int = 0
 
 
 class EngineRead(BaseModel):
@@ -622,3 +634,52 @@ class WorkspacePolicyUpdate(BaseModel):
     )
     require_clean_critic: bool | None = None
     require_zero_conflicts: bool | None = None
+
+
+class EvalQuestionCreate(BaseModel):
+    question: str = Field(min_length=3, max_length=2_000)
+    # Approved items a correct answer cites; any one counts.
+    expected_ids: list[str] = Field(default_factory=list, max_length=20)
+    # True for a question the brain should not answer.
+    expect_abstain: bool = False
+    note: str = Field(default="", max_length=1_000)
+
+
+class EvalQuestionRead(BaseModel):
+    id: str
+    question: str
+    expected_ids: list[str]
+    expect_abstain: bool
+    note: str
+    created_at: datetime
+
+
+class EvalRunRequest(BaseModel):
+    label: str = Field(default="", max_length=120)
+    # Also have the model write each answer (slower; checks the writer too).
+    write_answers: bool = False
+
+
+class EvalQuestionResult(BaseModel):
+    id: str
+    question: str
+    expect_abstain: bool
+    expected_ids: list[str]
+    passed: bool
+    grounded: bool
+    cited_ids: list[str]
+    retrieved_ids: list[str]
+    hit_rank: int | None
+    stale_ids: list[str]
+    reason: str
+
+
+class EvalRunRead(BaseModel):
+    id: str
+    label: str
+    summary: dict
+    created_at: datetime
+
+
+class EvalReport(EvalRunRead):
+    results: list[EvalQuestionResult]
