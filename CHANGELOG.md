@@ -56,6 +56,27 @@
 - **Production Configuration Validation**: `Settings.validate_for_production()` enforces secure secrets, tokens, and origins when `BRAIN_ENV=production`.
 - **Security Middleware Suite**: `RequestIdMiddleware` (`X-Request-ID`), `SecurityHeadersMiddleware` (HSTS, frame options, nosniff, strict referrer), `RateLimitMiddleware` (sliding window limit), and `AccessLogMiddleware`.
 
+## 1.6.4 — People, Companies and Projects Linked to Approved Knowledge
+
+- **Entities.** Approved knowledge can now be linked to the people,
+  companies, projects and topics it is about. The model suggests them with
+  each claim, and names the workspace already knows (including aliases) are
+  suggested without a model. The reviewer edits the list in the review
+  editor, and approval creates the links.
+- **People & projects page.** Browse entities by kind, see everything
+  approved about one, see who or what it is most often mentioned with, add
+  one by hand (approved items that already name it are linked), rename it
+  (the old name is kept as an alias) or merge duplicates. Knowledge cards
+  show their entities.
+- **Private names stay private.** An entity is visible only through
+  approved knowledge the caller may read.
+- **API and agents.** `GET/POST /api/v1/entities`, `GET/PATCH
+  /api/v1/entities/{id}`, `POST /api/v1/entities/{id}/merge`,
+  `GET /api/v1/knowledge?entity=`. The graph gains `entities` and `mentions`
+  edges. MCP adds `list_entities` and `entity_profile`, and `search_brain`
+  takes `about=`. Backups include entities and their links; older backups
+  still restore.
+
 ## 1.6.3 — Model-Written Claims, Update Proposals & Agent Tools
 
 - **Claims written by a model, pinned to exact quotes.** Set

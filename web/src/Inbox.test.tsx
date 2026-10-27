@@ -70,9 +70,24 @@ describe("review inbox", () => {
     expect(screen.getByText("82% confident")).toBeTruthy();
     expect(screen.getByText("Enterprise customers pay 1200 per seat.")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Approve as revision/ }));
-    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p9", update.statement, "", [], false));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p9", update.statement, "", [], false, []));
     await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Approved. The existing item was revised and keeps its history."));
     fireEvent.click(screen.getByLabelText("Add as a separate item instead of revising it"));
     expect(screen.getByRole("button", { name: /Approve to Brain/ })).toBeTruthy();
+  });
+
+  it("sends the reviewer's people, companies and projects with the approval", async () => {
+    const approveProposal = vi.fn(async () => ({}) as Awaited<ReturnType<BrainClient["approveProposal"]>>);
+    const suggested: Proposal = { ...proposal("p7", "s7", "Renewals", "Dana Lee owns the Acme renewal."), entities: [{ name: "Dana Lee", kind: "person" }, { name: "Renewals", kind: "topic" }] };
+    render(
+      <BrainClientContext.Provider value={{ ...createDemoClient(), approveProposal } as BrainClient}>
+        <InboxView proposals={[suggested]} onChanged={vi.fn(async () => {})} onNotice={vi.fn()} onError={vi.fn()} />
+      </BrainClientContext.Provider>,
+    );
+    const field = screen.getByLabelText("People, companies and projects") as HTMLInputElement;
+    expect(field.value).toBe("Dana Lee (person), Renewals");
+    fireEvent.change(field, { target: { value: "Dana Lee (person), Acme (company), acme (company)" } });
+    fireEvent.click(screen.getByRole("button", { name: /Approve to Brain/ }));
+    await waitFor(() => expect(approveProposal).toHaveBeenCalledWith("p7", suggested.statement, "", [], false, [{ name: "Dana Lee", kind: "person" }, { name: "Acme", kind: "company" }]));
   });
 });

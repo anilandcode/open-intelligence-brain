@@ -156,8 +156,16 @@ export type Proposal = {
   target_knowledge_id?: string | null;
   target_statement?: string;
   confidence?: number | null;
+  // Suggested people, companies, projects and topics; confirmed at approval.
+  entities?: EntityChip[];
   created_at: string;
 };
+
+export type EntityKind = "person" | "company" | "project" | "topic";
+export type EntityChip = { id?: string | null; name: string; kind: EntityKind | string };
+export type EntityRef = { name: string; kind: EntityKind };
+export type Entity = { id: string; name: string; kind: EntityKind; aliases: string[]; item_count: number };
+export type EntityDetail = Entity & { items: Knowledge[]; related: Entity[] };
 
 export type Knowledge = {
   id: string;
@@ -179,6 +187,7 @@ export type Knowledge = {
   conflict_ids: string[];
   summary?: string;
   tags?: string[];
+  entities?: EntityChip[];
 };
 
 export type KnowledgeRevision = {
@@ -397,7 +406,8 @@ export type GraphMemory = {
 };
 export type GraphDocument = { id: string; title: string; summary: string; documentType: string; createdAt: string; updatedAt: string; memories: GraphMemory[] };
 export type GraphEdge = { source: string; target: string; edgeType: string };
-export type Graph = { documents: GraphDocument[]; edges: GraphEdge[] };
+export type GraphEntity = { id: string; name: string; kind: string; memoryCount: number };
+export type Graph = { documents: GraphDocument[]; edges: GraphEdge[]; entities?: GraphEntity[] };
 
 export type WorkspacePolicy = {
   workspace_id?: string;
@@ -549,18 +559,22 @@ export const api = {
     id: string,
     statement: string,
     rationale: string,
-    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[]; as_new?: boolean },
-    asNew?: boolean
+    optionsOrTags?: string[] | { valid_from?: string; supersedes_knowledge_id?: string; tags?: string[]; as_new?: boolean; entities?: EntityRef[] },
+    asNew?: boolean,
+    entities?: EntityRef[]
   ) => {
     let payload: Record<string, unknown> = { statement, rationale };
     if (Array.isArray(optionsOrTags)) {
       payload.tags = optionsOrTags;
       if (asNew) payload.as_new = true;
+      if (entities) payload.entities = entities;
     } else if (optionsOrTags) {
       payload = { ...payload, ...optionsOrTags };
       if (asNew) payload.as_new = true;
-    } else if (asNew) {
-      payload.as_new = true;
+      if (entities) payload.entities = entities;
+    } else {
+      if (asNew) payload.as_new = true;
+      if (entities) payload.entities = entities;
     }
     return request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
@@ -572,6 +586,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ proposal_ids }),
     }),
+  entities: (kind?: EntityKind, query = "") =>
+    request<Entity[]>(`/api/v1/entities?${new URLSearchParams({ ...(kind ? { kind } : {}), ...(query ? { q: query } : {}) })}`),
+  entity: (id: string) => request<EntityDetail>(`/api/v1/entities/${id}`),
+  createEntity: (payload: { name: string; kind: EntityKind; aliases?: string[]; link_existing?: boolean }) =>
+    request<Entity>("/api/v1/entities", { method: "POST", body: JSON.stringify(payload) }),
+  updateEntity: (id: string, payload: { name?: string; kind?: EntityKind; aliases?: string[] }) =>
+    request<Entity>(`/api/v1/entities/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+  mergeEntity: (id: string, intoId: string) =>
+    request<Entity>(`/api/v1/entities/${id}/merge`, { method: "POST", body: JSON.stringify({ into_id: intoId }) }),
   reviewProposals: (proposalIds: string[], action: "approve" | "reject", reason?: string) =>
     request<BatchReviewResult>("/api/v1/proposals/review", {
       method: "POST",
