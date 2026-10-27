@@ -52,3 +52,14 @@ To send it weekly through Hermes, set `BRAIN_HERMES_URL` (and optionally `BRAIN_
 ```
 
 Links in the digest use `BRAIN_PUBLIC_BASE_URL`.
+
+## Watched folder sync
+
+Watched folders (Connectors → Watched folders, or `/api/v1/watches`) pull new and changed documents from Google Drive, Notion or OneDrive into review. The console syncs on demand with a token pasted for that sync. To sync on a schedule, run the CLI with a provider token in the environment; the Brain never stores provider tokens, so the job has to get a fresh one each run (Google access tokens last an hour, so mint one from a refresh token or the auth broker first).
+
+```
+# crontab on the VM, hourly
+0 * * * *  cd /path/to/open-intelligence-brain/api && BRAIN_SYNC_TOKEN_GOOGLE_DRIVE="$(/path/to/mint-drive-token)" .venv/bin/python -m brain.watches default
+```
+
+`BRAIN_SYNC_TOKEN_NOTION` and `BRAIN_SYNC_TOKEN_ONEDRIVE` work the same way; a watch whose provider has no token is skipped. Each run fetches at most `BRAIN_WATCH_MAX_DOCUMENTS` (default 50) changed documents per folder, and the next run picks up the rest. The exit code is 1 if a folder listing failed (a bad or expired token).

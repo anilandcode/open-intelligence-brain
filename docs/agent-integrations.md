@@ -135,7 +135,7 @@ curl -X POST -H 'Content-Type: application/json' -H 'X-Brain-Token: <token>' \
 | `ask_brain` | Produces a grounded answer with citations or abstains. With a chat model configured the answer is written in plain words, each sentence listing the knowledge ids it relies on (`sentences`); sentences that cannot be traced to their items are dropped |
 | `list_pending_reviews` | Shows the human review queue without mutating it |
 | `inspect_brain_integrity` | Reports stale knowledge and possible conflicts |
-| `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. |
+| `capture_source` | **Intake:** files a source + candidate proposals for human review. Never approves, never writes canonical. Gated by `sources:write`. `kind="transcript"` keeps who said what on every evidence span. |
 | `get_knowledge` | One approved item in full: statement, rationale, evidence and its revision history |
 | `related_knowledge` | Approved items linked to one item: possible conflicts, similar wording, same source |
 | `context_pack` | A cited markdown brief of the approved knowledge relevant to a task, sized for a prompt (`max_chars`) |

@@ -279,7 +279,9 @@ def build_hosted_mcp(settings: Settings | None = None) -> MCPServer:
     def capture_source(
         title: Annotated[str, Field(min_length=3, max_length=240)],
         content: Annotated[str, Field(min_length=20, max_length=100_000)],
-        kind: Annotated[str, Field(pattern="^(note|research|interview|decision)$")] = "note",
+        kind: Annotated[
+            str, Field(pattern="^(note|research|interview|decision|transcript)$")
+        ] = "note",
         sensitivity: Annotated[str, Field(pattern="^(private|internal|public)$")] = "private",
     ) -> Any:
         """Capture raw material as a source and extract candidate proposals for HUMAN review.

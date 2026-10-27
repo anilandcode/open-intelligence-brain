@@ -348,6 +348,48 @@ class EvalRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class ConnectorWatch(Base):
+    """A provider folder whose documents are pulled in as sources, then kept current.
+
+    No provider token is stored here: each sync is handed a token by the caller
+    (the console, or a cron that reads one from its own environment).
+    """
+
+    __tablename__ = "connector_watches"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "provider", "folder_id", name="uq_connector_watch"),
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(
+        ForeignKey("workspaces.id"), index=True, default=DEFAULT_WORKSPACE_ID
+    )
+    provider: Mapped[str] = mapped_column(String(40))
+    folder_id: Mapped[str] = mapped_column(String(500))
+    label: Mapped[str] = mapped_column(String(160), default="")
+    kind: Mapped[str] = mapped_column(String(40), default="research")
+    sensitivity: Mapped[str] = mapped_column(String(40), default="private")
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_result: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
+class WatchedDocument(Base):
+    """One provider document a watch has brought in, and the version it last saw."""
+
+    __tablename__ = "watched_documents"
+    __table_args__ = (UniqueConstraint("watch_id", "external_id", name="uq_watched_document"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    watch_id: Mapped[str] = mapped_column(ForeignKey("connector_watches.id"), index=True)
+    external_id: Mapped[str] = mapped_column(String(500))
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    # The provider's modified time as it reported it; a different value means
+    # the document changed and is fetched again.
+    modified: Mapped[str] = mapped_column(String(64), default="")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+
 class KnowledgeRevision(Base):
     __tablename__ = "knowledge_revisions"
     __table_args__ = (

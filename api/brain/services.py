@@ -64,6 +64,7 @@ from .retrieval import (
     sync_fts_update,
 )
 from .schemas import AnswerSentence, ChatResponse, Citation, SourceCreate
+from .transcripts import normalize_transcript, speaker_at, transcript_spans
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +228,10 @@ class KnownStatements:
         return any(is_near_duplicate(terms, other) for other in self.terms)
 
 
+def _said_by(speaker: str | None) -> str:
+    return f" Said by {speaker} in the transcript." if speaker else ""
+
+
 def add_source_version(
     db: Session,
     source: Source,
@@ -236,6 +241,8 @@ def add_source_version(
     create_proposals: bool = True,
     actor: WorkspaceAccess | None = None,
 ) -> SourceVersion:
+    if source.kind == "transcript":
+        content = normalize_transcript(content)
     digest = content_hash(content)
     existing = db.scalar(
         select(SourceVersion).where(
@@ -278,7 +285,13 @@ def add_source_version(
                 ).all()
             )
     sentence_spans: list[SourceSpan] = []
-    for start, end, text in extract_spans(content):
+    is_transcript = source.kind == "transcript"
+    spans = (
+        transcript_spans(content)
+        if is_transcript
+        else [(start, end, text, None) for start, end, text in extract_spans(content)]
+    )
+    for start, end, text, speaker in spans:
         span = SourceSpan(
             id=new_id("span"),
             source_version_id=version.id,
@@ -286,6 +299,7 @@ def add_source_version(
             end_offset=end,
             text=text,
             span_hash=content_hash(text),
+            speaker=speaker,
         )
         db.add(span)
         sentence_spans.append(span)
@@ -312,6 +326,7 @@ def add_source_version(
                     end_offset=claim.end,
                     text=quote,
                     span_hash=quote_hash,
+                    speaker=speaker_at(content, claim.start) if is_transcript else None,
                 )
                 db.add(span)
                 by_offsets[(claim.start, claim.end)] = span
@@ -327,6 +342,7 @@ def add_source_version(
                     rationale=(
                         f"{_MODEL_RATIONALE_PREFIX}{model.model if model else 'model'} from "
                         "an exact source quote. Review wording and evidence before approval."
+                        + _said_by(span.speaker)
                     ),
                     entities=claim.entities,
                     time_sensitive=claim.time_sensitive,
@@ -350,7 +366,7 @@ def add_source_version(
                     statement=statement,
                     kind=kind,
                     confidence=None,
-                    rationale=_EXTRACTED_RATIONALE,
+                    rationale=_EXTRACTED_RATIONALE + _said_by(span.speaker),
                     time_sensitive=looks_time_sensitive(statement),
                 )
             )
@@ -447,10 +463,14 @@ def add_source_version(
 def create_source_with_proposals(
     db: Session, payload: SourceCreate, workspace_id: str, actor: WorkspaceAccess | None = None
 ) -> Source:
-    source = Source(id=new_id("src"), workspace_id=workspace_id, **payload.model_dump())
+    data = payload.model_dump()
+    if payload.kind == "transcript":
+        # Captions, cue numbers and timings go; each turn keeps its speaker.
+        data["content"] = normalize_transcript(payload.content)
+    source = Source(id=new_id("src"), workspace_id=workspace_id, **data)
     db.add(source)
     db.flush()
-    add_source_version(db, source, payload.content, "Initial capture", actor=actor)
+    add_source_version(db, source, source.content, "Initial capture", actor=actor)
     audit(
         db,
         workspace_id,

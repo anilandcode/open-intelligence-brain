@@ -103,6 +103,9 @@ class Settings(BaseSettings):
     unused_after_days: int = 120
     # The weekly gardening digest is not re-sent within this many days.
     gardening_min_days: int = 6
+    # A folder sync fetches at most this many changed documents per run, so
+    # one large folder cannot hold the request (the next run picks up the rest).
+    watch_max_documents: int = 50
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 

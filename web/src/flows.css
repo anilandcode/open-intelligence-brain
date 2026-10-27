@@ -478,3 +478,36 @@
 .gardening-section li { display: grid; gap: 0.125rem; }
 .gardening-section a { color: var(--ink); font-size: var(--fs-small); line-height: 1.45; }
 .gardening-section small { color: var(--muted); font-size: var(--fs-micro); }
+
+/* Easier capture */
+.capture-view { display: grid; gap: 1rem; }
+.capture-card { display: grid; gap: 0.75rem; }
+.capture-card h2 { margin: 0; }
+.capture-card .section-sub { margin: 0; }
+.capture-form { display: grid; gap: 0.75rem; }
+.capture-form textarea { width: 100%; min-height: 10rem; resize: vertical; }
+.capture-form small { color: var(--muted); font-weight: 400; }
+.capture-form footer { display: flex; justify-content: flex-end; }
+.capture-text-heading { display: flex; gap: 0.5rem; align-items: center; justify-content: space-between; }
+.capture-text-heading .is-listening { border-color: var(--amber); color: var(--amber); }
+.capture-shared { margin: 0; padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface-soft); font-size: var(--fs-small); overflow-wrap: anywhere; }
+.capture-ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.capture-ways h3 { display: flex; gap: 0.375rem; align-items: center; margin: 0 0 0.25rem; font-size: var(--fs-small); }
+.capture-ways p { margin: 0 0 0.5rem; color: var(--muted); font-size: var(--fs-small); line-height: 1.5; }
+.capture-copy { display: flex; gap: 0.5rem; }
+.capture-copy input { flex: 1; min-width: 0; font-family: var(--font-mono, monospace); font-size: var(--fs-micro); }
+.watches-panel { display: grid; gap: 0.75rem; margin-top: 1rem; }
+.watches-panel h2 { display: flex; gap: 0.375rem; align-items: center; margin: 0; }
+.watches-panel .section-sub, .watches-panel .field-help { margin: 0; }
+.watch-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.watch-list li { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; justify-content: space-between; padding: 0.625rem 0.75rem; border: 1px solid var(--line); border-radius: var(--radius); }
+.watch-meta { display: grid; gap: 0.125rem; min-width: 0; }
+.watch-meta strong { overflow-wrap: anywhere; font-size: var(--fs-small); }
+.watch-meta small { color: var(--muted); font-size: var(--fs-micro); }
+.watch-sync { display: flex; gap: 0.5rem; align-items: center; }
+.watch-sync input { width: 11rem; min-height: 32px; }
+.watch-add { display: grid; gap: 0.75rem; }
+.watch-add .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
+.watch-add .form-field { display: grid; gap: 0.25rem; }
+.watch-add input, .watch-add select { width: 100%; }
+.watch-add > .primary-button { justify-self: start; }
