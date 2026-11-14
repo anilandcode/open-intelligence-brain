@@ -1,7 +1,7 @@
 import { EvidenceCitation } from "./Evidence";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, KeyRound, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, X, ZoomIn, ZoomOut } from "lucide-react";
-import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, Source, SourceVersion, StagedAction } from "./api";
+import { Activity, Archive, ArrowDown, ArrowLeft, ArrowRight, ArrowUpDown, ArrowUp, BookOpen, Brain, Check, CheckCircle2, ChevronRight, CircleAlert, CircleDot, Clock3, Copy, Download, FileText, Fingerprint, History, Inbox, Info, KeyRound, Layers3, Maximize2, MessageSquareText, Mic2, Network, Plus, Search, ShieldCheck, Sparkles, TriangleAlert, Upload, X, ZoomIn, ZoomOut } from "lucide-react";
+import type { ChatResult, ConnectedAccount, Draft, DraftDetail, Graph, Integrity, InterviewSession, InterviewSessionDetail, Knowledge, KnowledgeRevision, McpConnection, Overview, Proposal, RestorePreview, Source, SourceVersion, StagedAction } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import type { View } from "./routes";
@@ -279,22 +279,161 @@ function Metric({ label, value, detail, icon, tone, share, shareNote }: {
 }
 
 export function InboxView({ proposals, onChanged, onNotice, onError }: { proposals: Proposal[]; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+  const client = useBrainClient();
   const [selectedId, setSelectedId] = useState(proposals[0]?.id ?? "");
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const [batchBusy, setBatchBusy] = useState(false);
   const selected = proposals.find((proposal) => proposal.id === selectedId) ?? proposals[0];
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement)?.tagName)) {
+        return;
+      }
+      if (event.key === "j" || event.key === "ArrowDown") {
+        event.preventDefault();
+        const currentIndex = proposals.findIndex((p) => p.id === (selected?.id ?? ""));
+        if (currentIndex < proposals.length - 1) {
+          setSelectedId(proposals[currentIndex + 1].id);
+        }
+      } else if (event.key === "k" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const currentIndex = proposals.findIndex((p) => p.id === (selected?.id ?? ""));
+        if (currentIndex > 0) {
+          setSelectedId(proposals[currentIndex - 1].id);
+        }
+      } else if (event.key === "x" && selected) {
+        event.preventDefault();
+        setCheckedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(selected.id)) next.delete(selected.id);
+          else next.add(selected.id);
+          return next;
+        });
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [proposals, selected]);
+
+  const allSelected = proposals.length > 0 && checkedIds.size === proposals.length;
+  function toggleSelectAll() {
+    if (allSelected) {
+      setCheckedIds(new Set());
+    } else {
+      setCheckedIds(new Set(proposals.map((p) => p.id)));
+    }
+  }
+
+  async function handleBatchApprove() {
+    if (!checkedIds.size) return;
+    setBatchBusy(true);
+    try {
+      const res = await client.batchApproveProposals(Array.from(checkedIds));
+      onNotice(`Batch approved ${res.approved} proposal(s).`);
+      setCheckedIds(new Set());
+      await onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Batch approval failed.");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
+
+  async function handleBatchReject() {
+    if (!checkedIds.size) return;
+    setBatchBusy(true);
+    try {
+      const res = await client.batchRejectProposals(Array.from(checkedIds));
+      onNotice(`Batch rejected ${res.rejected} proposal(s).`);
+      setCheckedIds(new Set());
+      await onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Batch rejection failed.");
+    } finally {
+      setBatchBusy(false);
+    }
+  }
 
   if (!selected) return <section className="panel-card"><EmptyState icon={<CheckCircle2 />} title="Your inbox is clear">Every current proposal has been reviewed. Capture new material when you are ready.</EmptyState></section>;
 
   return (
     <section className="review-workspace">
       <aside className="review-queue" aria-label="Proposal queue">
-        <header><div><span className="section-kicker">Queue</span><h2>{proposals.length} to review</h2></div><span className="queue-badge">{proposals.length}</span></header>
+        <header>
+          <div>
+            <span className="section-kicker">Fast Review (j/k to navigate, x to select)</span>
+            <h2>{proposals.length} to review</h2>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.25rem", cursor: "pointer", fontSize: "11px", color: "var(--muted)" }} title="Toggle all proposals">
+              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} />
+              <span>All</span>
+            </label>
+            <span className="queue-badge">{proposals.length}</span>
+          </div>
+        </header>
+        {checkedIds.size > 0 && (
+          <div className="batch-action-bar" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.5rem 0.75rem", background: "var(--surface-soft)", borderBottom: "1px solid var(--line)", fontSize: "12px" }}>
+            <span><strong>{checkedIds.size}</strong> selected</span>
+            <div style={{ display: "flex", gap: "0.35rem" }}>
+              <Button size="sm" type="button" disabled={batchBusy} onClick={handleBatchApprove}>
+                <Check size={13} /> Approve ({checkedIds.size})
+              </Button>
+              <Button size="sm" variant="danger" type="button" disabled={batchBusy} onClick={handleBatchReject}>
+                <X size={13} /> Reject ({checkedIds.size})
+              </Button>
+            </div>
+          </div>
+        )}
         <div className="review-queue-list">
-          {proposals.map((proposal, index) => (
-            <button key={proposal.id} className={selected.id === proposal.id ? "active" : ""} onClick={() => setSelectedId(proposal.id)} aria-current={selected.id === proposal.id ? "true" : undefined}>
-              <span className="queue-number">{String(index + 1).padStart(2, "0")}</span>
-              <span><small>{proposal.type}</small><strong>{proposal.statement}</strong><em>{proposal.source_title}</em></span>
-            </button>
-          ))}
+          {proposals.map((proposal, index) => {
+            const isChecked = checkedIds.has(proposal.id);
+            const isConflict = Boolean(proposal.conflict_with_id);
+            return (
+              <button
+                key={proposal.id}
+                className={selected.id === proposal.id ? "active" : ""}
+                onClick={() => setSelectedId(proposal.id)}
+                aria-current={selected.id === proposal.id ? "true" : undefined}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setCheckedIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(proposal.id)) next.delete(proposal.id);
+                        else next.add(proposal.id);
+                        return next;
+                      });
+                    }}
+                    aria-label={`Select proposal ${index + 1}`}
+                  />
+                  <span className="queue-number">{String(index + 1).padStart(2, "0")}</span>
+                </div>
+                <span>
+                  <small style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span>{proposal.type}</span>
+                    {isConflict && (
+                      <span
+                        className="conflict-badge"
+                        title={proposal.conflict_note || "Contradiction detected"}
+                        style={{ display: "inline-flex", alignItems: "center", gap: "3px", color: "var(--danger)", background: "var(--danger-soft)", padding: "1px 5px", borderRadius: "4px", fontSize: "10px", fontWeight: 600 }}
+                      >
+                        <TriangleAlert size={10} aria-hidden="true" /> Conflict
+                      </span>
+                    )}
+                  </small>
+                  <strong>{proposal.statement}</strong>
+                  <em>{proposal.source_title}</em>
+                </span>
+              </button>
+            );
+          })}
         </div>
       </aside>
       <ReviewEditor key={selected.id} proposal={selected} onChanged={onChanged} onNotice={onNotice} onError={onError} />
@@ -306,6 +445,7 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
   const client = useBrainClient();
   const [statement, setStatement] = useState(proposal.statement);
   const [rationale, setRationale] = useState(proposal.rationale);
+  const [supersedeConflict, setSupersedeConflict] = useState(Boolean(proposal.conflict_with_id));
   const [busy, setBusy] = useState(false);
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -315,8 +455,15 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
     event.preventDefault();
     setBusy(true);
     try {
-      await client.approveProposal(proposal.id, statement, rationale);
-      onNotice("Proposal approved and added to canonical knowledge.");
+      const options = supersedeConflict && proposal.conflict_with_id
+        ? { supersedes_knowledge_id: proposal.conflict_with_id }
+        : undefined;
+      await client.approveProposal(proposal.id, statement, rationale, options);
+      onNotice(
+        options
+          ? `Proposal approved to Brain (superseded ${proposal.conflict_with_id}).`
+          : "Proposal approved and added to canonical knowledge."
+      );
       await onChanged();
     } catch (requestError) {
       onError(requestError instanceof Error ? requestError.message : "Approval failed.");
@@ -342,6 +489,36 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
           <div><Badge>{proposal.type}</Badge><Badge tone="info" icon={<CircleDot size={11} />}>Proposed</Badge></div>
           <span className="source-reference"><FileText size={15} /> {proposal.source_title}</span>
         </header>
+        {proposal.conflict_with_id && (
+          <div
+            className="conflict-panel"
+            role="alert"
+            style={{
+              margin: "0.75rem 1.5rem",
+              padding: "0.75rem 1rem",
+              borderRadius: "6px",
+              background: "var(--amber-soft)",
+              border: "1px solid var(--amber)",
+              fontSize: "12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 600, color: "var(--amber-dark, #b45309)" }}>
+              <TriangleAlert size={16} />
+              <span>Conflict Radar Alert</span>
+            </div>
+            <p style={{ margin: "0.35rem 0 0.25rem 0", lineHeight: 1.4 }}>
+              {proposal.conflict_note || "This proposal contradicts active canonical knowledge."}
+            </p>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem", marginTop: "0.35rem", cursor: "pointer", fontWeight: 500 }}>
+              <input
+                type="checkbox"
+                checked={supersedeConflict}
+                onChange={(e) => setSupersedeConflict(e.target.checked)}
+              />
+              <span>Supersede conflicting item ({proposal.conflict_with_id}) on approval</span>
+            </label>
+          </div>
+        )}
         <div className="editor-body">
           <section className="canonical-editor">
             <Textarea id={`statement-${proposal.id}`} label="Canonical statement" description="Editable before approval" value={statement} onChange={(event) => setStatement(event.target.value)} rows={5} required minLength={3} />
@@ -395,27 +572,91 @@ function ReviewEditor({ proposal, onChanged, onNotice, onError }: { proposal: Pr
 }
 
 export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, onError }: { recordId?: string; onSelect: (id: string | null) => void; initial: Knowledge[]; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+  const client = useBrainClient();
   const [query, setQuery] = useState("");
   const selectedId = recordId;
   const [filter, setFilter] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<BrainSort>("recent");
+  const [asOfDate, setAsOfDate] = useState<string>("");
+  const [includeSuperseded, setIncludeSuperseded] = useState(false);
+  const [historicalItems, setHistoricalItems] = useState<Knowledge[] | null>(null);
+  const [loadingTimeTravel, setLoadingTimeTravel] = useState(false);
+
+  useEffect(() => {
+    if (!asOfDate && !includeSuperseded) {
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setLoadingTimeTravel(true);
+    });
+    const asOfIso = asOfDate ? new Date(asOfDate).toISOString() : undefined;
+    client.knowledge(query, { as_of: asOfIso, include_superseded: includeSuperseded })
+      .then((data) => {
+        if (!cancelled) setHistoricalItems(data);
+      })
+      .catch((err) => {
+        if (!cancelled) onError(err instanceof Error ? err.message : "Failed to load historical knowledge");
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTimeTravel(false);
+      });
+    return () => { cancelled = true; };
+  }, [asOfDate, includeSuperseded, client, query, onError]);
+
+  const items = useMemo(
+    () => (asOfDate || includeSuperseded ? historicalItems ?? [] : initial),
+    [asOfDate, includeSuperseded, historicalItems, initial]
+  );
+
   const filtered = useMemo(() => {
     const needle = query.toLowerCase().trim();
-    const rows = initial.filter((item) => {
+    const rows = items.filter((item) => {
       const matchesText = !needle || `${item.statement} ${item.rationale} ${item.type} ${item.source_title}`.toLowerCase().includes(needle);
       const matchesFilter = filter === "all" || item.stale || item.conflict_ids.length > 0;
       return matchesText && matchesFilter;
     });
     return rows.sort(BRAIN_SORTS[sort].compare);
-  }, [initial, query, filter, sort]);
+  }, [items, query, filter, sort]);
 
   return (
     <section className="brain-workspace panel-card">
+      <div className="time-travel-bar" style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 1rem", background: asOfDate ? "var(--accent-soft, #eff6ff)" : "var(--bg-subtle, #f8fafc)", borderBottom: "1px solid var(--border)", fontSize: "12px", flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontWeight: 600 }}>
+          <Clock3 size={14} aria-hidden="true" /> Time-Travel (as of):
+        </span>
+        <input
+          type="datetime-local"
+          value={asOfDate}
+          onChange={(e) => setAsOfDate(e.target.value)}
+          style={{ fontSize: "12px", padding: "2px 6px", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--bg)" }}
+          title="View Brain knowledge as it existed at a past date and time"
+        />
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "4px", cursor: "pointer", userSelect: "none" }}>
+          <input
+            type="checkbox"
+            checked={includeSuperseded}
+            onChange={(e) => setIncludeSuperseded(e.target.checked)}
+          />
+          <span>Include superseded</span>
+        </label>
+        {asOfDate && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setAsOfDate("")}
+            style={{ padding: "2px 6px", height: "auto", fontSize: "11px" }}
+          >
+            Reset to live
+          </Button>
+        )}
+        {loadingTimeTravel && <span style={{ color: "var(--muted)", fontStyle: "italic" }}>Retrieving temporal state…</span>}
+      </div>
       <div className="brain-toolbar">
         <search><form action="/" method="get" onSubmit={(event) => event.preventDefault()}><label className="sr-only" htmlFor="brain-search">Search approved knowledge</label><div className="search-field"><Search size={18} aria-hidden="true" /><input id="brain-search" name="q" type="search" placeholder="Search claims, decisions, stories, language…" value={query} onChange={(event) => setQuery(event.target.value)} /></div></form></search>
         <div className="filter-tabs" aria-label="Knowledge filters">
-          <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All knowledge <span>{initial.length}</span></button>
-          <button className={filter === "attention" ? "active" : ""} onClick={() => setFilter("attention")}>Needs attention <span>{initial.filter((item) => item.stale || item.conflict_ids.length).length}</span></button>
+          <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>All knowledge <span>{items.length}</span></button>
+          <button className={filter === "attention" ? "active" : ""} onClick={() => setFilter("attention")}>Needs attention <span>{items.filter((item) => item.stale || item.conflict_ids.length).length}</span></button>
         </div>
         <div className="segmented segmented--sort" role="group" aria-label="Sort approved knowledge">
           {BRAIN_SORT_ORDER.map((key) => (
@@ -423,19 +664,30 @@ export function BrainView({ recordId, onSelect, initial, onChanged, onNotice, on
           ))}
         </div>
       </div>
-      <div className="brain-list-heading"><span>{filtered.length} canonical {filtered.length === 1 ? "item" : "items"}</span><span><ShieldCheck size={14} /> Approved revisions only</span></div>
+      <div className="brain-list-heading">
+        <span>{filtered.length} {asOfDate ? "historical" : "canonical"} {filtered.length === 1 ? "item" : "items"}</span>
+        <span><ShieldCheck size={14} /> {asOfDate ? `State as of ${new Date(asOfDate).toLocaleString()}` : "Approved revisions only"}</span>
+      </div>
       <div className="knowledge-list knowledge-table">
         <div className="knowledge-table-head"><span>Approved knowledge</span><span>Type</span><span>Source</span><span>Revisions</span></div>
-        {filtered.map((item) => <button className="knowledge-table-row" key={item.id} onClick={() => onSelect(item.id)}><strong>{item.statement}</strong><span>{item.type}</span><span>{item.source_title}</span><span>v{item.version} · {item.revision_count}</span><ChevronRight size={16}/></button>)}
-        {filtered.length === 0 && <EmptyState icon={<Search />} title="No approved matches">Try a broader phrase or change the current filter.</EmptyState>}
+        {filtered.map((item) => (
+          <button className="knowledge-table-row" key={item.id} onClick={() => onSelect(item.id)}>
+            <strong>{item.statement}</strong>
+            <span>{item.type}</span>
+            <span>{item.source_title}</span>
+            <span>v{item.version} · {item.revision_count}{item.valid_to ? " (superseded)" : ""}</span>
+            <ChevronRight size={16}/>
+          </button>
+        ))}
+        {filtered.length === 0 && <EmptyState icon={<Search />} title="No approved matches">{asOfDate ? "No knowledge was valid as of this selected timestamp." : "Try a broader phrase or change the current filter."}</EmptyState>}
       </div>
-      {selectedId && !initial.some(item => item.id === selectedId) && <Detail title="Knowledge unavailable" onClose={() => onSelect(null)}><p>This record is not available in the current workspace. It may have been removed or you may not have access.</p></Detail>}
-      {selectedId && initial.find(item => item.id === selectedId) && <Detail title="Evidence and history" onClose={() => onSelect(null)}><KnowledgeCard item={initial.find(item => item.id === selectedId)!} onChanged={onChanged} onNotice={onNotice} onError={onError}/></Detail>}
+      {selectedId && !items.some(item => item.id === selectedId) && <Detail title="Knowledge unavailable" onClose={() => onSelect(null)}><p>This record is not available in the current workspace view. It may have been removed or you may not have access.</p></Detail>}
+      {selectedId && items.find(item => item.id === selectedId) && <Detail title="Evidence and history" onClose={() => onSelect(null)}><KnowledgeCard item={items.find(item => item.id === selectedId)!} onSelect={onSelect} onChanged={onChanged} onNotice={onNotice} onError={onError}/></Detail>}
     </section>
   );
 }
 
-function KnowledgeCard({ item, onChanged, onNotice, onError }: { item: Knowledge; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
+function KnowledgeCard({ item, onSelect, onChanged, onNotice, onError }: { item: Knowledge; onSelect?: (id: string | null) => void; onChanged: () => Promise<void>; onNotice: (value: string) => void; onError: (value: string) => void }) {
   const client = useBrainClient();
   const [revisions, setRevisions] = useState<KnowledgeRevision[]>([]);
   const [statement, setStatement] = useState(item.statement);
@@ -468,7 +720,35 @@ function KnowledgeCard({ item, onChanged, onNotice, onError }: { item: Knowledge
     <article className={`knowledge-card ${attention ? "knowledge-card--attention" : ""}`}>
       <div className="knowledge-card-icon">{attention ? <TriangleAlert size={18} /> : <BookOpen size={18} />}</div>
       <div className="knowledge-card-main">
-        <div className="knowledge-card-meta"><span className="type-chip">{item.type}</span><span>v{item.version}</span><span>·</span><span>{item.source_title}</span>{item.stale && <span className="warning-chip">Source updated</span>}{item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}</div>
+        <div className="knowledge-card-meta">
+          <span className="type-chip">{item.type}</span>
+          <span>v{item.version}</span>
+          <span>·</span>
+          <span>{item.source_title}</span>
+          {item.valid_from && (
+            <span className="type-chip" title={`Valid from: ${item.valid_from}`} style={{ display: "inline-flex", alignItems: "center", gap: "3px" }}>
+              <Clock3 size={11} aria-hidden="true" /> From {new Date(item.valid_from).toLocaleDateString()}
+            </span>
+          )}
+          {item.valid_to && (
+            <span className="warning-chip" title={`Valid until: ${item.valid_to}`} style={{ background: "var(--danger-soft, #fee2e2)", color: "var(--danger, #b91c1c)" }}>
+              Until {new Date(item.valid_to).toLocaleDateString()}
+            </span>
+          )}
+          {item.superseded_by && (
+            <button
+              type="button"
+              className="warning-chip"
+              style={{ background: "var(--amber-soft)", color: "var(--amber-dark, #b45309)", cursor: onSelect ? "pointer" : "default", border: "none" }}
+              onClick={() => onSelect && onSelect(item.superseded_by!)}
+              title="Click to view replacing knowledge item"
+            >
+              Superseded by {item.superseded_by}
+            </button>
+          )}
+          {item.stale && <span className="warning-chip">Source updated</span>}
+          {item.conflict_ids.length > 0 && <span className="warning-chip">Possible conflict</span>}
+        </div>
         <h2>{item.statement}</h2><p>{item.rationale}</p>
         <section className="knowledge-evidence" aria-label="Exact source evidence"><h3>Exact source evidence</h3><blockquote>{item.source_excerpt}</blockquote><a href={`#/${window.location.hash.startsWith("#/demo/") ? "demo" : "console"}/sources?record=${encodeURIComponent(item.source_id)}`}>Inspect original source and versions</a></section>
         <details className="history-disclosure" onToggle={(event) => { if (event.currentTarget.open) void loadHistory(); }}>
@@ -1666,10 +1946,11 @@ export function GraphView() {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [selected, setSelected] = useState<string | null>(null);
+  const [showSuperseded, setShowSuperseded] = useState(false);
   const drag = useRef<{ x: number; y: number; originX: number; originY: number } | null>(null);
   useEffect(() => {
-    client.graph().then(setData).catch(() => setFailed(true));
-  }, [client]);
+    client.graph(showSuperseded).then(setData).catch(() => setFailed(true));
+  }, [client, showSuperseded]);
 
   // Sources are hubs; their approved knowledge fans out around them. The fan
   // must be wide enough for the rendered pill width (nodes are centered on
@@ -1682,10 +1963,18 @@ export function GraphView() {
     const hx = cx + hubR * Math.cos(angle), hy = cy + hubR * Math.sin(angle);
     nodes.push({ id: doc.id, x: hx, y: hy, label: doc.title || "Source", type: "Source", detail: doc.summary || doc.documentType });
     doc.memories.forEach((m, j) => {
+      const isSuperseded = Boolean(m.superseded_by || m.valid_to);
       const count = doc.memories.length;
       const spread = Math.min(Math.PI, 1.6 * count);
       const ma = angle + (count > 1 ? (j - (count - 1) / 2) * (spread / (count - 1)) : 0);
-      nodes.push({ id: m.id, x: hx + memR * Math.cos(ma), y: hy + memR * Math.sin(ma), label: m.memory.length > 34 ? `${m.memory.slice(0, 34)}…` : m.memory, type: "Approved", detail: m.memory });
+      nodes.push({
+        id: m.id,
+        x: hx + memR * Math.cos(ma),
+        y: hy + memR * Math.sin(ma),
+        label: m.memory.length > 34 ? `${m.memory.slice(0, 34)}…` : m.memory,
+        type: isSuperseded ? "Superseded" : "Approved",
+        detail: m.memory,
+      });
     });
   });
   const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -1693,7 +1982,7 @@ export function GraphView() {
   const visible = nodes.filter((n) => filter === "All" || n.type === filter);
   const selectedNode = nodes.find((n) => n.id === selected);
   const move = (x: number, y: number) => setPan((p) => ({ x: p.x + x, y: p.y + y }));
-  const edgeColor = (t: string) => (t === "derives" ? "var(--amber)" : t === "extends" ? "var(--accent)" : "var(--line-strong)");
+  const edgeColor = (t: string) => (t === "derives" ? "var(--amber)" : t === "extends" ? "var(--accent)" : t === "updates" ? "var(--violet, #8b5cf6)" : "var(--line-strong)");
 
   if (failed) return <EmptyState icon={<Network />} title="Graph unavailable">Loading failed. Retry from the header. No sample graph has replaced your workspace.</EmptyState>;
   if (!data) return <LoadingState />;
@@ -1701,8 +1990,23 @@ export function GraphView() {
 
   return <>
     <div className="preview-toolbar">
-      <div className="tabs" role="group" aria-label="Filter graph nodes">{["All", "Source", "Approved"].map((x) => <button key={x} aria-pressed={filter === x} className={filter === x ? "active" : ""} onClick={() => setFilter(x)}>{x}</button>)}</div>
-      <button className="secondary-button" onClick={() => setList(!list)}>{list ? "Graph view" : "Accessible list"}</button>
+      <div className="tabs" role="group" aria-label="Filter graph nodes">
+        {["All", "Source", "Approved", ...(showSuperseded ? ["Superseded"] : [])].map((x) => (
+          <button key={x} aria-pressed={filter === x} className={filter === x ? "active" : ""} onClick={() => setFilter(x)}>{x}</button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <button
+          className={`secondary-button ${showSuperseded ? "active" : ""}`}
+          onClick={() => setShowSuperseded(!showSuperseded)}
+          title="Toggle superseded knowledge and updates lineage"
+          aria-pressed={showSuperseded}
+        >
+          <History size={15} style={{ marginRight: "0.35rem" }} />
+          {showSuperseded ? "Hide history" : "Show history"}
+        </button>
+        <button className="secondary-button" onClick={() => setList(!list)}>{list ? "Graph view" : "Accessible list"}</button>
+      </div>
     </div>
     <div className="graph-canvas" onPointerDown={(e) => { if ((e.target as HTMLElement).closest("button")) return; drag.current = { x: e.clientX, y: e.clientY, originX: pan.x, originY: pan.y }; e.currentTarget.setPointerCapture(e.pointerId); }} onPointerMove={(e) => { if (drag.current) setPan({ x: drag.current.originX + e.clientX - drag.current.x, y: drag.current.originY + e.clientY - drag.current.y }); }} onPointerUp={() => (drag.current = null)} onPointerCancel={() => (drag.current = null)}>
       <div className="graph-controls">
@@ -1718,11 +2022,15 @@ export function GraphView() {
         <div className="graph-list"><h2>Knowledge relationships</h2>{visible.map((n) => <button className="preview-row" key={n.id} onClick={() => setSelected(n.id)}><strong>{n.label}</strong><span>{n.type}</span><ArrowRight size={16} /></button>)}</div>
       ) : (
         <div className="graph-inner" style={{ transform: `translate(${pan.x}px,${pan.y}px) scale(${zoom})` }}>
-          <svg viewBox="0 0 760 430" preserveAspectRatio="none" aria-hidden="true">{edges.filter((e) => visible.some((n) => n.id === e.source) && visible.some((n) => n.id === e.target)).map((e) => { const a = byId.get(e.source)!, b = byId.get(e.target)!; return <line key={e.source + e.target} x1={a.x} y1={a.y} x2={b.x} y2={b.y} style={{ stroke: edgeColor(e.edgeType) }} />; })}</svg>
+          <svg viewBox="0 0 760 430" preserveAspectRatio="none" aria-hidden="true">{edges.filter((e) => visible.some((n) => n.id === e.source) && visible.some((n) => n.id === e.target)).map((e) => { const a = byId.get(e.source)!, b = byId.get(e.target)!; return <line key={e.source + e.target + e.edgeType} x1={a.x} y1={a.y} x2={b.x} y2={b.y} style={{ stroke: edgeColor(e.edgeType), strokeDasharray: e.edgeType === "updates" ? "4 3" : undefined, strokeWidth: e.edgeType === "updates" ? 2 : 1 }} />; })}</svg>
           {visible.map((n) => <button key={n.id} className={`graph-node node-${n.type.toLowerCase()}`} style={{ left: `${(n.x / 760) * 100}%`, top: `${(n.y / 430) * 100}%` }} onClick={() => setSelected(n.id)} aria-label={`${n.label}, ${n.type}`}>{n.label}</button>)}
         </div>
       )}
-      <div className="graph-legend"><strong>Legend</strong>{["Source", "Approved"].map((x) => <span key={x}><i />{x}</span>)}</div>
+      <div className="graph-legend">
+        <strong>Legend</strong>
+        {["Source", "Approved", ...(showSuperseded ? ["Superseded"] : [])].map((x) => <span key={x}><i />{x}</span>)}
+        {showSuperseded && <span style={{ color: "var(--violet, #8b5cf6)" }}><i style={{ background: "var(--violet, #8b5cf6)" }} />Updates lineage</span>}
+      </div>
     </div>
     {selectedNode && <Detail title={selectedNode.label} onClose={() => setSelected(null)}><span className="status-pill">{selectedNode.type}</span><p>{selectedNode.detail}</p><h3>Connected records</h3>{edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id).map((e) => byId.get(e.source === selectedNode.id ? e.target : e.source)!).map((n) => <button key={n.id} className="preview-row" onClick={() => setSelected(n.id)}><span>{n.label}</span><ArrowRight size={16} /></button>)}</Detail>}
   </>;
@@ -1829,6 +2137,261 @@ export function CaptureDialog({ onClose, onCreated, onError }: { onClose: () => 
         <div className="form-field"><label htmlFor="source-content">Source content</label><textarea id="source-content" name="content" rows={10} required minLength={20} maxLength={100000} placeholder="Paste a project lesson, interview transcript, research note, or decision…" aria-describedby="content-help" /><span id="content-help" className="field-help">The original stays unchanged. Extracted ideas enter your review inbox.</span></div>
         <footer><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" type="submit" disabled={saving}><Sparkles size={17} />{saving ? "Extracting…" : "Capture and extract"}</button></footer>
       </form>
+    </dialog>
+  );
+}
+
+export function ExportRestoreDialog({
+  onClose,
+  onNotice,
+  onError,
+  onRestored,
+}: {
+  onClose: () => void;
+  onNotice: (value: string) => void;
+  onError: (value: string) => void;
+  onRestored: () => Promise<void>;
+}) {
+  const client = useBrainClient();
+  const [tab, setTab] = useState<"export" | "restore">("export");
+  const [passphrase, setPassphrase] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [restorePassphrase, setRestorePassphrase] = useState("");
+  const [fileContent, setFileContent] = useState<unknown>(null);
+  const [fileName, setFileName] = useState("");
+  const [preview, setPreview] = useState<RestorePreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (typeof dialog.showModal === "function") dialog.showModal();
+    else dialog.setAttribute("open", "");
+    return () => { if (dialog.open && typeof dialog.close === "function") dialog.close(); };
+  }, []);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const { blob, filename } = await client.exportWorkspace(passphrase || undefined);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      onNotice(`Export downloaded (${filename})${passphrase ? " with AES-256 Fernet encryption." : "."}`);
+      onClose();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setPreview(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result);
+        const parsed = JSON.parse(text);
+        setFileContent(parsed);
+      } catch {
+        setFileContent(reader.result);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function handlePreview() {
+    if (!fileContent) return;
+    setPreviewing(true);
+    try {
+      const res = await client.previewRestore(fileContent, restorePassphrase || undefined);
+      setPreview(res);
+      if (!res.valid) {
+        onError(res.reason || "Backup validation failed.");
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Restore preview failed.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function handleRestore() {
+    if (!fileContent) return;
+    setRestoring(true);
+    try {
+      await client.restoreWorkspace(fileContent, restorePassphrase || undefined);
+      await onRestored();
+      onClose();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Restore failed.");
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className="capture-dialog"
+      aria-labelledby="backup-title"
+      onCancel={(e) => { e.preventDefault(); onClose(); }}
+    >
+      <header>
+        <div>
+          <span className="eyebrow">Workspace Persistence</span>
+          <h1 id="backup-title">Backup & Restore</h1>
+          <p>Export portable snapshots or restore into an empty workspace.</p>
+        </div>
+        <button className="ghost-icon" type="button" onClick={onClose} aria-label="Close dialog">
+          <X size={20} />
+        </button>
+      </header>
+
+      <div className="tabs" role="tablist" aria-label="Backup operations">
+        <button
+          role="tab"
+          aria-selected={tab === "export"}
+          className={tab === "export" ? "active" : ""}
+          onClick={() => setTab("export")}
+        >
+          Export
+        </button>
+        <button
+          role="tab"
+          aria-selected={tab === "restore"}
+          className={tab === "restore" ? "active" : ""}
+          onClick={() => setTab("restore")}
+        >
+          Restore
+        </button>
+      </div>
+
+      {tab === "export" ? (
+        <div style={{ display: "grid", gap: "1rem" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>
+            Downloads a complete portable archive (Schema v4) containing all sources, versions, spans, canonical knowledge, and bi-temporal histories.
+          </p>
+
+          <div className="form-field">
+            <label htmlFor="export-passphrase">
+              Encryption Passphrase <small style={{ fontWeight: 400, color: "var(--muted)" }}>(Optional)</small>
+            </label>
+            <input
+              id="export-passphrase"
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="Leave empty for plaintext JSON"
+            />
+            <span className="field-help">
+              When provided, data is encrypted with AES-256 Fernet + PBKDF2 (SHA-256, 100k rounds) before leaving the server.
+            </span>
+          </div>
+
+          <footer style={{ marginTop: "0.5rem" }}>
+            <button className="secondary-button" type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              className="primary-button"
+              type="button"
+              disabled={exporting}
+              onClick={handleExport}
+            >
+              <Download size={16} />
+              {exporting ? "Generating…" : passphrase ? "Export Encrypted (.oib)" : "Export JSON"}
+            </button>
+          </footer>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "1rem" }}>
+          <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>
+            Restore imports a backup archive into an empty workspace. Existing records cannot be overwritten.
+          </p>
+
+          <div className="form-field">
+            <label htmlFor="restore-file">Select Backup File (.json or .oib)</label>
+            <input
+              id="restore-file"
+              type="file"
+              accept=".json,.oib"
+              onChange={handleFileChange}
+            />
+            {fileName && <span className="field-help">Selected: {fileName}</span>}
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="restore-passphrase">
+              Decryption Passphrase <small style={{ fontWeight: 400, color: "var(--muted)" }}>(If file is encrypted)</small>
+            </label>
+            <input
+              id="restore-passphrase"
+              type="password"
+              value={restorePassphrase}
+              onChange={(e) => setRestorePassphrase(e.target.value)}
+              placeholder="Enter passphrase if required"
+            />
+          </div>
+
+          {preview && (
+            <div style={{ padding: "0.75rem", border: "1px solid var(--line)", borderRadius: "6px", background: "var(--surface-soft)", fontSize: "12px" }}>
+              <strong>Backup Preview:</strong> Schema v{preview.schema_version} · Valid: {preview.valid ? "Yes" : "No"} · Empty workspace: {preview.empty_workspace ? "Yes" : "No"}
+              <div style={{ marginTop: "4px", color: "var(--muted)" }}>
+                Sources: {preview.counts?.sources ?? 0} · Knowledge: {preview.counts?.canonical_items ?? 0} · Spans: {preview.counts?.spans ?? 0}
+              </div>
+              {preview.blocked && <div style={{ color: "var(--red, #db7770)", marginTop: "4px" }}>Blocked: {preview.reason}</div>}
+            </div>
+          )}
+
+          {preview && preview.valid && (
+            <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={confirmEmpty}
+                onChange={(e) => setConfirmEmpty(e.target.checked)}
+              />
+              <span>I confirm restore into this workspace</span>
+            </label>
+          )}
+
+          <footer style={{ marginTop: "0.5rem" }}>
+            <button className="secondary-button" type="button" onClick={onClose}>
+              Cancel
+            </button>
+            {!preview || !preview.valid ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={previewing || !fileContent}
+                onClick={handlePreview}
+              >
+                {previewing ? "Inspecting…" : "Preview Restore"}
+              </button>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                disabled={restoring || !confirmEmpty}
+                onClick={handleRestore}
+              >
+                <Upload size={16} />
+                {restoring ? "Restoring…" : "Restore Workspace"}
+              </button>
+            )}
+          </footer>
+        </div>
+      )}
     </dialog>
   );
 }

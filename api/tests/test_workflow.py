@@ -86,7 +86,7 @@ def test_proposal_cannot_be_approved_twice(client, headers):
 def test_export_is_portable_and_versioned(client, headers):
     response = client.get("/api/v1/export", headers=headers)
     assert response.status_code == 200
-    assert response.json()["schema_version"] == 3
+    assert response.json()["schema_version"] == 4
     assert response.json()["exported_from"] == "open-intelligence-brain"
     assert response.json()["workspace"]["id"] == DEFAULT_WORKSPACE_ID
     assert "source_versions" in response.json()

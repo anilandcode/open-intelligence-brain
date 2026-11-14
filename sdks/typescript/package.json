@@ -1,0 +1,25 @@
+{
+  "name": "@openbrain/sdk",
+  "version": "2.4.0",
+  "description": "Official TypeScript SDK for Open Intelligence Brain",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test test/client.test.js"
+  },
+  "keywords": [
+    "openbrain",
+    "memory",
+    "ai-agent",
+    "provenance",
+    "governance",
+    "rag"
+  ],
+  "author": "Open Intelligence Brain Contributors",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

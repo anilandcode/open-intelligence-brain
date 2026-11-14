@@ -1,5 +1,5 @@
 import type { BrainClient } from "./client";
-import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, AppConfig, AppCredentialsResult } from "./api";
+import type { Source, Proposal, Knowledge, SourceVersion, KnowledgeRevision, InterviewSessionDetail, DraftDetail, DraftSection, McpConnection, ConnectedAccount, StagedAction, WorkspacePolicy } from "./api";
 
 /** An isolated, synthetic workspace. This adapter has no network or token access. */
 export function createDemoClient(): BrainClient {
@@ -125,7 +125,7 @@ export function createDemoClient(): BrainClient {
     bootstrap: async () => {
       throw new Error("Claim is not available in the sample workspace.");
     },
-    graph: async () => ({
+    graph: async (includeSuperseded?: boolean) => ({
       documents: [
         {
           id: "doc-demo-1",
@@ -137,6 +137,7 @@ export function createDemoClient(): BrainClient {
           memories: [
             { id: "mem-demo-1", memory: "One named owner is required for account setup.", content: "Approved from the interview excerpt.", version: 1, memoryRelations: {} },
             { id: "mem-demo-2", memory: "Setup handoff is the final activation step.", content: "Approved from the interview excerpt.", version: 1, memoryRelations: {} },
+            ...(includeSuperseded ? [{ id: "mem-demo-old", memory: "Two co-owners required for setup.", content: "Superseded requirement.", version: 1, memoryRelations: {}, valid_to: "2026-09-28T10:00:00Z", superseded_by: "mem-demo-1" }] : []),
           ],
         },
       ],
@@ -144,10 +145,29 @@ export function createDemoClient(): BrainClient {
         { source: "doc-demo-1", target: "mem-demo-1", edgeType: "document" },
         { source: "doc-demo-1", target: "mem-demo-2", edgeType: "document" },
         { source: "mem-demo-1", target: "mem-demo-2", edgeType: "extends" },
+        ...(includeSuperseded ? [
+          { source: "doc-demo-1", target: "mem-demo-old", edgeType: "document" },
+          { source: "mem-demo-old", target: "mem-demo-1", edgeType: "updates" },
+        ] : []),
       ],
     }),
     overview: async () => ({ sources: sources.length, proposals: proposals.length, canonical: knowledge.length, pending_reviews: proposals.filter(p => p.status === "proposed").length, recent_activity: copy(events), engine: { name: "Synthetic demo", available: false, detail: "Local examples only. No model or API is connected.", container_tag: "sample", degraded: false } }),
-    sources: async () => copy(sources), proposals: async () => copy(proposals.filter(p => p.status === "proposed")), knowledge: async (q = "") => copy(knowledge.filter(k => k.statement.toLowerCase().includes(q.toLowerCase()))),
+    sources: async () => copy(sources),
+    proposals: async () => copy(proposals.filter(p => p.status === "proposed")),
+    knowledge: async (q = "", options?: { as_of?: string; include_superseded?: boolean }) => {
+      let list = copy(knowledge.filter(k => k.statement.toLowerCase().includes(q.toLowerCase())));
+      if (options?.as_of) {
+        const asOfTime = new Date(options.as_of).getTime();
+        list = list.filter(k => {
+          const from = k.valid_from ? new Date(k.valid_from).getTime() : new Date(k.approved_at).getTime();
+          const to = k.valid_to ? new Date(k.valid_to).getTime() : Infinity;
+          return from <= asOfTime && to > asOfTime;
+        });
+      } else if (!options?.include_superseded) {
+        list = list.filter(k => k.status === "canonical");
+      }
+      return list;
+    },
     integrity: async () => ({ stale_count: knowledge.filter(k => k.stale).length, conflict_count: 0, issues: knowledge.filter(k => k.stale).map(k => ({kind: "stale_source" as const, knowledge_id: k.id, related_id: null, detail: "Sample source has a newer version. Review its approved knowledge."})) }),
     createSource: async payload => capture(payload),
     connectorIngest: async () => capture({ title: "Fetched provider document", kind: "research", sensitivity: "internal", content: "A document fetched from a connected provider, staged for human review before any of it becomes canonical knowledge." }),
@@ -156,9 +176,68 @@ export function createDemoClient(): BrainClient {
     knowledgeRevisions: async key => copy(revisions.get(key) ?? []),
     supersedeKnowledge: async (key, statement, rationale, note) => {const k=find(knowledge,key);k.statement=statement;k.rationale=rationale;k.version++;k.revision_count++;k.approved_at=date();const original=revisions.get(key)![0];revisions.get(key)!.unshift({...original,id:id("revision"),revision:k.version,statement,rationale,change_note:note,approved_at:k.approved_at});event("knowledge.revised",statement);return copy(k);},
     approveProposal: async (key,statement,rationale) => {const p=find(proposals,key);if(p.status!=="proposed")throw new Error("Sample proposal has already been reviewed.");p.status="approved";const k:Knowledge={id:id("knowledge"),proposal_id:p.id,source_id:p.source_id,source_title:p.source_title,type:p.type,statement,rationale,source_excerpt:p.source_excerpt,status:"canonical",version:1,approved_at:date(),revision_count:1,stale:false,conflict_ids:[]};knowledge.unshift(k);revisions.set(k.id,[{id:id("revision"),knowledge_id:k.id,revision:1,statement,rationale,source_id:k.source_id,source_version_id:proposalVersions.get(p.id) ?? `${k.source_id}-v1`,source_span_id:null,source_excerpt:k.source_excerpt,change_note:"Sample approval",approved_at:k.approved_at}]);event("knowledge.approved",statement);return copy(k);},
+    batchApproveProposals: async (keys: string[]) => {
+      const approvedIds: string[] = [];
+      for (const key of keys) {
+        const p = proposals.find(item => item.id === key);
+        if (p && p.status === "proposed") {
+          p.status = "approved";
+          const k: Knowledge = { id: id("knowledge"), proposal_id: p.id, source_id: p.source_id, source_title: p.source_title, type: p.type, statement: p.statement, rationale: p.rationale, source_excerpt: p.source_excerpt, status: "canonical", version: 1, approved_at: date(), revision_count: 1, stale: false, conflict_ids: [] };
+          knowledge.unshift(k);
+          approvedIds.push(k.id);
+          event("knowledge.approved", p.statement);
+        }
+      }
+      return { approved: approvedIds.length, failed: keys.length - approvedIds.length, knowledge_ids: approvedIds, errors: [] };
+    },
     rejectProposal: async (key,reason) => {const p=find(proposals,key);p.status="rejected";event("proposal.rejected",reason);return copy(p);},
+    batchRejectProposals: async (keys: string[], reason?: string) => {
+      let count = 0;
+      for (const key of keys) {
+        const p = proposals.find(item => item.id === key);
+        if (p && p.status === "proposed") {
+          p.status = "rejected";
+          count++;
+          event("proposal.rejected", reason ?? "Batch rejected");
+        }
+      }
+      return { rejected: count, failed: keys.length - count, errors: [] };
+    },
     chat: async question => {const terms=question.toLowerCase().split(/\W+/).filter(x=>x.length>3);const atoms=knowledge.filter(k=>terms.some(t=>k.statement.toLowerCase().includes(t)));return {answer:atoms.length?`Sample cited retrieval:\n\n${atoms.map(k=>k.statement).join("\n\n")}`:"No matching approved sample knowledge. Try asking about onboarding, customer owners, or decisions.",grounded:atoms.length>0,citations:atoms.map(k=>({knowledge_id:k.id,source_id:k.source_id,source_title:k.source_title,excerpt:k.source_excerpt}))};},
     exportUrl: "", // Workspace export is intentionally absent from the demo shell.
+    getWorkspacePolicy: async () => ({
+      auto_approve_enabled: false,
+      allowed_types: ["fact", "preference"],
+      max_sensitivity: "internal",
+      require_critic_approval: true,
+      disallow_conflicts: true,
+    }),
+    updateWorkspacePolicy: async (_slug?: string, policy?: Partial<WorkspacePolicy>) => ({
+      auto_approve_enabled: policy?.auto_approve_enabled ?? false,
+      allowed_types: policy?.allowed_types ?? ["fact", "preference"],
+      max_sensitivity: policy?.max_sensitivity ?? "internal",
+      require_critic_approval: policy?.require_critic_approval ?? true,
+      disallow_conflicts: policy?.disallow_conflicts ?? true,
+    }),
+    reindexKnowledge: async () => ({
+      status: "ok",
+      total_records: knowledge.length,
+      embedded: knowledge.length,
+      fts_synced: knowledge.length,
+    }),
+    exportWorkspace: async () => ({
+      blob: new Blob([JSON.stringify({ schema_version: 4, demo: true })], { type: "application/json" }),
+      filename: `brain-demo-export-${new Date().toISOString().slice(0, 10)}.json`,
+    }),
+    previewRestore: async () => ({
+      schema_version: 4,
+      valid: true,
+      empty_workspace: false,
+      counts: { sources: sources.length, canonical_items: knowledge.length },
+    }),
+    restoreWorkspace: async () => {
+      throw new Error("Restore is not available in the sample workspace.");
+    },
     interviews: async()=>copy(interviews), interview: async key=>copy(find(interviews,key)),
     mcpConnections: async()=>copy(connections),
     createInterview: async payload=>{const s:InterviewSessionDetail={...payload,id:id("interview"),workspace_id:"sample-workspace",topic:payload.topic??"",person:payload.person??"",audience:payload.audience??"",outcome:payload.outcome??"",status:"active",source_id:null,created_at:date(),completed_at:null,question_count:0,response_count:0,extracted_count:0,questions:[]};interviews.unshift(s);return copy(s);},

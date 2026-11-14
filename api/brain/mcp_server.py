@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from mcp.server import MCPServer
@@ -48,6 +49,9 @@ class BrainHit(BaseModel):
     source_excerpt: str
     revision_count: int
     stale: bool
+    valid_from: str | None = None
+    valid_to: str | None = None
+    superseded_by: str | None = None
 
 
 class BrainSearchResult(BaseModel):
@@ -76,6 +80,8 @@ class ReviewItem(BaseModel):
     source_id: str
     source_title: str
     source_excerpt: str
+    conflict_with_id: str | None = None
+    conflict_note: str | None = None
 
 
 class ReviewQueue(BaseModel):
@@ -126,12 +132,28 @@ def brain_status_scoped(scope: ReadScope) -> BrainStatus:
         return BrainStatus.model_validate(overview(db, scope))
 
 
-def search_brain_scoped(query: str, limit: int, scope: ReadScope) -> BrainSearchResult:
+def search_brain_scoped(
+    query: str,
+    limit: int,
+    scope: ReadScope,
+    as_of: str | None = None,
+    include_superseded: bool = False,
+) -> BrainSearchResult:
+    as_of_dt: datetime | None = None
+    if as_of:
+        try:
+            as_of_dt = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            as_of_dt = None
+
     with SessionLocal() as db:
-        matches = search_knowledge(db, scope, query, limit=limit)
+        matches = search_knowledge(
+            db, scope, query, limit=limit, as_of=as_of_dt, include_superseded=include_superseded
+        )
         items = []
         for match in matches:
             source = db.get(Source, match.source_id)
+            source_title = source.title if source else ""
             items.append(
                 BrainHit(
                     knowledge_id=match.id,
@@ -139,10 +161,13 @@ def search_brain_scoped(query: str, limit: int, scope: ReadScope) -> BrainSearch
                     statement=match.statement,
                     rationale=match.rationale,
                     source_id=match.source_id,
-                    source_title=source.title,
+                    source_title=source_title,
                     source_excerpt=match.source_excerpt,
                     revision_count=knowledge_revision_count(db, match.id),
                     stale=knowledge_is_stale(db, match),
+                    valid_from=match.valid_from.isoformat() if match.valid_from else None,
+                    valid_to=match.valid_to.isoformat() if match.valid_to else None,
+                    superseded_by=match.superseded_by,
                 )
             )
         return BrainSearchResult(query=query, count=len(items), items=items)
@@ -184,6 +209,8 @@ def list_pending_reviews_scoped(limit: int, scope: ReadScope) -> ReviewQueue:
                 source_id=proposal.source_id,
                 source_title=source_title,
                 source_excerpt=proposal.source_excerpt,
+                conflict_with_id=proposal.conflict_with_id,
+                conflict_note=proposal.conflict_note,
             )
             for proposal, source_title in rows
         ]
@@ -270,9 +297,21 @@ def brain_status() -> BrainStatus:
 def search_brain(
     query: Annotated[str, Field(min_length=2, max_length=500)],
     limit: Annotated[int, Field(ge=1, le=20)] = 8,
+    as_of: Annotated[
+        str | None,
+        Field(
+            description="Optional ISO-8601 timestamp for bi-temporal time-travel retrieval (e.g. 2024-01-01T00:00:00Z)."
+        ),
+    ] = None,
+    include_superseded: Annotated[
+        bool,
+        Field(description="Whether to include superseded knowledge items in search results."),
+    ] = False,
 ) -> BrainSearchResult:
-    """Search only human-approved canonical knowledge and return its exact evidence."""
-    return search_brain_scoped(query, limit, _scope())
+    """Search only human-approved canonical knowledge with bi-temporal time-travel support and exact citations."""
+    return search_brain_scoped(
+        query, limit, _scope(), as_of=as_of, include_superseded=include_superseded
+    )
 
 
 @mcp.tool(title="Ask the approved Brain", annotations=read_only)

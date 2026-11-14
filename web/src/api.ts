@@ -148,6 +148,8 @@ export type Proposal = {
   critic_notes: string;
   summary?: string;
   tags?: string;
+  conflict_with_id?: string | null;
+  conflict_note?: string | null;
   created_at: string;
 };
 
@@ -163,6 +165,9 @@ export type Knowledge = {
   status: string;
   version: number;
   approved_at: string;
+  valid_from?: string;
+  valid_to?: string | null;
+  superseded_by?: string | null;
   revision_count: number;
   stale: boolean;
   conflict_ids: string[];
@@ -362,10 +367,38 @@ export type McpConnection = {
   status: string;
 };
 
-export type GraphMemory = { id: string; memory: string; content: string | null; version: number; memoryRelations: Record<string, string> };
+export type GraphMemory = {
+  id: string;
+  memory: string;
+  content: string | null;
+  version: number;
+  memoryRelations: Record<string, string>;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  superseded_by?: string | null;
+};
 export type GraphDocument = { id: string; title: string; summary: string; documentType: string; createdAt: string; updatedAt: string; memories: GraphMemory[] };
 export type GraphEdge = { source: string; target: string; edgeType: string };
 export type Graph = { documents: GraphDocument[]; edges: GraphEdge[] };
+
+export type WorkspacePolicy = {
+  workspace_id?: string;
+  auto_approve_enabled: boolean;
+  allowed_types: string[];
+  max_sensitivity: string;
+  require_critic_approval: boolean;
+  disallow_conflicts: boolean;
+};
+
+export type RestorePreview = {
+  schema_version: number;
+  valid: boolean;
+  empty_workspace: boolean;
+  counts: Record<string, number>;
+  source_id?: string;
+  blocked?: boolean;
+  reason?: string;
+};
 
 export type LoginResult = {
   session_token: string;
@@ -442,7 +475,8 @@ export const api = {
     request<StagedAction>(`/api/v1/staged-actions/${id}/approve`, { method: "POST" }),
   rejectStagedAction: (id: string) =>
     request<StagedAction>(`/api/v1/staged-actions/${id}/reject`, { method: "POST" }),
-  graph: () => request<Graph>("/api/v1/graph"),
+  graph: (includeSuperseded: boolean = false) =>
+    request<Graph>(includeSuperseded ? "/api/v1/graph?include_superseded=true" : "/api/v1/graph"),
   overview: () => request<Overview>("/api/v1/overview"),
   sources: () => request<Source[]>("/api/v1/sources"),
   sourceVersions: (id: string) => request<SourceVersion[]>(`/api/v1/sources/${id}/versions`),
@@ -452,7 +486,17 @@ export const api = {
       body: JSON.stringify({ content, change_note: changeNote }),
     }),
   proposals: () => request<Proposal[]>("/api/v1/proposals?status=proposed"),
-  knowledge: (query = "") => request<Knowledge[]>(`/api/v1/knowledge?q=${encodeURIComponent(query)}`),
+  knowledge: (
+    query = "",
+    options?: { as_of?: string; include_superseded?: boolean }
+  ) => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (options?.as_of) params.set("as_of", options.as_of);
+    if (options?.include_superseded) params.set("include_superseded", "true");
+    const qs = params.toString();
+    return request<Knowledge[]>(`/api/v1/knowledge${qs ? `?${qs}` : ""}`);
+  },
   knowledgeRevisions: (id: string) =>
     request<KnowledgeRevision[]>(`/api/v1/knowledge/${id}/revisions`),
   supersedeKnowledge: (
@@ -470,19 +514,72 @@ export const api = {
     request<Source>("/api/v1/sources", { method: "POST", body: JSON.stringify(payload) }),
   connectorIngest: (provider: string, payload: { document_id: string; access_token: string; sensitivity?: string; kind?: string }) =>
     request<Source>(`/api/v1/connectors/${provider}/ingest`, { method: "POST", body: JSON.stringify(payload) }),
-  approveProposal: (id: string, statement: string, rationale: string) =>
+  approveProposal: (
+    id: string,
+    statement: string,
+    rationale: string,
+    options?: { valid_from?: string; supersedes_knowledge_id?: string }
+  ) =>
     request<Knowledge>(`/api/v1/proposals/${id}/approve`, {
       method: "POST",
-      body: JSON.stringify({ statement, rationale }),
+      body: JSON.stringify({ statement, rationale, ...options }),
+    }),
+  batchApproveProposals: (proposal_ids: string[]) =>
+    request<{ approved: number; failed: number; knowledge_ids: string[]; errors: { proposal_id: string; error: string }[] }>("/api/v1/proposals/batch-approve", {
+      method: "POST",
+      body: JSON.stringify({ proposal_ids }),
     }),
   rejectProposal: (id: string, reason: string) =>
     request<Proposal>(`/api/v1/proposals/${id}/reject`, {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  batchRejectProposals: (proposal_ids: string[], reason?: string) =>
+    request<{ rejected: number; failed: number; errors: { proposal_id: string; error: string }[] }>("/api/v1/proposals/batch-reject", {
+      method: "POST",
+      body: JSON.stringify({ proposal_ids, reason: reason ?? "Batch rejected by reviewer" }),
+    }),
   chat: (question: string) =>
     request<ChatResult>("/api/v1/chat", { method: "POST", body: JSON.stringify({ question }) }),
   exportUrl: `${API_URL}/api/v1/export`,
+  getWorkspacePolicy: (slug: string = "default") =>
+    request<WorkspacePolicy>(`/api/v1/workspaces/${encodeURIComponent(slug)}/policy`),
+  updateWorkspacePolicy: (slug: string = "default", policy: Partial<WorkspacePolicy>) =>
+    request<WorkspacePolicy>(`/api/v1/workspaces/${encodeURIComponent(slug)}/policy`, {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    }),
+  reindexKnowledge: () =>
+    request<{ status: string; total_records: number; embedded: number; fts_synced: number }>("/api/v1/knowledge/reindex", {
+      method: "POST",
+    }),
+  exportWorkspace: async (passphrase?: string): Promise<{ blob: Blob; filename: string }> => {
+    const url = passphrase
+      ? `${API_URL}/api/v1/export?passphrase=${encodeURIComponent(passphrase)}`
+      : `${API_URL}/api/v1/export`;
+    const session = getSession();
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (session) headers["X-Brain-Session"] = session;
+    else if (token) headers["X-Brain-Token"] = token;
+    const response = await fetch(url, { headers });
+    if (response.status === 401) throw new Unauthorized(await refusedDetail(response));
+    if (!response.ok) throw new Error("Export failed");
+    const blob = await response.blob();
+    const ext = passphrase ? "oib" : "json";
+    const filename = `brain-export-${new Date().toISOString().slice(0, 10)}.${ext}`;
+    return { blob, filename };
+  },
+  previewRestore: (backup: unknown, passphrase?: string) =>
+    request<RestorePreview>("/api/v1/restore/preview", {
+      method: "POST",
+      body: JSON.stringify({ backup, passphrase }),
+    }),
+  restoreWorkspace: (backup: unknown, passphrase?: string) =>
+    request<RestorePreview>("/api/v1/restore", {
+      method: "POST",
+      body: JSON.stringify({ backup, passphrase, confirm_empty_workspace: true }),
+    }),
 
   // --- Studio ---
   interviews: () => request<InterviewSession[]>("/api/v1/studio/interviews"),

@@ -338,3 +338,49 @@ def add_proposal_critic_notes() -> list[str]:
         )
         added.append("proposals.critic_notes")
     return added
+
+
+def add_temporal_knowledge_and_conflict_columns() -> list[str]:
+    """Add temporal columns to knowledge and conflict columns to proposals.
+
+    Additive and idempotent:
+    - knowledge: valid_from, valid_to, superseded_by
+    - proposals: conflict_with_id, conflict_note
+    """
+    added: list[str] = []
+    columns = _existing_columns(engine)
+    wanted: dict[str, list[tuple[str, str]]] = {
+        "knowledge": [
+            ("valid_from", "TIMESTAMP WITH TIME ZONE"),
+            ("valid_to", "TIMESTAMP WITH TIME ZONE"),
+            ("superseded_by", "VARCHAR(32)"),
+        ],
+        "proposals": [
+            ("conflict_with_id", "VARCHAR(32)"),
+            ("conflict_note", "TEXT"),
+        ],
+    }
+    with engine.begin() as connection:
+        for table, cols in wanted.items():
+            if table not in columns:
+                continue
+            for column, definition in cols:
+                if column in columns[table]:
+                    continue
+                connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
+                added.append(f"{table}.{column}")
+    return added
+
+
+def ensure_workspace_policies_table() -> list[str]:
+    """Ensure workspace_policies table exists for auto-governance.
+
+    Additive and idempotent: creates the table if missing, safe to call repeatedly.
+    """
+    from .models import WorkspacePolicy
+
+    inspector = inspect(engine)
+    if "workspace_policies" not in inspector.get_table_names():
+        WorkspacePolicy.__table__.create(bind=engine, checkfirst=True)
+        return ["workspace_policies"]
+    return []

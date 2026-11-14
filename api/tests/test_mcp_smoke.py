@@ -136,3 +136,78 @@ class TestMCPSmoke:
             assert isinstance(pending, list)
         finally:
             db.close()
+
+    def test_search_brain_scoped_temporal_time_travel(self):
+        from datetime import UTC, datetime, timedelta
+
+        from brain.mcp_server import search_brain_scoped
+
+        db = SessionLocal()
+        try:
+            ws = ensure_default_workspace(db)
+            scope = ReadScope(ws.id, "owner")
+            # Ingest and approve two facts
+            src = create_source_with_proposals(
+                db,
+                SourceCreate(
+                    title="Database Standard Policy",
+                    kind="decision",
+                    sensitivity="internal",
+                    content="We designate PostgreSQL 16 as our production standard database.",
+                ),
+                ws.id,
+            )
+            prop = db.scalars(
+                select(Proposal).where(Proposal.source_id == src.id, Proposal.status == "proposed")
+            ).first()
+            assert prop is not None
+            past_time = datetime(2023, 1, 1, 0, 0, 0, tzinfo=UTC)
+            k1 = approve_proposal(db, prop, None, None, valid_from=past_time)
+
+            # Search with current time -> finds it
+            res_now = search_brain_scoped("PostgreSQL 16", 10, scope)
+            assert any(item.knowledge_id == k1.id for item in res_now.items)
+            hit = next(item for item in res_now.items if item.knowledge_id == k1.id)
+            assert hit.valid_from is not None
+            assert hit.superseded_by is None
+
+            # Search with historical time prior to valid_from -> does not find it
+            ancient_time = (past_time - timedelta(days=365)).isoformat()
+            res_past = search_brain_scoped("PostgreSQL 16", 10, scope, as_of=ancient_time)
+            assert not any(item.knowledge_id == k1.id for item in res_past.items)
+        finally:
+            db.close()
+
+    def test_list_pending_reviews_scoped_includes_conflict(self):
+        from brain.mcp_server import list_pending_reviews_scoped
+
+        db = SessionLocal()
+        try:
+            ws = ensure_default_workspace(db)
+            scope = ReadScope(ws.id, "owner")
+            # Create a source that produces a proposal, manually set conflict info
+            src = create_source_with_proposals(
+                db,
+                SourceCreate(
+                    title="Conflict Test Source",
+                    kind="decision",
+                    sensitivity="internal",
+                    content="Contradictory claim for conflict radar test in reviews.",
+                ),
+                ws.id,
+            )
+            prop = db.scalars(
+                select(Proposal).where(Proposal.source_id == src.id, Proposal.status == "proposed")
+            ).first()
+            if prop:
+                prop.conflict_with_id = "know_conflict_sample"
+                prop.conflict_note = "Direct contradiction detected with know_conflict_sample"
+                db.commit()
+
+            queue = list_pending_reviews_scoped(10, scope)
+            matching = [item for item in queue.items if item.proposal_id == prop.id]
+            if matching:
+                assert matching[0].conflict_with_id == "know_conflict_sample"
+                assert "contradiction" in matching[0].conflict_note.lower()
+        finally:
+            db.close()

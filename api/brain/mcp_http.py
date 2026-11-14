@@ -60,12 +60,22 @@ TOOL_DEFS = [
     },
     {
         "name": "search_brain",
-        "description": "Search canonical knowledge by keyword. Returns matching items with source citations.",
+        "description": "Search canonical knowledge by keyword with bi-temporal time-travel support. Returns matching items with source citations and validity intervals.",
         "parameters": {
             "query": {"type": "string", "description": "Search query", "required": True},
             "limit": {
                 "type": "integer",
                 "description": "Max results (default 10)",
+                "required": False,
+            },
+            "as_of": {
+                "type": "string",
+                "description": "Optional ISO-8601 timestamp for bi-temporal time-travel retrieval (e.g. 2024-01-01T00:00:00Z)",
+                "required": False,
+            },
+            "include_superseded": {
+                "type": "boolean",
+                "description": "Whether to include superseded knowledge items in search results (default false)",
                 "required": False,
             },
         },
@@ -112,6 +122,8 @@ def _call_tool(name: str, params: dict, scope: ReadScope) -> Any:
             query=params.get("query", ""),
             limit=params.get("limit", 10),
             scope=scope,
+            as_of=params.get("as_of"),
+            include_superseded=params.get("include_superseded", False),
         ).model_dump()
     elif name == "ask_brain":
         return ask_brain_scoped(question=params.get("question", ""), scope=scope).model_dump()

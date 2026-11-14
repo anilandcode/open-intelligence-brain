@@ -1,4 +1,4 @@
-import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, ConnectionsView, CaptureDialog } from "./LivePages";
+import { EmptyState, LoadingState, OverviewView, InboxView, BrainView, SourcesView, AskView, StudioView, ActivateView, AnalyticsPreview, AuditView, AgentsView, GraphView, ConnectorsView, ConnectionsView, CaptureDialog, ExportRestoreDialog } from "./LivePages";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Archive, BarChart3, BookOpen, Boxes, Brain, Check, ChevronRight, CircleDot, Download, FileText, History, Home, Inbox, GitBranch, KeyRound, Layers3, Link2, Menu, MessageSquareText, Mic2, Moon, Plus, Search, ShieldCheck, Sparkles, Sun, TriangleAlert, X } from "lucide-react";
 import { BrainClientContext } from "./client";
@@ -12,7 +12,7 @@ import ArchitecturePage from "./ArchitecturePage";
 import LandingPage from "./LandingPage";
 import { PreviewPage } from "./PreviewPages";
 import { goTo, openSiteHome, readRoute, SHOW_LANDING, type View } from "./routes";
-import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, getToken, hasToken, setToken, Unauthorized } from "./api";
+import { api, Draft, Integrity, InterviewSession, Knowledge, McpConnection, Overview, Proposal, Source, clearToken, getSession, hasToken, setToken, Unauthorized } from "./api";
 
 type NavItem = { id: View; label: string; icon: typeof Home; future?: boolean };
 
@@ -488,6 +488,7 @@ export default function App() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [showCapture, setShowCapture] = useState(false);
+  const [showBackup, setShowBackup] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState("General");
   const [compact, setCompact] = useState(() => typeof window.matchMedia === "function" && window.matchMedia("(max-width: 880px)").matches);
@@ -599,8 +600,10 @@ export default function App() {
     const result = consumeGoogleRedirect();
     if (result.kind === "none") return;
     if (result.kind === "error") {
-      setTokenRequired(true);
-      setTokenRefused(true);
+      queueMicrotask(() => {
+        setTokenRequired(true);
+        setTokenRefused(true);
+      });
       return;
     }
     api.login(result.idToken)
@@ -609,7 +612,6 @@ export default function App() {
         setTokenRequired(true);
         setTokenRefused(true);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -684,25 +686,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function handleExport() {
-    try {
-      const response = await fetch(api.exportUrl, { headers: { "X-Brain-Token": getToken() } });
-      if (response.status === 401) throw new Unauthorized();
-      if (!response.ok) throw new Error("Export failed");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `brain-export-${new Date().toISOString().slice(0, 10)}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setNotice("Portable Brain export downloaded.");
-    } catch (exportError) {
-      if (exportError instanceof Unauthorized) recordRequestError(exportError);
-      else setError("The workspace could not be exported.");
-    }
-  }
-
   const current = titleMap[view];
 
   // Console-first builds keep the public site off unless VITE_SHOW_LANDING=true.
@@ -727,7 +710,7 @@ export default function App() {
         {view === "settings" ? <nav className="console-settings-nav" aria-label="Settings navigation">
           <button className="settings-back" onClick={() => navigate("overview")}><ChevronRight size={14} aria-hidden="true"/><strong>Settings</strong></button>
           <span className="nav-label">Organization</span>
-          {["General", "Team", "Usage", "Advanced"].map(section => <button key={section} className={settingsSection === section ? "active" : ""} aria-current={settingsSection === section ? "page" : undefined} onClick={() => setSettingsSection(section)}><span>{section}</span>{section !== "General" && <> <small>Preview</small></>}</button>)}
+          {["General", "Governance", "Team", "Usage", "Advanced"].map(section => <button key={section} className={settingsSection === section ? "active" : ""} aria-current={settingsSection === section ? "page" : undefined} onClick={() => setSettingsSection(section)}><span>{section}</span>{section !== "General" && section !== "Governance" && <> <small>Preview</small></>}</button>)}
           <span className="nav-label">Personal</span>
           <button className={settingsSection === "Account" ? "active" : ""} aria-current={settingsSection === "Account" ? "page" : undefined} onClick={() => setSettingsSection("Account")}><span>Account</span> <small>Preview</small></button>
         </nav> : <nav aria-label="Primary navigation">
@@ -743,7 +726,7 @@ export default function App() {
             <span className="workspace-avatar">L</span>
             <span><strong>{route.screen === "demo" ? "Sample workspace" : "Token access"}</strong><small>{route.screen === "demo" ? "No API connection" : loadedClient === client ? "Authenticated with token" : "Token supplied · status unknown"}</small></span>
             {route.screen !== "demo" && <button className="rail-action" aria-label="Change access token" title="Change access token" onClick={()=>goTo("login")}><KeyRound size={15}/></button>}
-            {route.screen !== "demo" && <button className="rail-action" onClick={handleExport} title="Export workspace" aria-label="Export workspace"><Download size={15} /></button>}
+            {route.screen !== "demo" && <button className="rail-action" onClick={() => setShowBackup(true)} title="Backup and restore workspace" aria-label="Backup and restore workspace"><Download size={15} /></button>}
           </div>
         </div>
       </aside>
@@ -771,7 +754,7 @@ export default function App() {
             <div><h1>{view === "settings" ? settingsSection : current.title}</h1><p>{current.description}</p></div>
             {view === "brain" && <button className="secondary-button btn--pill" onClick={() => navigate("ask")}><MessageSquareText size={17} /> Ask the Brain</button>}
             {view === "sources" && <button className="primary-button btn--pill" onClick={() => route.screen === "demo" ? navigate("import") : setShowCapture(true)}><Plus size={17} /> Add source</button>}
-            {view === "audit" && route.screen !== "demo" && <button className="secondary-button btn--pill" onClick={handleExport}><Download size={17} /> Export audit data</button>}
+            {view === "audit" && route.screen !== "demo" && <button className="secondary-button btn--pill" onClick={() => setShowBackup(true)}><Download size={17} /> Export / Restore data</button>}
           </header>
 
           {error && <div className="alert alert--error" role="alert"><X size={18} /><span>{error}</span><button onClick={refresh}>Retry loading</button><button onClick={() => setError("")}>Dismiss</button></div>}
@@ -809,6 +792,18 @@ export default function App() {
             navigate("inbox");
           }}
           onError={setError}
+        />
+      )}
+      {showBackup && route.screen === "console" && (
+        <ExportRestoreDialog
+          onClose={() => setShowBackup(false)}
+          onNotice={setNotice}
+          onError={setError}
+          onRestored={async () => {
+            setShowBackup(false);
+            setNotice("Workspace restored from backup.");
+            await refresh();
+          }}
         />
       )}
       {paletteOpen && (

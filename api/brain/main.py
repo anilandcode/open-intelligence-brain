@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from . import turns as harness_turns
@@ -36,6 +36,12 @@ from .mcp_oauth import (  # noqa: F401 — register OAuth tables on Base.metadat
     McpOAuthPending,
     McpOAuthTokenRow,
 )
+from .middleware import (
+    AccessLogMiddleware,
+    RateLimitMiddleware,
+    RequestIdMiddleware,
+    SecurityHeadersMiddleware,
+)
 from .migrate import (
     add_audit_actor_columns,
     add_engine_link_columns,
@@ -43,7 +49,9 @@ from .migrate import (
     add_knowledge_embedding,
     add_nullable_evidence_span,
     add_proposal_summary_tags,
+    add_temporal_knowledge_and_conflict_columns,
     add_workspace_columns,
+    ensure_workspace_policies_table,
 )
 from .models import (
     AuditEvent,
@@ -61,6 +69,10 @@ from .models import (
 from .retrieval import SEARCH_INDEX_VERSION, dialect_name, ensure_fts, rebuild_fts
 from .schemas import (
     ApprovalRequest,
+    BatchApprovalRequest,
+    BatchApprovalResponse,
+    BatchRejectRequest,
+    BatchRejectResponse,
     ChatRequest,
     ChatResponse,
     ConnectorIngestRequest,
@@ -98,6 +110,8 @@ from .schemas import (
     TurnRead,
     TurnStepRead,
     WorkspaceCreate,
+    WorkspacePolicyRead,
+    WorkspacePolicyUpdate,
     WorkspaceRead,
 )
 from .services import (
@@ -108,19 +122,24 @@ from .services import (
     backfill_provenance,
     conflict_map,
     create_source_with_proposals,
+    decrypt_backup_data,
+    encrypt_backup_data,
     export_workspace_data,
+    get_or_create_workspace_policy,
     integrity_snapshot,
     knowledge_is_stale,
     knowledge_revision_count,
     latest_source_version,
     overview,
     record_review_with_engine,
+    reindex_knowledge_embeddings,
     restore_preview,
     restore_workspace,
     search_knowledge,
     seed_demo,
     supersede_knowledge,
     sync_derived_proposals,
+    update_workspace_policy,
 )
 from .studio_api import router as studio_router
 
@@ -134,6 +153,12 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    issues = get_settings().validate_for_production()
+    if issues:
+        error_msg = "Production configuration failed:\n- " + "\n- ".join(issues)
+        logging.getLogger(__name__).critical(error_msg)
+        raise RuntimeError(error_msg)
+
     Base.metadata.create_all(engine)
     # create_all does not alter existing tables, so an existing deployment needs
     # the columns added before any query that selects them.
@@ -173,6 +198,16 @@ async def lifespan(app: FastAPI):
         logging.getLogger(__name__).info(
             "Added proposal summary/tags columns: %s", ", ".join(enriched)
         )
+    # Adds temporal valid_from/valid_to/superseded_by and proposal conflict radar columns
+    temporal = add_temporal_knowledge_and_conflict_columns()
+    if temporal:
+        logging.getLogger(__name__).info(
+            "Added temporal and conflict radar columns: %s", ", ".join(temporal)
+        )
+    # Ensure workspace auto-approval policies table exists
+    policies = ensure_workspace_policies_table()
+    if policies:
+        logging.getLogger(__name__).info("Ensured tables: %s", ", ".join(policies))
     # Build the ranked full-text index for canonical knowledge. The backend
     # depends on the dialect: FTS5 on SQLite, a tsvector GIN index on
     # PostgreSQL. `ensure_fts` picks; we only log which one answered.
@@ -216,6 +251,9 @@ async def lifespan(app: FastAPI):
         yield
 
 
+from .mem0_shim import router as mem0_router
+
+
 def _workspaces() -> list[str]:
     with SessionLocal() as db:
         return [row.id for row in db.scalars(select(Workspace)).all()]
@@ -224,18 +262,26 @@ def _workspaces() -> list[str]:
 app = FastAPI(
     title="Open Intelligence Brain API",
     description="A local-first governed knowledge workspace.",
-    version="1.1.0",
+    version="2.4.0",
     lifespan=lifespan,
 )
 app.include_router(mcp_http_router)
 app.include_router(studio_router)
 app.include_router(auth_router)
 app.include_router(connections_router)
+app.include_router(mem0_router)
 
 # Hosted Streamable HTTP MCP at /mcp (+ OAuth authorize/token/register). Must
 # install before the SPA catch-all so /.well-known and /mcp are not HTML.
 if settings.mcp_hosted:
     app.state.mcp_session_manager = install_hosted_mcp_routes(app)
+
+_is_prod = settings.env.lower() == "production"
+app.add_middleware(SecurityHeadersMiddleware, is_production=_is_prod)
+if settings.rate_limit_enabled and settings.env.lower() != "test":
+    app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AccessLogMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -249,6 +295,7 @@ app.add_middleware(
         "X-Brain-Token",
         "X-Brain-Workspace",
         "X-Brain-Session",
+        "X-Request-ID",
         "Mcp-Session-Id",
         "Last-Event-ID",
         "MCP-Protocol-Version",
@@ -582,6 +629,61 @@ def revoke_workspace_token(
     return None
 
 
+@app.get("/api/v1/workspaces/{workspace_slug}/policy", response_model=WorkspacePolicyRead)
+def get_workspace_policy(
+    workspace_slug: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Retrieve auto-governance policy for a workspace. Only owners and admins."""
+    require_scope(access, "admin")
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can view workspace policy",
+        )
+    workspace = db.scalar(
+        select(Workspace).where(
+            or_(Workspace.slug == workspace_slug, Workspace.id == workspace_slug)
+        )
+    )
+    if workspace is None or workspace.id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return get_or_create_workspace_policy(db, workspace.id)
+
+
+@app.put("/api/v1/workspaces/{workspace_slug}/policy", response_model=WorkspacePolicyRead)
+def update_workspace_policy_endpoint(
+    workspace_slug: str,
+    payload: WorkspacePolicyUpdate,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Update auto-governance policy for a workspace. Only owners and admins."""
+    require_scope(access, "admin")
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can update workspace policy",
+        )
+    workspace = db.scalar(
+        select(Workspace).where(
+            or_(Workspace.slug == workspace_slug, Workspace.id == workspace_slug)
+        )
+    )
+    if workspace is None or workspace.id != access.workspace_id:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    updated = update_workspace_policy(db, workspace.id, payload)
+    audit_access(
+        db,
+        access,
+        "workspace.policy_updated",
+        f"Updated policy: auto_approve={updated.auto_approve_enabled}, types={updated.auto_approve_types}",
+    )
+    db.commit()
+    return updated
+
+
 @app.get("/api/v1/mcp/connections", response_model=list[McpConnectionRead])
 def list_mcp_connections(
     access: WorkspaceAccess = Depends(resolve_access),
@@ -634,7 +736,11 @@ def get_overview(scope: ReadScope = Depends(read_scope), db: Session = Depends(g
 
 
 @app.get("/api/v1/graph")
-def get_graph(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
+def get_graph(
+    include_superseded: bool = False,
+    scope: ReadScope = Depends(read_scope),
+    db: Session = Depends(get_db),
+):
     """Knowledge graph: sources + approved knowledge + edges. Read-only.
 
     Node/edge shape follows the Supermemory memory-graph contract so a client can
@@ -643,7 +749,7 @@ def get_graph(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_
     """
     from .graph import build_graph
 
-    return build_graph(db, scope)
+    return build_graph(db, scope, include_superseded=include_superseded)
 
 
 @app.get("/api/v1/sources", response_model=list[SourceRead])
@@ -879,7 +985,15 @@ def approve(
     require_scope(access, "reviews:write")
     proposal = require_in_workspace(db, access, Proposal, proposal_id)
     try:
-        item = approve_proposal(db, proposal, payload.statement, payload.rationale, actor=access)
+        item = approve_proposal(
+            db,
+            proposal,
+            payload.statement,
+            payload.rationale,
+            actor=access,
+            valid_from=payload.valid_from,
+            supersedes_knowledge_id=payload.supersedes_knowledge_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     # Engine-derived facts: tell the engine so its index agrees with our
@@ -887,7 +1001,7 @@ def approve(
     # failing notification must not undo a human's stored decision.
     record_review_with_engine(proposal, "approve", proposal.engine_memory_id)
     source = db.get(Source, item.source_id)
-    return knowledge_view(db, item, source.title)
+    return knowledge_view(db, item, source.title if source else "")
 
 
 @app.post("/api/v1/proposals/{proposal_id}/reject", response_model=ProposalRead)
@@ -915,16 +1029,97 @@ def reject(
     db.commit()
     db.refresh(proposal)
     source = db.get(Source, proposal.source_id)
-    return proposal_view(proposal, source.title)
+    return proposal_view(proposal, source.title if source else "")
+
+
+@app.post("/api/v1/proposals/batch-approve", response_model=BatchApprovalResponse)
+def batch_approve(
+    payload: BatchApprovalRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Bulk review: approve multiple candidate proposals in one request."""
+    require_scope(access, "reviews:write")
+    approved_ids: list[str] = []
+    failed_ids: list[str] = []
+
+    for prop_id in payload.proposal_ids:
+        proposal = db.get(Proposal, prop_id)
+        if (
+            proposal is None
+            or proposal.workspace_id != access.workspace_id
+            or proposal.status != "proposed"
+        ):
+            failed_ids.append(prop_id)
+            continue
+        try:
+            item = approve_proposal(
+                db,
+                proposal,
+                None,
+                None,
+                actor=access,
+            )
+            record_review_with_engine(proposal, "approve", proposal.engine_memory_id)
+            approved_ids.append(item.id)
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Batch approval failed on %s: %s", prop_id, exc)
+            failed_ids.append(prop_id)
+
+    return BatchApprovalResponse(
+        approved_count=len(approved_ids),
+        knowledge_ids=approved_ids,
+        failed_ids=failed_ids,
+    )
+
+
+@app.post("/api/v1/proposals/batch-reject", response_model=BatchRejectResponse)
+def batch_reject(
+    payload: BatchRejectRequest,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Bulk review: decline multiple candidate proposals with an audit reason."""
+    require_scope(access, "reviews:write")
+    declined: list[str] = []
+
+    for prop_id in payload.proposal_ids:
+        proposal = db.get(Proposal, prop_id)
+        if (
+            proposal is None
+            or proposal.workspace_id != access.workspace_id
+            or proposal.status != "proposed"
+        ):
+            continue
+        proposal.status = "rejected"
+        record_review_with_engine(proposal, "decline", proposal.engine_memory_id)
+        audit(
+            db,
+            access.workspace_id,
+            "proposal.rejected",
+            "proposal",
+            proposal.id,
+            payload.reason,
+            actor=access,
+        )
+        declined.append(prop_id)
+
+    db.commit()
+    return BatchRejectResponse(declined_count=len(declined), declined_ids=declined)
 
 
 @app.get("/api/v1/knowledge", response_model=list[KnowledgeRead])
+@app.get("/api/v1/search", response_model=list[KnowledgeRead])
 def list_knowledge(
     q: str = "",
+    as_of: datetime | None = None,
+    include_superseded: bool = False,
     scope: ReadScope = Depends(read_scope),
     db: Session = Depends(get_db),
 ):
-    items = search_knowledge(db, scope, q, limit=50)
+    items = search_knowledge(
+        db, scope, q, limit=50, as_of=as_of, include_superseded=include_superseded
+    )
     titles = {
         source_id: title
         for source_id, title in db.execute(
@@ -937,11 +1132,7 @@ def list_knowledge(
         ).all()
     }
     conflicts = conflict_map(items)
-    return [
-        knowledge_view(db, item, titles[item.source_id], conflicts)
-        for item in items
-        if item.source_id in titles
-    ]
+    return [knowledge_view(db, item, titles.get(item.source_id, ""), conflicts) for item in items]
 
 
 @app.get("/api/v1/knowledge/{knowledge_id}/revisions", response_model=list[KnowledgeRevisionRead])
@@ -978,6 +1169,22 @@ def supersede(
     return knowledge_view(db, item, source.title)
 
 
+@app.post("/api/v1/knowledge/reindex")
+def reindex_knowledge(
+    force: bool = False,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Recompute vector embeddings and full-text index for workspace knowledge. Admin/owner only."""
+    require_scope(access, "admin")
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can trigger reindexing",
+        )
+    return reindex_knowledge_embeddings(db, access.workspace_id, force=force)
+
+
 @app.get("/api/v1/integrity", response_model=IntegrityRead)
 def get_integrity(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
     return integrity_snapshot(db, scope)
@@ -1004,12 +1211,50 @@ def chat(
     return result
 
 
+def _resolve_backup_payload(payload: RestoreRequest) -> dict:
+    if payload.passphrase:
+        import base64
+
+        try:
+            if isinstance(payload.backup, str):
+                raw = base64.b64decode(payload.backup)
+                return decrypt_backup_data(raw, payload.passphrase)
+            if isinstance(payload.backup, dict) and "encrypted_data" in payload.backup:
+                raw = base64.b64decode(payload.backup["encrypted_data"])
+                return decrypt_backup_data(raw, payload.passphrase)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Decryption failed: {exc}",
+            ) from exc
+    if isinstance(payload.backup, dict):
+        return payload.backup
+    raise HTTPException(status_code=400, detail="Invalid backup payload format")
+
+
 @app.get("/api/v1/export")
-def export_workspace(scope: ReadScope = Depends(read_scope), db: Session = Depends(get_db)):
+def export_workspace(
+    passphrase: str | None = Query(default=None),
+    x_brain_encryption_passphrase: str | None = Header(default=None),
+    scope: ReadScope = Depends(read_scope),
+    db: Session = Depends(get_db),
+):
     # Scoped read: a member's export excludes private material exactly like
     # every list endpoint does. Passing a bare workspace_id here is what let
     # a member export sources above their ceiling.
-    return export_workspace_data(db, scope)
+    key = passphrase or x_brain_encryption_passphrase
+    data = export_workspace_data(db, scope)
+    if key:
+        import base64
+
+        encrypted_bytes = encrypt_backup_data(data, key)
+        return {
+            "schema_version": 4,
+            "format": "encrypted_v4",
+            "workspace_id": scope.workspace_id,
+            "encrypted_data": base64.b64encode(encrypted_bytes).decode("ascii"),
+        }
+    return data
 
 
 @app.post("/api/v1/restore/preview", response_model=RestorePreview)
@@ -1025,7 +1270,8 @@ def preview_restore(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only an owner or admin can preview a restore",
         )
-    return restore_preview(db, payload.backup, access.workspace_id)
+    backup_dict = _resolve_backup_payload(payload)
+    return restore_preview(db, backup_dict, access.workspace_id)
 
 
 @app.post("/api/v1/restore", response_model=RestorePreview)
@@ -1044,8 +1290,9 @@ def restore(
             status_code=400,
             detail="Set confirm_empty_workspace=true after reviewing the restore preview",
         )
+    backup_dict = _resolve_backup_payload(payload)
     try:
-        return restore_workspace(db, payload.backup, access.workspace_id)
+        return restore_workspace(db, backup_dict, access.workspace_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

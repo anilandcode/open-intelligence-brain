@@ -36,6 +36,31 @@ class Workspace(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
 
+class WorkspacePolicy(Base):
+    """Deterministic auto-governance policy for a workspace.
+
+    Defines when a low-risk, verified proposal can be automatically approved
+    into canonical knowledge without human review. Gated on zero conflicts,
+    zero critic notes, allowed proposal types, and allowed sensitivity ceiling.
+    Approval is NEVER decided by model output.
+    """
+
+    __tablename__ = "workspace_policies"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspaces.id"), unique=True, index=True)
+    auto_approve_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_approve_types: Mapped[str] = mapped_column(
+        String(200), default="note,lesson,evidence,fact"
+    )
+    auto_approve_max_sensitivity: Mapped[str] = mapped_column(String(40), default="internal")
+    require_clean_critic: Mapped[bool] = mapped_column(Boolean, default=True)
+    require_zero_conflicts: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, onupdate=now_utc
+    )
+
+
 class WorkspaceGrant(Base):
     """One principal's access to one workspace.
 
@@ -190,6 +215,13 @@ class Proposal(Base):
     # the review queue is useful with no provider. `tags` is a JSON string list.
     summary: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[str] = mapped_column(Text, default="[]")
+    # Conflict Radar: link to conflicting canonical knowledge item if detected
+    conflict_with_id: Mapped[str | None] = mapped_column(
+        ForeignKey("knowledge.id", use_alter=True, name="fk_proposals_conflict_knowledge"),
+        nullable=True,
+        index=True,
+    )
+    conflict_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     source: Mapped[Source] = relationship(back_populates="proposals")
@@ -235,6 +267,18 @@ class Knowledge(Base):
     embedding_model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     version: Mapped[int] = mapped_column(Integer, default=1)
     approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    # Bi-temporal knowledge: valid interval in the world and historical audit chain
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=now_utc, index=True
+    )
+    valid_to: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    superseded_by: Mapped[str | None] = mapped_column(
+        ForeignKey("knowledge.id", use_alter=True, name="fk_knowledge_superseded_by"),
+        nullable=True,
+        index=True,
+    )
 
 
 class KnowledgeRevision(Base):

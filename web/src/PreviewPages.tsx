@@ -1,5 +1,6 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowRight, Brain, KeyRound, LockKeyhole, Search, Sparkles, UploadCloud } from "lucide-react";
+import type { WorkspacePolicy } from "./api";
 import { useBrainClient } from "./client";
 import { Detail } from "./Detail";
 import GraphPreview from "./GraphPreview";
@@ -32,6 +33,167 @@ function Banner({ demo, children }: { demo: boolean; children?: React.ReactNode 
 function Panel({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) { return <section className="preview-panel"><header><h2>{title}</h2>{action}</header>{children}</section>; }
 
 function Row({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) { return <button type="button" className="preview-row" onClick={onClick}>{children}<ArrowRight size={16}/></button>; }
+
+function GovernanceSettingsPanel({ demo }: { demo: boolean }) {
+  const client = useBrainClient();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [reindexing, setReindexing] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const [policy, setPolicy] = useState<WorkspacePolicy>({
+    auto_approve_enabled: false,
+    allowed_types: ["fact", "preference"],
+    max_sensitivity: "internal",
+    require_critic_approval: true,
+    disallow_conflicts: true,
+  });
+
+  useEffect(() => {
+    client.getWorkspacePolicy("default")
+      .then(p => { setPolicy(p); setLoading(false); })
+      .catch(err => { setError(err instanceof Error ? err.message : "Failed to load policy"); setLoading(false); });
+  }, [client]);
+
+  async function handleSave() {
+    setSaving(true);
+    setNotice("");
+    setError("");
+    try {
+      const updated = await client.updateWorkspacePolicy("default", policy);
+      setPolicy(updated);
+      setNotice(demo ? "Sample policy held locally in this browser." : "Workspace auto-approval governance policy saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update policy");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReindex() {
+    setReindexing(true);
+    setNotice("");
+    setError("");
+    try {
+      const res = await client.reindexKnowledge();
+      setNotice(`Knowledge index synchronized: ${res.embedded} embedded, ${res.fts_synced} full-text search indexed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to reindex knowledge");
+    } finally {
+      setReindexing(false);
+    }
+  }
+
+  const toggleType = (t: string) => {
+    setPolicy(p => ({
+      ...p,
+      allowed_types: p.allowed_types.includes(t)
+        ? p.allowed_types.filter(x => x !== t)
+        : [...p.allowed_types, t],
+    }));
+  };
+
+  if (loading) return <Panel title="Auto-Approval Governance"><p className="panel-intro">Loading workspace governance policy…</p></Panel>;
+
+  return (
+    <>
+      <Panel title="Auto-Approval Policy Governance" action={<span className="status-pill">{policy.auto_approve_enabled ? "Active" : "Disabled"}</span>}>
+        <p className="panel-intro">
+          Deterministic evaluation engine gates candidate proposals before they enter canonical memory. No LLM prompts or hallucinations can bypass these hard criteria.
+        </p>
+
+        <label className="toggle-row">
+          <span>
+            <strong>Deterministic Auto-Approval</strong>
+            <small>Automatically mint canonical knowledge for proposals passing all 4 quality criteria.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={policy.auto_approve_enabled}
+            onChange={e => setPolicy({ ...policy, auto_approve_enabled: e.target.checked })}
+          />
+        </label>
+
+        <div className="setting-row">
+          <div>
+            <strong>Sensitivity Ceiling</strong>
+            <p>Maximum classification level allowed for unattended auto-approval.</p>
+          </div>
+          <select
+            value={policy.max_sensitivity}
+            onChange={e => setPolicy({ ...policy, max_sensitivity: e.target.value })}
+            aria-label="Maximum sensitivity"
+          >
+            <option value="public">Public only (Safest)</option>
+            <option value="internal">Public + Internal (Standard)</option>
+            <option value="private">All levels including Private</option>
+          </select>
+        </div>
+
+        <div className="setting-row" style={{ display: "block" }}>
+          <strong>Allowed Knowledge Types</strong>
+          <p style={{ marginBottom: "10px" }}>Only proposals matching these types qualify for auto-approval:</p>
+          <div style={{ display: "flex", gap: "14px", flexWrap: "wrap", marginTop: "8px" }}>
+            {["fact", "preference", "decision", "observation"].map(t => (
+              <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={policy.allowed_types.includes(t)}
+                  onChange={() => toggleType(t)}
+                />
+                <span style={{ textTransform: "capitalize" }}>{t}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <label className="toggle-row">
+          <span>
+            <strong>Critic Integrity Guard</strong>
+            <small>Reject auto-approval if the extraction critic notes any ambiguity or hallucination warning.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={policy.require_critic_approval}
+            onChange={e => setPolicy({ ...policy, require_critic_approval: e.target.checked })}
+          />
+        </label>
+
+        <label className="toggle-row">
+          <span>
+            <strong>Conflict Radar Guard</strong>
+            <small>Reject auto-approval if ingestion detects a contradiction or conflict with existing knowledge.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={policy.disallow_conflicts}
+            onChange={e => setPolicy({ ...policy, disallow_conflicts: e.target.checked })}
+          />
+        </label>
+
+        <div style={{ padding: "16px", display: "flex", gap: "10px", borderTop: "1px solid var(--line)" }}>
+          <button className="primary-button" disabled={saving} onClick={handleSave}>
+            {saving ? "Saving…" : "Save Governance Policy"}
+          </button>
+        </div>
+      </Panel>
+
+      <Panel title="Search & Vector Index Management">
+        <p className="panel-intro">
+          Synchronize SQLite FTS5 full-text search indexes and re-embed all canonical knowledge items.
+        </p>
+        <div style={{ padding: "16px" }}>
+          <button className="secondary-button" disabled={reindexing} onClick={handleReindex}>
+            {reindexing ? "Reindexing…" : "Reindex Knowledge & Vectors"}
+          </button>
+        </div>
+      </Panel>
+
+      {notice && <p role="status" className="inline-notice">{notice}</p>}
+      {error && <p role="alert" className="inline-error">{error}</p>}
+    </>
+  );
+}
 
 function PreviewContent({ view, demo, onImported, theme, onTheme, settingsSection = "General" }: Props) {
   const client = useBrainClient();
@@ -90,7 +252,7 @@ function PreviewContent({ view, demo, onImported, theme, onTheme, settingsSectio
 
   if (view === "proactivity") return <div className="preview-page narrow-page"><Banner demo={demo}>Policy controls are interactive locally only. Nothing is scheduled or saved to the server.</Banner><Panel title="Proactivity policy"><p className="panel-intro">Choose which kinds of suggestions a future Brain may offer.</p><label className="toggle-row"><span><strong>Knowledge recommendations</strong><small>Suggest connections and possible conflicts for review.</small></span><input type="checkbox" checked={policy.recommendations} onChange={e=>setPolicy({...policy,recommendations:e.target.checked})}/></label><label className="toggle-row"><span><strong>Review reminders</strong><small>Remind owners about proposals awaiting a decision.</small></span><input type="checkbox" checked={policy.reminders} onChange={e=>setPolicy({...policy,reminders:e.target.checked})}/></label><button className="secondary-button" onClick={()=>setNotice("Preview policy held in this browser only.")}>Review policy preview</button></Panel>{notice&&<p role="status" className="inline-notice">{notice}</p>}</div>;
 
-  if (view === "settings") return <div className="preview-page narrow-page"><Banner demo={demo}>Appearance is saved in this browser. Administration controls are design previews.</Banner>{settingsSection === "General" ? <Panel title="Organization"><div className="setting-row"><div><strong>Appearance</strong><p>Choose a comfortable theme for the interface.</p></div><select aria-label="Appearance" value={theme} onChange={e=>onTheme(e.target.value as "light"|"dark")}><option value="dark">Dark</option><option value="light">Light</option></select></div><div className="setting-row"><div><strong>Organization context</strong><p>Future profile settings will live here.</p></div><span className="status-pill">Preview</span></div></Panel> : <Panel title={settingsSection}><div className="preview-empty"><LockKeyhole size={26}/><h3>{settingsSection} administration preview</h3><p>Settings for {settingsSection.toLowerCase()} are not connected in this UI phase.</p></div></Panel>}</div>;
+  if (view === "settings") return <div className="preview-page narrow-page"><Banner demo={demo}>{demo ? "Appearance is saved in this browser. Administration controls are design previews." : "Workspace administration and deterministic governance policies."}</Banner>{settingsSection === "General" ? <Panel title="Organization"><div className="setting-row"><div><strong>Appearance</strong><p>Choose a comfortable theme for the interface.</p></div><select aria-label="Appearance" value={theme} onChange={e=>onTheme(e.target.value as "light"|"dark")}><option value="dark">Dark</option><option value="light">Light</option></select></div><div className="setting-row"><div><strong>Organization context</strong><p>Default workspace identifier and active organization scope.</p></div><span className="status-pill">Active</span></div></Panel> : settingsSection === "Governance" ? <GovernanceSettingsPanel demo={demo} /> : <Panel title={settingsSection}><div className="preview-empty"><LockKeyhole size={26}/><h3>{settingsSection} administration preview</h3><p>Settings for {settingsSection.toLowerCase()} are not connected in this UI phase.</p></div></Panel>}</div>;
 
   return null;
 }

@@ -130,6 +130,35 @@ class TestHostedMcpToolsWithBearer:
         finally:
             auth_context_var.reset(ctx_token)
 
+    def test_search_http_with_temporal_as_of(self, client, headers):
+        from brain.mcp_http import _call_tool
+
+        _seed_approved(client, headers)
+        token = headers["X-Brain-Token"]
+        with SessionLocal() as db:
+            principal = resolve_brain_principal(db, token)
+        access = access_token_from_principal(
+            token=token,
+            client_id="brain-api-key",
+            principal=principal,
+            scopes=[SCOPE_DEFAULT],
+            expires_at=None,
+            resource="http://127.0.0.1:8000/mcp",
+        )
+        ctx_token = auth_context_var.set(AuthenticatedUser(access))
+        try:
+            scope = _caller_scope()
+            # Live search finds it
+            res_live = _call_tool("search_brain", {"query": "hosted MCP"}, scope)
+            assert res_live["count"] >= 1
+            # Time travel to 2020 finds nothing
+            res_past = _call_tool(
+                "search_brain", {"query": "hosted MCP", "as_of": "2020-01-01T00:00:00Z"}, scope
+            )
+            assert res_past["count"] == 0
+        finally:
+            auth_context_var.reset(ctx_token)
+
     def test_caller_scope_requires_auth(self):
         # No auth context → tools must refuse, not fall back to owner.
         with pytest.raises(PermissionError):

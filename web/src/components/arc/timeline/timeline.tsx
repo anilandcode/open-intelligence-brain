@@ -145,7 +145,6 @@ function TimelineRow({ row, last, expanded, onToggle, timeLabel, timeFull }: { r
     transition={reduced ? { duration: 0 } : motionTokens.spring.smooth} onAnimationComplete={() => setEntering(false)}
     onViewportEnter={() => setRevealDelay(current => current ?? clock.schedule())} viewport={{ once: true, amount: .2 }}>
     <motion.span className={styles.marker} data-tone={tone} aria-hidden="true" initial={{ scale: .4, opacity: 0 }} animate={shown ? { scale: 1, opacity: 1 } : undefined} transition={pop}>
-      {/* eslint-disable-next-line @next/next/no-img-element -- registry components stay framework agnostic */}
       {row.avatar ? <img src={row.avatar} alt="" width={28} height={28} decoding="async" /> : row.icon}
     </motion.span>
     {!last && <motion.span className={styles.segment} aria-hidden="true" initial={{ scaleY: 0 }} animate={shown ? { scaleY: 1 } : undefined} transition={draw} />}

@@ -1,5 +1,7 @@
+import base64
 import json
 import logging
+import os
 import re
 from collections import Counter
 from datetime import UTC, datetime
@@ -9,7 +11,7 @@ from typing import Protocol
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .access import ReadScope, WorkspaceAccess, actor_ref, workspace_counts
+from .access import SENSITIVITY_RANK, ReadScope, WorkspaceAccess, actor_ref, workspace_counts
 from .critic import assess_proposal
 from .database import SessionLocal
 from .embeddings import get_embedder
@@ -29,6 +31,7 @@ from .models import (
     Source,
     SourceSpan,
     SourceVersion,
+    WorkspacePolicy,
     new_id,
 )
 from .retrieval import (
@@ -36,7 +39,7 @@ from .retrieval import (
     sync_fts_insert,
     sync_fts_update,
 )
-from .schemas import ChatResponse, Citation, SourceCreate
+from .schemas import ChatResponse, Citation, SourceCreate, WorkspacePolicyUpdate
 
 log = logging.getLogger(__name__)
 
@@ -134,6 +137,102 @@ def extract_candidates(content: str) -> list[tuple[str, str]]:
     return [(classify_statement(text), text) for text in unique[:8]]
 
 
+def _conflict_key(statement: str) -> tuple[set[str], bool, str]:
+    """Extract conflict-relevant features from a statement.
+
+    Returns (content_terms, has_negation, subject_ngram). The subject ngram
+    is the first few significant words, used to detect same-topic contradictions.
+    """
+    lowered = statement.lower().replace("cannot", "can not")
+    negative = bool(
+        re.search(r"\b(?:not|never|no|cannot|shouldn't|won't|doesn't|isn't)\b", lowered)
+    )
+    ignored = {
+        "a",
+        "an",
+        "and",
+        "are",
+        "be",
+        "is",
+        "not",
+        "no",
+        "never",
+        "our",
+        "should",
+        "the",
+        "to",
+        "we",
+        "it",
+        "that",
+        "this",
+        "with",
+        "from",
+        "for",
+        "but",
+        "or",
+        "so",
+        "if",
+        "when",
+    }
+    terms = {
+        term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
+    }
+    sig_words = [
+        term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
+    ]
+    subject = " ".join(sig_words[:3])
+    return terms, negative, subject
+
+
+def check_proposal_conflict(
+    db: Session,
+    workspace_id: str,
+    statement: str,
+    prop_type: str,
+) -> tuple[str | None, str | None]:
+    """Conflict Radar: detects potential contradictions with active canonical knowledge.
+
+    Returns (conflicting_knowledge_id, conflict_note) or (None, None).
+    """
+    active_knowledge = list(
+        db.scalars(
+            select(Knowledge).where(
+                Knowledge.workspace_id == workspace_id,
+                Knowledge.status == "canonical",
+                Knowledge.valid_to.is_(None),
+            )
+        ).all()
+    )
+    if not active_knowledge:
+        return None, None
+
+    prop_terms, prop_negative, prop_subject = _conflict_key(statement)
+    if not prop_terms:
+        return None, None
+
+    for item in active_knowledge:
+        item_terms, item_negative, item_subject = _conflict_key(item.statement)
+        if not item_terms:
+            continue
+        overlap = len(prop_terms & item_terms) / max(len(prop_terms | item_terms), 1)
+
+        # Opposite polarity with substantial topic overlap -> direct contradiction
+        if prop_negative != item_negative and overlap >= 0.30:
+            return (
+                item.id,
+                f"Contradicts approved knowledge ({item.id}): opposite polarity on overlapping topic ({overlap:.0%} overlap)",
+            )
+
+        # Same subject, same type, high overlap -> possible supersession or duplicate
+        if prop_type == item.type and prop_subject == item_subject and overlap >= 0.70:
+            return (
+                item.id,
+                f"Potentially supersedes approved knowledge ({item.id}): high topical overlap ({overlap:.0%})",
+            )
+
+    return None, None
+
+
 def add_source_version(
     db: Session,
     source: Source,
@@ -181,11 +280,15 @@ def add_source_version(
         db.flush()
         if create_proposals and 35 <= len(text) <= 600 and not is_task_fragment(text):
             statement = re.sub(r"\s+", " ", text)
+            p_type = classify_statement(statement)
+            conflict_id, conflict_note = check_proposal_conflict(
+                db, source.workspace_id, statement, p_type
+            )
             proposal = Proposal(
                 id=new_id("prop"),
                 workspace_id=source.workspace_id,
                 source_id=source.id,
-                type=classify_statement(statement),
+                type=p_type,
                 statement=statement,
                 rationale=(
                     "Candidate extracted from an immutable source span. "
@@ -194,6 +297,8 @@ def add_source_version(
                 source_excerpt=text,
                 summary=summarize(statement),
                 tags=json.dumps(extract_tags(statement), ensure_ascii=False),
+                conflict_with_id=conflict_id,
+                conflict_note=conflict_note,
             )
             db.add(proposal)
             db.flush()
@@ -219,6 +324,8 @@ def add_source_version(
                     source_span_id=span.id,
                 )
             )
+            db.flush()
+            evaluate_auto_approval(db, source.workspace_id, source, proposal, actor=actor)
     audit(
         db,
         source.workspace_id,
@@ -338,31 +445,60 @@ def sync_derived_proposals(db: Session, scope: ReadScope, source_id: str, limit:
         )
         if already:
             continue
+        fact_type = (
+            fact.fact_type
+            if fact.fact_type
+            in {
+                "decision",
+                "belief",
+                "lesson",
+                "thesis",
+                "evidence",
+                "framework",
+                "story",
+                "open_question",
+            }
+            else classify_statement(fact.text)
+        )
+        conflict_id, conflict_note = check_proposal_conflict(
+            db, source.workspace_id, fact.text, fact_type
+        )
         proposal = Proposal(
             id=new_id("prop"),
             workspace_id=source.workspace_id,
             source_id=source.id,
-            type=classify_statement(fact.text),
+            type=fact_type,
             statement=fact.text[:5_000],
             rationale=(
                 f"Derived by the {engine.name} engine from "
                 f"{fact.support_count} supporting memories. "
                 "Review wording and evidence before approval."
             ),
-            # A derived fact is an inference across memories, so it has no
-            # single excerpt. Empty is honest — a fabricated quote would be the
-            # exact failure this product exists to prevent — and the evidence
-            # edge below pins the whole source version instead.
-            source_excerpt="",
-            # The engine's own id for this fact, so an approve/reject decision
-            # can be sent back and the retrieval index agrees with our state.
+            source_excerpt=fact.exact_quote if fact.exact_quote else "",
             engine_memory_id=fact.memory_id,
+            conflict_with_id=conflict_id,
+            conflict_note=conflict_note,
         )
         db.add(proposal)
         db.flush()
-        # Without this edge the approval gate refuses the proposal forever,
-        # because it requires immutable source evidence before it will create
-        # canonical knowledge. Evidence is mandatory; a span is not.
+
+        # Critic pass for quality and grounding
+        assessment = assess_proposal(
+            proposal_id=proposal.id,
+            statement=proposal.statement,
+            declared_type=proposal.type,
+            source_excerpt=proposal.source_excerpt,
+        )
+        if assessment.has_notes:
+            proposal.critic_notes = json.dumps(
+                [
+                    {"severity": n.severity, "category": n.category, "message": n.message}
+                    for n in assessment.notes
+                ],
+                ensure_ascii=False,
+            )
+
+        # Pin immutable source evidence
         version_id = db.scalar(
             select(func.max(SourceVersion.version)).where(SourceVersion.source_id == source.id)
         )
@@ -373,14 +509,39 @@ def sync_derived_proposals(db: Session, scope: ReadScope, source_id: str, limit:
             )
         )
         if latest is not None:
+            span_id = None
+            if fact.exact_quote and fact.start_offset >= 0 and fact.end_offset > fact.start_offset:
+                existing_span = db.scalar(
+                    select(SourceSpan.id).where(
+                        SourceSpan.source_version_id == latest,
+                        SourceSpan.start_offset == fact.start_offset,
+                        SourceSpan.end_offset == fact.end_offset,
+                    )
+                )
+                if existing_span:
+                    span_id = existing_span
+                else:
+                    new_span = SourceSpan(
+                        id=new_id("span"),
+                        source_version_id=latest,
+                        start_offset=fact.start_offset,
+                        end_offset=fact.end_offset,
+                        text=fact.exact_quote,
+                        span_hash=content_hash(fact.exact_quote),
+                    )
+                    db.add(new_span)
+                    db.flush()
+                    span_id = new_span.id
+
             db.add(
                 ProposalEvidence(
                     proposal_id=proposal.id,
                     source_version_id=latest,
-                    # No span: the derivation drew on the source as a whole.
-                    source_span_id=None,
+                    source_span_id=span_id,
                 )
             )
+            db.flush()
+            evaluate_auto_approval(db, source.workspace_id, source, proposal)
         created += 1
     if created:
         audit(
@@ -416,6 +577,8 @@ def approve_proposal(
     statement: str | None,
     rationale: str | None,
     actor: WorkspaceAccess | None = None,
+    valid_from: datetime | None = None,
+    supersedes_knowledge_id: str | None = None,
 ) -> Knowledge:
     if proposal.status != "proposed":
         raise ValueError("Only proposed knowledge can be approved")
@@ -429,6 +592,8 @@ def approve_proposal(
     version = db.get(SourceVersion, evidence.source_version_id)
     if version is None:
         raise ValueError("Proposal evidence points at a source version that is gone")
+
+    v_from = valid_from or datetime.now(UTC)
     canonical = Knowledge(
         id=new_id("know"),
         workspace_id=proposal.workspace_id,
@@ -438,6 +603,9 @@ def approve_proposal(
         statement=statement or proposal.statement,
         rationale=rationale if rationale is not None else proposal.rationale,
         source_excerpt=proposal.source_excerpt or version.content[:600],
+        valid_from=v_from,
+        valid_to=None,
+        superseded_by=None,
     )
     # Embed the approved wording for hybrid retrieval (statement + rationale).
     # Best effort: an embedding failure never blocks a human's stored decision.
@@ -450,6 +618,24 @@ def approve_proposal(
     proposal.status = "approved"
     db.add(canonical)
     db.flush()
+
+    # If this proposal explicitly supersedes an existing canonical item
+    if supersedes_knowledge_id:
+        old_item = db.get(Knowledge, supersedes_knowledge_id)
+        if old_item is not None and old_item.workspace_id == proposal.workspace_id:
+            old_item.superseded_by = canonical.id
+            old_item.valid_to = v_from
+            old_item.status = "superseded"
+            audit(
+                db,
+                canonical.workspace_id,
+                "knowledge.superseded",
+                "knowledge",
+                old_item.id,
+                f"Superseded by {canonical.id} during approval of {proposal.id}",
+                actor=actor,
+            )
+
     db.add(
         KnowledgeRevision(
             id=new_id("rev"),
@@ -461,7 +647,11 @@ def approve_proposal(
             source_version_id=evidence.source_version_id,
             source_span_id=evidence.source_span_id,
             source_excerpt=canonical.source_excerpt,
-            change_note="Initial approval",
+            change_note=(
+                f"Initial approval (supersedes {supersedes_knowledge_id})"
+                if supersedes_knowledge_id
+                else "Initial approval"
+            ),
         )
     )
     audit(
@@ -483,6 +673,106 @@ def approve_proposal(
     except Exception:
         pass  # FTS sync is best-effort; the knowledge row is the source of truth
     return canonical
+
+
+def get_or_create_workspace_policy(db: Session, workspace_id: str) -> WorkspacePolicy:
+    policy = db.scalar(select(WorkspacePolicy).where(WorkspacePolicy.workspace_id == workspace_id))
+    if policy is None:
+        policy = WorkspacePolicy(
+            id=new_id("wspol"),
+            workspace_id=workspace_id,
+            auto_approve_enabled=False,
+            auto_approve_types="note,lesson,evidence,fact",
+            auto_approve_max_sensitivity="internal",
+            require_clean_critic=True,
+            require_zero_conflicts=True,
+        )
+        db.add(policy)
+        db.commit()
+        db.refresh(policy)
+    return policy
+
+
+def update_workspace_policy(
+    db: Session, workspace_id: str, payload: WorkspacePolicyUpdate
+) -> WorkspacePolicy:
+    policy = get_or_create_workspace_policy(db, workspace_id)
+    if payload.auto_approve_enabled is not None:
+        policy.auto_approve_enabled = payload.auto_approve_enabled
+    if payload.auto_approve_types is not None:
+        policy.auto_approve_types = payload.auto_approve_types
+    if payload.auto_approve_max_sensitivity is not None:
+        policy.auto_approve_max_sensitivity = payload.auto_approve_max_sensitivity
+    if payload.require_clean_critic is not None:
+        policy.require_clean_critic = payload.require_clean_critic
+    if payload.require_zero_conflicts is not None:
+        policy.require_zero_conflicts = payload.require_zero_conflicts
+    db.commit()
+    db.refresh(policy)
+    return policy
+
+
+def evaluate_auto_approval(
+    db: Session,
+    workspace_id: str,
+    source: Source,
+    proposal: Proposal,
+    actor: WorkspaceAccess | None = None,
+) -> bool:
+    """Deterministically evaluate if a proposal qualifies for auto-approval.
+
+    Governed strictly by deterministic WorkspacePolicy code. Never decided
+    by prompt or model output.
+    """
+    if proposal.status != "proposed":
+        return False
+
+    policy = db.scalar(select(WorkspacePolicy).where(WorkspacePolicy.workspace_id == workspace_id))
+    if policy is None or not policy.auto_approve_enabled:
+        return False
+
+    # Check allowed types
+    allowed_types = {t.strip().lower() for t in policy.auto_approve_types.split(",") if t.strip()}
+    if proposal.type.lower() not in allowed_types:
+        return False
+
+    # Check sensitivity ladder
+    src_rank = SENSITIVITY_RANK.get(source.sensitivity, 2)
+    max_rank = SENSITIVITY_RANK.get(policy.auto_approve_max_sensitivity, 1)
+    if src_rank > max_rank:
+        return False
+
+    # Check conflicts
+    if policy.require_zero_conflicts and proposal.conflict_with_id:
+        return False
+
+    # Check critic notes
+    if policy.require_clean_critic and proposal.critic_notes:
+        return False
+
+    # All deterministic gates passed: mint canonical knowledge through standard approval gate
+    try:
+        approve_proposal(
+            db,
+            proposal,
+            statement=None,
+            rationale=None,
+            actor=actor,
+        )
+        audit(
+            db,
+            workspace_id,
+            "proposal.auto_approved",
+            "proposal",
+            proposal.id,
+            f"Auto-approved via deterministic policy {policy.id} (type={proposal.type}, sensitivity={source.sensitivity})",
+            actor=actor,
+        )
+        db.commit()
+        return True
+    except Exception as exc:
+        log.warning("Auto-approval failed for proposal %s: %s", proposal.id, exc)
+        return False
 
 
 def supersede_knowledge(
@@ -643,16 +933,35 @@ def _query_terms(query: str) -> list[str]:
     ]
 
 
-def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20) -> list[Knowledge]:
+def search_knowledge(
+    db: Session,
+    scope: ReadScope,
+    query: str,
+    limit: int = 20,
+    as_of: datetime | None = None,
+    include_superseded: bool = False,
+) -> list[Knowledge]:
     """Search canonical knowledge.
 
     Uses FTS5 BM25 ranking when available, falls back to ILIKE. Both paths
-    respect workspace and sensitivity scoping through the same ReadScope.
+    respect workspace and sensitivity scoping through the same ReadScope,
+    with bi-temporal filtering via as_of.
     """
+    valid_statuses = (
+        ["canonical", "superseded"] if (as_of is not None or include_superseded) else ["canonical"]
+    )
     base = scope.apply(
-        select(Knowledge).where(Knowledge.status == "canonical"),
+        select(Knowledge).where(Knowledge.status.in_(valid_statuses)),
         Knowledge,
     )
+
+    if as_of is not None:
+        base = base.where(or_(Knowledge.valid_from.is_(None), Knowledge.valid_from <= as_of)).where(
+            or_(Knowledge.valid_to.is_(None), Knowledge.valid_to > as_of)
+        )
+    elif not include_superseded:
+        base = base.where(Knowledge.valid_to.is_(None))
+
     if not query.strip():
         return list(db.scalars(base.order_by(Knowledge.approved_at.desc()).limit(limit)).all())
 
@@ -661,28 +970,25 @@ def search_knowledge(db: Session, scope: ReadScope, query: str, limit: int = 20)
     # answers it returns [] and we fall through to ILIKE.
     ranked_ids = hybrid_search(db, scope, query, limit=limit)
     if ranked_ids:
-        # Preserve fused ranking order; filter by scope
-        items = list(
-            db.scalars(
-                scope.apply(
-                    select(Knowledge).where(
-                        Knowledge.id.in_(ranked_ids),
-                        Knowledge.status == "canonical",
-                    ),
-                    Knowledge,
-                )
-            ).all()
+        # Preserve fused ranking order; filter by scope and temporal conditions
+        items_stmt = scope.apply(
+            select(Knowledge).where(
+                Knowledge.id.in_(ranked_ids),
+                Knowledge.status.in_(valid_statuses),
+            ),
+            Knowledge,
         )
+        if as_of is not None:
+            items_stmt = items_stmt.where(
+                or_(Knowledge.valid_from.is_(None), Knowledge.valid_from <= as_of)
+            ).where(or_(Knowledge.valid_to.is_(None), Knowledge.valid_to > as_of))
+        elif not include_superseded:
+            items_stmt = items_stmt.where(Knowledge.valid_to.is_(None))
+
+        items = list(db.scalars(items_stmt).all())
         # Re-order to match the fused ranking
         id_order = {kid: i for i, kid in enumerate(ranked_ids)}
         items.sort(key=lambda item: id_order.get(item.id, 999))
-        # Fall through to ILIKE when the ranked ids resolve to nothing. They
-        # can: an id may point at a superseded or out-of-scope row, or — as
-        # happened when the index was declared contentless — the ids came back
-        # NULL and matched no row at all. Returning [] here would report
-        # "no knowledge" for a query the ILIKE fallback answers, and because
-        # abstention is this product's safety signal, a false abstention is
-        # worse than an unranked result.
         if items:
             return items[:limit]
 
@@ -735,54 +1041,6 @@ def knowledge_is_stale(db: Session, item: Knowledge) -> bool:
     )
     latest = latest_source_version(db, item.source_id)
     return bool(current_revision and latest and current_revision.source_version_id != latest.id)
-
-
-def _conflict_key(statement: str) -> tuple[set[str], bool, str]:
-    """Extract conflict-relevant features from a statement.
-
-    Returns (content_terms, has_negation, subject_ngram). The subject ngram
-    is the first few significant words, used to detect same-topic contradictions.
-    """
-    lowered = statement.lower().replace("cannot", "can not")
-    negative = bool(
-        re.search(r"\b(?:not|never|no|cannot|shouldn't|won't|doesn't|isn't)\b", lowered)
-    )
-    ignored = {
-        "a",
-        "an",
-        "and",
-        "are",
-        "be",
-        "is",
-        "not",
-        "no",
-        "never",
-        "our",
-        "should",
-        "the",
-        "to",
-        "we",
-        "it",
-        "that",
-        "this",
-        "with",
-        "from",
-        "for",
-        "but",
-        "or",
-        "so",
-        "if",
-        "when",
-    }
-    terms = {
-        term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
-    }
-    # Subject ngram: first 3 significant words for same-topic detection
-    sig_words = [
-        term for term in re.findall(r"[a-z0-9]+", lowered) if len(term) > 2 and term not in ignored
-    ]
-    subject = " ".join(sig_words[:3])
-    return terms, negative, subject
 
 
 def conflict_map(items: list[Knowledge]) -> dict[str, list[str]]:
@@ -1032,7 +1290,7 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
         return value.isoformat()
 
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "exported_from": "open-intelligence-brain",
         "workspace": {"id": workspace_id},
         "sources": [
@@ -1081,6 +1339,11 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "rationale": row.rationale,
                 "source_excerpt": row.source_excerpt,
                 "status": row.status,
+                "critic_notes": row.critic_notes or "",
+                "summary": row.summary or "",
+                "tags": row.tags or "[]",
+                "conflict_with_id": row.conflict_with_id,
+                "conflict_note": row.conflict_note,
                 "created_at": timestamp(row.created_at),
             }
             for row in proposals
@@ -1104,6 +1367,9 @@ def export_workspace_data(db: Session, scope: ReadScope) -> dict:
                 "source_excerpt": row.source_excerpt,
                 "status": row.status,
                 "version": row.version,
+                "valid_from": timestamp(row.valid_from) if row.valid_from else None,
+                "valid_to": timestamp(row.valid_to) if row.valid_to else None,
+                "superseded_by": row.superseded_by,
                 "approved_at": timestamp(row.approved_at),
             }
             for row in knowledge
@@ -1151,8 +1417,8 @@ def restore_preview(db: Session, backup: dict, workspace_id: str) -> dict:
     }
     schema_version = backup.get("schema_version", 0)
     blockers = []
-    if schema_version != 3:
-        blockers.append("Only schema version 3 backups can be restored")
+    if schema_version not in (3, 4):
+        blockers.append("Only schema version 3 or 4 backups can be restored")
     missing = sorted(required - backup.keys())
     if missing:
         blockers.append(f"Missing collections: {', '.join(missing)}")
@@ -1255,13 +1521,18 @@ def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
         db.add(ProposalEvidence(**row))
     db.flush()
     for row in backup["knowledge"]:
+        k_data = {
+            key: value
+            for key, value in row.items()
+            if key not in ("approved_at", "workspace_id", "valid_from", "valid_to")
+        }
+        if "valid_from" in row and row["valid_from"]:
+            k_data["valid_from"] = _parse_timestamp(row["valid_from"])
+        if "valid_to" in row and row["valid_to"]:
+            k_data["valid_to"] = _parse_timestamp(row["valid_to"])
         db.add(
             Knowledge(
-                **{
-                    key: value
-                    for key, value in row.items()
-                    if key not in ("approved_at", "workspace_id")
-                },
+                **k_data,
                 workspace_id=workspace_id,
                 approved_at=_parse_timestamp(row["approved_at"]),
             )
@@ -1289,3 +1560,96 @@ def restore_workspace(db: Session, backup: dict, workspace_id: str) -> dict:
         )
     db.commit()
     return preview
+
+
+def reindex_knowledge_embeddings(
+    db: Session, workspace_id: str, force: bool = False
+) -> dict[str, int]:
+    """Recompute embeddings for canonical knowledge in a workspace.
+
+    Can fill in missing embeddings or re-embed everything if force=True.
+    Also rebuilds full-text search index to keep hybrid search in parity.
+    """
+    embedder = get_embedder()
+    items = db.scalars(
+        select(Knowledge).where(
+            Knowledge.workspace_id == workspace_id,
+            Knowledge.status.in_(("canonical", "superseded")),
+        )
+    ).all()
+
+    embedded_count = 0
+    skipped_count = 0
+    if embedder is not None:
+        for item in items:
+            if not force and item.embedding:
+                skipped_count += 1
+                continue
+            text = f"{item.statement} {item.rationale}"
+            vec = embedder.embed(text)
+            if vec:
+                item.embedding = json.dumps(vec)
+                item.embedding_model = embedder.model
+                embedded_count += 1
+        db.commit()
+
+    fts_rebuilt = 0
+    try:
+        from .retrieval import rebuild_fts
+
+        fts_rebuilt = rebuild_fts(db)
+    except Exception as exc:
+        log.warning("FTS rebuild during reindex failed: %s", exc)
+
+    return {
+        "total": len(items),
+        "embedded": embedded_count,
+        "skipped": skipped_count,
+        "fts_rebuilt": fts_rebuilt,
+    }
+
+
+MAGIC_ENCRYPTED_HEADER = b"OIB_ENC_V1:"
+
+
+def _derive_fernet_key(passphrase: str, salt: bytes) -> bytes:
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=100_000,
+    )
+    return base64.urlsafe_b64encode(kdf.derive(passphrase.encode("utf-8")))
+
+
+def encrypt_backup_data(backup_data: dict, passphrase: str) -> bytes:
+    """Encrypt backup JSON dict with AES-256 (Fernet) derived from passphrase."""
+    from cryptography.fernet import Fernet
+
+    raw_json = json.dumps(backup_data, ensure_ascii=False).encode("utf-8")
+    salt = os.urandom(16)
+    key = _derive_fernet_key(passphrase, salt)
+    f = Fernet(key)
+    ciphertext = f.encrypt(raw_json)
+    return MAGIC_ENCRYPTED_HEADER + salt + ciphertext
+
+
+def decrypt_backup_data(encrypted_bytes: bytes, passphrase: str) -> dict:
+    """Decrypt backup data using passphrase."""
+    from cryptography.fernet import Fernet
+
+    if not encrypted_bytes.startswith(MAGIC_ENCRYPTED_HEADER):
+        raise ValueError("Invalid encrypted backup format: missing magic header")
+    offset = len(MAGIC_ENCRYPTED_HEADER)
+    salt = encrypted_bytes[offset : offset + 16]
+    ciphertext = encrypted_bytes[offset + 16 :]
+    key = _derive_fernet_key(passphrase, salt)
+    f = Fernet(key)
+    try:
+        decrypted = f.decrypt(ciphertext)
+    except Exception as exc:
+        raise ValueError("Decryption failed: incorrect passphrase or corrupted data") from exc
+    return json.loads(decrypted.decode("utf-8"))

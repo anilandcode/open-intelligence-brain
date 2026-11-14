@@ -71,6 +71,56 @@ class TestProviderFetch:
         assert doc.title == "Report.docx"
         assert "claim" in doc.content
 
+    def test_github_reads_issue_body_and_comments(self, monkeypatch):
+        def fake_get(url, token, *, params=None, headers=None):
+            if url.endswith("/comments"):
+                return FakeResponse(
+                    json_data=[
+                        {
+                            "user": {"login": "alice"},
+                            "body": "I agree with this architectural decision.",
+                        }
+                    ]
+                )
+            return FakeResponse(
+                json_data={
+                    "title": "Decide microservice boundaries",
+                    "body": LONG,
+                    "pull_request": None,
+                }
+            )
+
+        monkeypatch.setattr(connectors, "_http_get", fake_get)
+        doc = connectors.GitHubConnector().fetch_document("acme/core/issues/42", "gh_token")
+        assert "GitHub core#42" in doc.title
+        assert "alice" in doc.content
+        assert "provenance" in doc.content
+        assert doc.kind == "research"
+
+    def test_slack_reads_channel_history(self, monkeypatch):
+        def fake_get(url, token, *, params=None, headers=None):
+            return FakeResponse(
+                json_data={
+                    "ok": True,
+                    "messages": [
+                        {
+                            "user": "U12345",
+                            "text": "We should enforce mandatory reviews on all PRs.",
+                        },
+                        {
+                            "user": "U67890",
+                            "text": "Agreed, quality is paramount for production releases.",
+                        },
+                    ],
+                }
+            )
+
+        monkeypatch.setattr(connectors, "_http_get", fake_get)
+        doc = connectors.SlackConnector().fetch_document("C12345678", "xoxb-token")
+        assert "Slack #C12345678" in doc.title
+        assert "mandatory reviews" in doc.content
+        assert doc.kind == "interview"
+
     def test_unknown_provider_is_rejected(self):
         try:
             connectors.get_connector("dropbox")
@@ -124,3 +174,25 @@ class TestIngestIsGoverned:
             json={"document_id": "x", "access_token": "tok"},
         )
         assert response.status_code in (400, 422, 502)
+
+    def test_github_ingest_endpoint(self, client, headers, monkeypatch):
+        def fake_get(url, token, *, params=None, headers=None):
+            if url.endswith("/comments"):
+                return FakeResponse(json_data=[])
+            return FakeResponse(
+                json_data={
+                    "title": "RFC: Distributed Tracing",
+                    "body": LONG,
+                    "pull_request": True,
+                }
+            )
+
+        monkeypatch.setattr(connectors, "_http_get", fake_get)
+        resp = client.post(
+            "/api/v1/connectors/github/ingest",
+            headers=headers,
+            json={"document_id": "acme/repo/pulls/10", "access_token": "gh_tok"},
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert "GitHub repo#10" in data["title"]

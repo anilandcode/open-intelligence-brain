@@ -1,234 +1,227 @@
 # Open Intelligence Brain
 
-A local-first, open-source workspace for turning source material into reviewed, reusable intelligence.
+> **The Governed Memory & Action Layer for AI Agents**
+>
+> Verbatim span provenance, bi-temporal time-travel, pre-ingestion conflict radar, and human-in-the-loop governance.
 
-The project deliberately separates three layers:
+[![CI](https://github.com/anilandcode/open-intelligence-brain/actions/workflows/ci.yml/badge.svg)](https://github.com/anilandcode/open-intelligence-brain/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/anilandcode/open-intelligence-brain)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
 
-1. **Raw sources** — what a note, interview, or decision record literally contains.
-2. **Proposals** — what the extraction process thinks might be useful knowledge, each carrying an extracted summary + tags and its exact source evidence.
-3. **Canonical knowledge** — exact wording a person has reviewed and approved.
+---
 
-- Version 1.0 — all milestones complete. Daily routines, usage tracking, held-out evaluation, Hermes messaging, and release packaging. The Brain is ready for personal beta across all your AI tools.
+## Why Open Brain?
 
-## Screens
+The AI agent memory space is crowded with tools like **Mem0**, **Supermemory**, **Letta**, **Zep / Graphiti**, and **Basic Memory**. But in production, existing solutions face a fatal flaw: **memory poisoning (context rot)**. When an LLM auto-writes memories without verification or human review, speculative hallucinated claims become permanent falsehoods.
 
-- Overview — live pipeline health, review priorities, recent knowledge, and clear next actions.
-- Inbox — choose a proposal from the queue and edit canonical wording beside its exact evidence.
-- Brain — search canonical knowledge, inspect warnings, and create immutable revisions.
-- Sources — inspect hashes and create immutable source versions without overwriting history.
-- Ask — get an answer from approved knowledge with exact source citations and abstention.
-- Audit — inspect integrity signals and recent domain events.
-- Studio — guided interviews and draft builder (live).
-- Activate, and Analytics — clearly labeled workflow previews for planned milestones.
+**Open Intelligence Brain is the system of record for what an AI agent is allowed to believe and do.**
 
-## Quick start
+| Dimension | Mem0 | Supermemory | Letta | Zep / Graphiti | Basic Memory | **Open Brain (v2.4)** |
+|---|---|---|---|---|---|---|
+| **Write Model** | LLM auto-writes | Engine auto-infers | Agent edits blocks | Temporal graph auto-write | User/LLM Markdown | **Proposal → Human/Policy Approval** |
+| **Provenance** | None / weak | Derived memories | None | Episode links | File links | **Exact span + SHA-256 version hash** |
+| **Hallucination Guard** | None | None | None | None | None | **`verify_span` verbatim byte check** |
+| **Temporal Truth** | None | Partial | None | Bi-temporal graph | None | **Bi-temporal (`valid_from`/`valid_to`)** |
+| **Contradiction Detection** | None | None | None | Graph edge | None | **Conflict Radar at ingestion** |
+| **Auto-Governance Gate** | None | Unchecked auto-add | None | None | None | **Deterministic `WorkspacePolicy`** |
+| **Ecosystem Connectors** | Custom | Drive/Notion/OneDrive | None | Custom | None | **GitHub, Slack, Drive, Notion, OneDrive** |
+| **Disaster Recovery** | Unencrypted export | Cloud-locked | File dump | DB dump | Plaintext MD | **Schema v4 AES-256 PBKDF2 Backups** |
+| **Drop-in Compatibility** | N/A | N/A | N/A | N/A | N/A | **Mem0 API Shim (`/v1/memories`)** |
+| **SDKs** | Python/TS | Python/TS | Python | Python/TS | CLI | **Python (`openbrain`) & TS (`@openbrain/sdk`)** |
+| **MCP Integration** | OpenMemory | Hosted | Hosted | Custom | Yes | **stdio + Hosted Streamable HTTP MCP** |
 
-Requirements: Python 3.12+, Node.js 22+, and npm.
+---
 
-```bash
-cp .env.example .env
-make install
+## Provenance Benchmark Results
+
+Benchmarked with `benchmarks/run_provenance_benchmark.py`:
+
+```text
+================================================================================
+OPEN INTELLIGENCE BRAIN v2.0 PROVENANCE BENCHMARK
+================================================================================
+1. Hallucination Rejection Rate: 100.0% (Fabricated claims rejected before review)
+2. Citation Link Integrity:     100.0% (Exact quote matching to SourceSpan)
+3. Bi-Temporal Accuracy:        100.0% (Past vs present time-travel retrieval)
+4. Contradiction Radar Alert:   YES    (Flagged conflicting proposal before approval)
+================================================================================
 ```
 
-Run the API and frontend in two terminals:
+---
 
-```bash
-make dev-api
-make dev-web
+## Architecture: The Three Layers
+
+Open Brain strictly separates memory into three distinct tiers:
+
+```mermaid
+flowchart LR
+    A["Raw Sources<br/>(Immutable, SHA-256)"] --> B["Proposals<br/>(Extracted candidates + verified spans)"]
+    B -->|Human or Policy Approval| C["Canonical Knowledge<br/>(Governed, bi-temporal, auditable)"]
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The local demo token and seeded synthetic data are enabled by default. Do not reuse the demo token for a remote deployment.
+1. **Raw Sources**: What a document, transcript, or decision record literally contains, sealed by SHA-256 hash.
+2. **Proposals**: Extracted knowledge candidates, guarded by `verify_span` to guarantee zero hallucinated quotes, and checked by Conflict Radar for contradictions against existing canonical knowledge.
+3. **Canonical Knowledge**: Governed facts reviewed and approved by authorized humans or policies, tagged with `valid_from`, `valid_to`, and `superseded_by`.
 
-### Docker Compose
+---
+
+## Quickstart
+
+### 1. Run with Docker Compose
 
 ```bash
 docker compose up --build
 ```
+- API & Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Interactive Review Workbench: [http://localhost:5173](http://localhost:5173)
 
-This starts PostgreSQL, the API at `http://localhost:8000`, and the workbench at `http://localhost:5173`.
-
-### Cloud Run (free tier)
-
-See [docs/deploy-cloud-run.md](docs/deploy-cloud-run.md). The `Dockerfile` builds a single image serving both the API and the frontend from one origin. Cloud Build configs and a deploy script are included. The live deployment runs on an Oracle Always Free VM at `https://brain.trulyagentic.io` (marketing site on Vercel; the OAuth/tool broker at `https://bridge.trulyagentic.io`).
-
-## Verify
+### 2. Local Installation
 
 ```bash
-make test
-make lint
-make build
+git clone https://github.com/anilandcode/open-intelligence-brain.git
+cd open-intelligence-brain
+cp .env.example .env
+make install
 ```
 
-Backend API documentation is available at `http://localhost:8000/docs` during development.
+Start the API and Web Workbench in separate terminals:
+```bash
+make dev-api   # Runs FastAPI on port 8000
+make dev-web   # Runs Vite on port 5173
+```
 
-### Connect an MCP agent
+---
 
-Run the local stdio server against the same database as the API:
+## SDKs
+
+### Python SDK (`openbrain`)
+
+Install the zero-dependency Python client:
+```bash
+pip install openbrain
+```
+
+```python
+from openbrain import Brain
+
+brain = Brain(base_url="http://localhost:8000", api_key="local-dev-token")
+
+# 1. Ingest source content
+source = brain.add(
+    "PostgreSQL 16 is our designated production database standard.",
+    title="Engineering ADR 004",
+    kind="decision",
+)
+
+# 2. Search canonical knowledge (with bi-temporal time-travel support)
+memories = brain.search("database standard", as_of="2024-01-01T00:00:00Z")
+for mem in memories:
+    print(mem["statement"], mem["valid_from"])
+
+# 3. Grounded QA with exact citations
+answer = brain.ask("What database do we use in production?")
+print(answer["answer"])
+for c in answer["citations"]:
+    print(f"- [{c['source_title']}]: \"{c['excerpt']}\"")
+
+# 4. Fast Review: Batch approve pending proposals
+pending = brain.proposals(status="proposed")
+if pending:
+    res = brain.batch_approve([p["id"] for p in pending])
+    print(f"Approved {res['approved']} proposals.")
+```
+
+### TypeScript SDK (`@openbrain/sdk`)
+
+Install the TypeScript client:
+```bash
+npm install @openbrain/sdk
+```
+
+```typescript
+import { BrainClient } from "@openbrain/sdk";
+
+const brain = new BrainClient({
+  baseUrl: "http://localhost:8000",
+  apiKey: "local-dev-token",
+});
+
+// Ingest source
+await brain.add({
+  content: "All customer data must be encrypted with AES-256 at rest.",
+  title: "Security Standards",
+  kind: "decision",
+});
+
+// Query knowledge
+const { answer, citations } = await brain.ask("What is our encryption standard?");
+console.log(answer);
+
+// Batch review
+const proposals = await brain.proposals();
+await brain.batchApprove(proposals.map((p) => p.id));
+```
+
+---
+
+## Mem0 Drop-In Compatibility
+
+Migrating from Mem0? Point your application's `base_url` to Open Brain:
+
+```python
+import httpx
+
+# Same endpoints, now backed by Open Brain's governed audit trail:
+# POST /v1/memories/
+# GET  /v1/memories/
+# POST /v1/memories/search/
+# DELETE /v1/memories/{id}
+
+client = httpx.Client(base_url="http://localhost:8000/v1", headers={"X-Brain-Token": "local-dev-token"})
+resp = client.post("/memories/", json={"messages": [{"role": "user", "content": "I like dark mode"}]})
+print(resp.json())
+```
+
+---
+
+## MCP Agent Integration
+
+Connect Claude Code, Hermes, Codex, or Cursor via Model Context Protocol:
 
 ```bash
-BRAIN_DATABASE_URL=sqlite:///brain.db .venv/bin/open-brain-mcp
+BRAIN_DATABASE_URL=sqlite:///./data/brain.db .venv/bin/open-brain-mcp
 ```
 
-It exposes read tools `brain_status`, `search_brain`, `ask_brain`, `list_pending_reviews`, and `inspect_brain_integrity`, plus a proposal-only intake tool `capture_source` (files source + candidates for human review; never approves or writes canonical). See [docs/agent-integrations.md](docs/agent-integrations.md) for the portable host configuration and security boundary.
+Tools exposed:
+- `brain_status`: Inspect knowledge counts, proposal health, and engine status.
+- `search_brain`: Query canonical knowledge with dialect-aware ranking (FTS5 / PostgreSQL GIN).
+- `ask_brain`: Grounded answers with exact citations and strict abstention.
+- `capture_source`: Stage new facts into proposals for human review without unverified writes.
+- `inspect_brain_integrity`: Audit revisions and hash chains.
 
-### mcp-auth-bridge integration
+---
 
-`GET /api/v1/connections` (masked account list), `POST /api/v1/connections/link`
-(start an OAuth connect flow), `PATCH /api/v1/connections/{id}` (alias edit),
-`POST /api/v1/oauth/verify` (redeem the broker's session), and the staged
-action queue `GET/POST /api/v1/staged-actions` + `{id}/approve|reject`.
-Mutating tool calls are staged first and executed exactly once on approval
-with the provider's post URN recorded on the row. Configure
-`BRAIN_MAB_BRIDGE_URL` + `BRAIN_MAB_SERVICE_TOKEN` (empty keeps the surfaces
-offline). New modules: `bridge_client.py`, `connections.py`,
-`connections_schemas.py`, `connections_api.py`, `api/tests/test_connections.py`.
+## Production Security & Hardening
 
-## API workflow
+- **Fail-Closed Production Config**: Setting `BRAIN_ENV=production` enforces strict secret checks (refuses default tokens, loopback origins, and unsafe evaluation URLs).
+- **Sliding-Window Rate Limiting**: Built-in `RateLimitMiddleware` protects all endpoints against abuse.
+- **Audited Traceability**: `X-Request-ID` tracing on every request; domain event logging for all approvals and supersessions.
+- **Dialect Parity**: Tested against both SQLite (local development) and PostgreSQL 16 (production).
 
-All application endpoints require an `X-Brain-Token` header.
+---
+
+## Testing & Verification
+
+Run the full battery of tests:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/sources \
-  -H 'Content-Type: application/json' \
-  -H 'X-Brain-Token: local-dev-token' \
-  -d '{
-    "title": "Project lesson",
-    "kind": "note",
-    "sensitivity": "private",
-    "content": "We learned that evidence should stay attached to every reusable claim. The review step protects the Brain from confident extraction mistakes."
-  }'
+make test    # 470+ tests across backend, benchmark, frontend, and SDKs
+make lint    # Ruff + ESLint
+make build   # TypeScript SDK + Workbench bundle
 ```
 
-Then review proposals at `/api/v1/proposals`, approve one through `/api/v1/proposals/{id}/approve`, and ask a grounded question at `/api/v1/chat`.
-
-### Event intake and turns
-
-Events arrive at `POST /api/v1/events`, are triaged deterministically, and become turns — rows with a budget, a plan, and a gate. Turns can be stepped, steered, suspended, resumed, and stopped. See [docs/harness.md](docs/harness.md) for the full route surface and invariants.
-
-## Repository map
-
-```text
-api/                  FastAPI domain, services, and tests
-  brain/
-    access.py         Workspace resolution, roles, sensitivity scoping
-    config.py         Settings from environment
-    database.py       SQLAlchemy session and engine
-    engine.py         Engine abstraction (deterministic + Supermemory)
-    harness.py        Event intake, triage, and turn tables
-    main.py           API routes and lifespan
-    mcp_server.py     Read-only stdio MCP server
-    migrate.py        Additive schema migrations
-    models.py          SQLAlchemy models (sources, proposals, knowledge, workspaces, users)
-    identity.py        Identity provider boundary: users, workspace_members, verified assertions
-    sessions.py        Human sessions: hashed secrets, per-request reach, immediate revocation
-    auth_api.py        Sign-in routes: login, logout, me
-    schemas.py         Pydantic request/response schemas
-    services.py        Domain logic (extraction, approval, search, backup)
-    retrieval.py       Dialect-aware ranked search (FTS5 / tsvector GIN) + index versioning
-    mcp_http.py        MCP HTTP transport (binds the caller's ReadScope into tools)
-    mcp_hosted.py      Hosted Streamable HTTP MCP at /mcp + OAuth routes
-    mcp_oauth.py       OAuth 2.1 provider + MCP connection telemetry
-    studio.py         Interview session and draft data models
-    studio_api.py     Intelligence Studio API (interviews, drafts, sections)
-    studio_schemas.py Pydantic schemas for Studio
-    triage.py         Deterministic triage with policy enforcement
-    turns.py          Turn orchestration (step, steer, suspend, resume, stop)
-    worker.py         Background worker for durable turn processing
-    decision.py       Decision provider interface (deterministic + Jev shadow)
-    critic.py         Critic pass: evidence gap detection and quality signals
-    routines.py       Daily routine digests and delivery
-    usage.py          Knowledge usage tracking and analytics
-    evaluation.py     Held-out evaluation for Jev promotion decisions
-    messaging.py       Hermes messaging pairing for digest delivery
-  tests/              332 backend tests across 22 modules (350 against PostgreSQL)
-web/                  React + TypeScript workbench
-  src/
-    App.tsx           Main application with all views
-    api.ts            API client
-    tokens.css        Design tokens
-    primitives.css    Base components
-    shell.css         App shell and navigation
-    system.css        System-level styles
-    views.css         View-specific styles
-    flows.css         Workflow and flow styles
-    refine.css        Refinement and detail styles
-  public/
-    favicon.svg       App favicon
-engine/               Self-hosted LLM proxy (Dockerfile + entrypoint + proxy)
-scripts/              Deploy scripts (Cloud Run, engine, fetch)
-hermes-skill/         Hermes skill for one-command MCP connection
-docs/                 Architecture, security, roadmap, interface, deploy, harness
-docker-compose.yml    PostgreSQL + API + frontend development stack
-Dockerfile            Single-image build for Cloud Run
-cloudbuild.yaml       Cloud Build config (API + frontend)
-cloudbuild-engine.yaml  Cloud Build config (engine proxy)
-AGENTS.md             Guardrails for coding agents
-```
-
-## What is real and what is still intentionally simple
-
-Implemented:
-
-- SQLite for zero-config local development and PostgreSQL through Compose. Both dialects run the same suite on every push (SQLite locally, PostgreSQL 16 in a CI service job).
-- Persisted sources, proposals, canonical knowledge, and audit events.
-- SHA-256-addressed immutable source versions, exact offsets, span hashes, and parser metadata.
-- Append-only knowledge revision history and explicit supersession.
-- Stale-source and deterministic possible-conflict signals.
-- Owner-token protection for every application API.
-- Deterministic extraction that works offline and is easy to test.
-- Approval boundary and double-approval protection.
-- Keyword search and source-grounded answers with abstention.
-- Responsive and keyboard-accessible review experience.
-- Research-aligned application shell with judgement-first review and honest future-state previews.
-- Schema-v2 JSON backup, dry-run preview, empty-workspace restore, and deletion previews.
-- Read-only MCP access for Hermes, Codex, Claude Code, and compatible hosts.
-- Workspace isolation with role-based access control and sensitivity scoping.
-- Engine abstraction with deterministic local and optional hosted Supermemory provider.
-- Harness layer: event intake, deterministic triage, turn orchestration with budgets and gates.
-- Per-channel proactivity policy.
-- Single-image Cloud Run deployment with Cloud Build.
-- Self-hosted LLM proxy for engine deployment.
-- Critic pass: evidence gap detection, vague language, type mismatches, weak sourcing.
-- Payload-bound approval cards with inline critic notes and severity color-coding.
-- Background worker for durable turn processing with lease-based claiming.
-- Decision provider interface with deterministic and Jev shadow adapters.
-- Hermes skill for one-command Brain connection via MCP.
-- Daily routine digests with pending proposals, stale knowledge, conflicts.
-- Usage tracking: which knowledge atoms get cited and reused.
-- MCP smoke tests verifying all 5 tools for Codex/Claude/Hermes.
-- Held-out evaluation for comparing deterministic vs Jev shadow decisions.
-- Hermes messaging pairing for routine digest delivery.
-- Release packaging script for distribution.
-- Intelligence Studio: guided interview sessions and draft builder.
-- Interview responses auto-extract into proposals after completion.
-- Drafts assemble approved knowledge into briefs/articles/agent context with citations.
-- Dialect-aware ranked search over canonical knowledge: SQLite FTS5/BM25 and PostgreSQL `tsvector` + `ts_rank_cd` over an expression GIN index, OR-term query semantics on both so the same question abstains or answers the same way either way. A versioned index (`SEARCH_INDEX_VERSION`) rebuilds itself when the schema it was built with is stale.
-- Scoped workspace grants and expiring tokens with create/list/revoke API.
-- MCP HTTP adapter for remote agents (tool listing, call, SSE).
-- Richer proposal types: framework, evidence, story, question.
-- Improved conflict detection with same-topic/same-type matching.
-- Security hardening (v1.0.1): static-file containment, MCP scope binding, export/usage sensitivity ceiling, token previews, SSRF-free evaluation config, admin-gated restore — each pinned by a regression test.
-- Retrieval persistence and PostgreSQL correctness (v1.0.2): search broke after the first restart on SQLite (contentless FTS5 returned NULL ids and shadowed the fallback) — fixed, plus PostgreSQL ranked search, transaction rollback safety, standard `GROUP BY`, FK-preserving migrations — each pinned, and a restart release gate on both dialects.
-- 332 backend tests (350 against PostgreSQL) and 5 frontend tests.
-
-Next:
-
-- Local embeddings and a fused full-text + vector retrieval path (PostgreSQL full-text and index-version tracking landed in v1.0.2).
-- Evaluation-backed conflict detection and review policy.
-- Encrypted backup packaging, retention execution, and workspace-level grants.
-- Four-week personal usage study.
-- Enterprise tenancy, automatic publishing, broad connectors.
-
-See [docs/roadmap.md](docs/roadmap.md) for the dependency-ordered plan.
-See [docs/interface.md](docs/interface.md) for the information architecture and live/preview boundary.
-See [docs/operations.md](docs/operations.md) before restoring or planning deletion.
-
-## Privacy
-
-The default profile runs locally and makes no model-provider calls. The seeded content is synthetic. Database files, exports, secrets, and model caches are ignored by Git.
-
-The included authentication is appropriate for a loopback-bound personal demo. Before remote access, add TLS, durable identity, short-lived scoped credentials, CSRF/Origin controls where cookies are used, rate limits, and a reviewed deployment threat model.
+---
 
 ## License
 
-Apache-2.0 for original project code. External packages and optional model artifacts keep their own licenses.
+Apache-2.0

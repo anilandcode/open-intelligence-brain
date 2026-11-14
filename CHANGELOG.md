@@ -1,6 +1,62 @@
 # Changelog
 
-## 1.6.1 — developer-app credentials onboarding + custom domain
+## 2.4.0 — Schema v4 Encrypted Backups & Ecosystem Ingestion (GitHub + Slack)
+
+- **Schema Version 4 Backups**: Backups now preserve all bi-temporal fields (`valid_from`, `valid_to`, `superseded_by`) and proposal conflict radar metadata (`conflict_with_id`, `conflict_note`).
+- **Passphrase-Encrypted Backups**: Optional authenticated encryption (AES-256 Fernet + PBKDF2 with SHA-256, 100,000 iterations and random 16-byte salt). Available via `GET /api/v1/export?passphrase=...` and `POST /api/v1/restore`.
+- **Backward-Compatible Disaster Recovery**: Full backward compatibility for Schema Version 3 backups.
+- **GitHub Content Connector**: Fetches issues, pull requests, comments, and repository markdown files via `POST /api/v1/connectors/github/ingest`.
+- **Slack Content Connector**: Ingests channel conversation history and message threads via `POST /api/v1/connectors/slack/ingest`.
+
+## 2.3.0 — Supersession Graph Edges & Semantic Embedding Sync
+
+- **Evolutionary Supersession Graph**: `build_graph` emits directed `updates` edges linking superseded knowledge to its active superseding version.
+- **Time-Filtered Graph Query**: `GET /api/v1/graph?include_superseded=true` allows visualizing the complete evolution of ideas over time or filtering to active knowledge.
+- **On-Demand Embedding & Full-Text Reindexing**: `POST /api/v1/knowledge/reindex` recomputes vector embeddings and syncs the ranked FTS index across the workspace.
+
+## 2.2.0 — Policy-Driven Deterministic Auto-Approval
+
+- **Configurable Workspace Auto-Governance**: Deterministic `WorkspacePolicy` model gating low-risk, verified proposal approval without model hallucination risk.
+- **Multi-Gate Policy Checks**: Gates auto-approval strictly on allowed proposal types, sensitivity ceiling, zero conflicts, and clean critic passes.
+- **Audit Provenance**: Every auto-approved item emits a `proposal.auto_approved` event citing the exact policy rules matched.
+- **Policy Management API**: `GET` and `PUT` `/api/v1/workspaces/{slug}/policy` for workspace admins.
+
+## 2.1.0 — Bi-Temporal MCP Protocol & Time-Travel Console
+
+- **Bi-Temporal MCP Tools**: Updated `search_brain` with `as_of` timestamp and `include_superseded` flags across stdio and hosted Streamable HTTP MCP.
+- **MCP Conflict Radar**: `list_pending_reviews` surfaces `conflict_with_id` and `conflict_note` to agent reviewers before decisions are made.
+- **Web Console Time-Travel Bar**: Interactive `datetime-local` picker, "Include superseded" toggle, and reset button on `BrainView`.
+- **Temporal Validity Badges**: `KnowledgeCard` chips displaying validity intervals (`From: ...`, `Until: ...`) and supersession links.
+
+## 2.0.0 — Production Release: SDKs, Mem0 drop-in shim & Provenance Benchmark
+
+- **Official Python SDK (`openbrain`)**: Zero-dependency client in `sdks/python` supporting `add()`, `search()`, `ask()`, `proposals()`, `approve()`, `batch_approve()`, `reject()`, and `history()`.
+- **Official TypeScript SDK (`@openbrain/sdk`)**: TypeScript client in `sdks/typescript` with strict types, bi-temporal search, batch governance, and native Node 24 test suite.
+- **Mem0 Drop-In Compatibility Shim (`api/brain/mem0_shim.py`)**: Full API compatibility at `/v1/memories` (`POST`, `GET`, `DELETE`, `/search`), allowing existing Mem0 applications to migrate with zero code changes.
+- **Provenance Benchmark Suite (`benchmarks/run_provenance_benchmark.py`)**: Published benchmark testing 4 dimensions: 100% Hallucination Rejection, 100% Citation Link Integrity, 100% Bi-temporal Time Travel, and Ingestion Conflict Radar.
+
+## 1.9.0 — Bi-Temporal Knowledge, Conflict Radar & Fast Review
+
+- **Bi-Temporal Canonical Knowledge**: Added `valid_from`, `valid_to`, and `superseded_by` to `Knowledge`. Time-travel queries supported via `as_of` timestamp on `/api/v1/knowledge` and `/api/v1/search`.
+- **Pre-Ingestion Conflict Radar**: `check_proposal_conflict()` flags direct contradictions and topic conflicts before human approval, populating `conflict_with_id` and `conflict_note` on incoming proposals.
+- **Fast Review & Batch Governance**: Batch approval and rejection endpoints (`POST /api/v1/proposals/batch-approve` and `POST /api/v1/proposals/batch-reject`).
+- **Workbench Inbox Acceleration**: Multi-select checkboxes, batch action buttons, keyboard shortcuts (`j`/`k` navigation, `x` selection), and Conflict Radar warning banner with one-click supersession toggle.
+
+## 1.8.0 — Native Span-Verified LLM Extraction Engine
+
+- **Provider-Agnostic LLM Extraction**: `LLMExtractionEngine` connects to any standard OpenAI-compatible `/v1/chat/completions` provider (OpenAI, Gemini, Groq, Ollama, vLLM, llama.cpp), eliminating reliance on external proprietary binaries.
+- **Anti-Hallucination Guard (`verify_span`)**: Strict verbatim byte and offset verification against immutable source documents. Fabricated or paraphrased quotes are rejected fail-closed before human review.
+- **SourceSpan Citation Linking**: Validated facts link to exact character offsets on `SourceVersion`, with `ProposalEvidence` binding and critic pass checks.
+
+## 1.7.0 — Green Baseline & Production Security Middleware
+
+- **Supply-Chain Dependency Pinning**: Pinned all 19 `"latest"` web dependencies in `web/package.json` to exact locked versions.
+- **Frontend Quality**: Zero ESLint warnings or errors (`npm run lint` clean).
+- **Hermetic Test Environments**: Isolated temporary SQLite databases per test session in `api/tests/conftest.py`.
+- **Production Configuration Validation**: `Settings.validate_for_production()` enforces secure secrets, tokens, and origins when `BRAIN_ENV=production`.
+- **Security Middleware Suite**: `RequestIdMiddleware` (`X-Request-ID`), `SecurityHeadersMiddleware` (HSTS, frame options, nosniff, strict referrer), `RateLimitMiddleware` (sliding window limit), and `AccessLogMiddleware`.
+
+
 
 - Composio-style developer-app credentials panel in the Connections hub:
   copyable redirect URL with portal instructions, prefilled removable OAuth

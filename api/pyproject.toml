@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "open-intelligence-brain"
-version = "0.2.0"
+version = "2.4.0"
 description = "A local-first governed intelligence workspace"
 readme = "README-placeholder.md"
 requires-python = ">=3.12"
@@ -20,6 +20,7 @@ dependencies = [
   # It sat in the dev extra until the first container build failed on it: a dev
   # venv always had it, which is exactly why nobody noticed.
   "httpx>=0.28,<1",
+  "cryptography>=42.0,<45",
 ]
 
 [project.scripts]

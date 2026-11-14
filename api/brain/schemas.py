@@ -70,12 +70,36 @@ class ProposalRead(BaseModel):
     critic_notes: str = ""
     summary: str = ""
     tags: str = "[]"
+    conflict_with_id: str | None = None
+    conflict_note: str | None = None
     created_at: datetime
 
 
 class ApprovalRequest(BaseModel):
     statement: str | None = Field(default=None, min_length=3, max_length=5_000)
     rationale: str | None = Field(default=None, max_length=10_000)
+    valid_from: datetime | None = None
+    supersedes_knowledge_id: str | None = None
+
+
+class BatchApprovalRequest(BaseModel):
+    proposal_ids: list[str] = Field(min_length=1, max_length=100)
+
+
+class BatchRejectRequest(BaseModel):
+    proposal_ids: list[str] = Field(min_length=1, max_length=100)
+    reason: str = Field(default="Declined in bulk review", min_length=3, max_length=1_000)
+
+
+class BatchApprovalResponse(BaseModel):
+    approved_count: int
+    knowledge_ids: list[str]
+    failed_ids: list[str] = Field(default_factory=list)
+
+
+class BatchRejectResponse(BaseModel):
+    declined_count: int
+    declined_ids: list[str]
 
 
 class RejectRequest(BaseModel):
@@ -95,6 +119,9 @@ class KnowledgeRead(BaseModel):
     status: str
     version: int
     approved_at: datetime
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    superseded_by: str | None = None
     revision_count: int = 1
     stale: bool = False
     conflict_ids: list[str] = Field(default_factory=list)
@@ -146,7 +173,8 @@ class DeletionPreview(BaseModel):
 
 
 class RestoreRequest(BaseModel):
-    backup: dict
+    backup: dict | str = Field(default_factory=dict)
+    passphrase: str | None = None
     confirm_empty_workspace: bool = False
 
 
@@ -420,3 +448,25 @@ class ProactivityUpdate(BaseModel):
     answer_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
     allow_investigate: bool = True
     react: bool = True
+
+
+class WorkspacePolicyRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    workspace_id: str
+    auto_approve_enabled: bool
+    auto_approve_types: str
+    auto_approve_max_sensitivity: str
+    require_clean_critic: bool
+    require_zero_conflicts: bool
+    updated_at: datetime
+
+
+class WorkspacePolicyUpdate(BaseModel):
+    auto_approve_enabled: bool | None = None
+    auto_approve_types: str | None = Field(default=None, max_length=200)
+    auto_approve_max_sensitivity: str | None = Field(
+        default=None, pattern="^(public|internal|private)$"
+    )
+    require_clean_critic: bool | None = None
+    require_zero_conflicts: bool | None = None

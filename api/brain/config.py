@@ -12,6 +12,16 @@ class Settings(BaseSettings):
     )
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
+    # Native LLM extraction engine (Bit 2). Provider-agnostic OpenAI-compatible
+    # endpoint (/v1/chat/completions) supporting OpenAI, Anthropic (via proxy),
+    # Gemini, Groq, Ollama, vLLM, and llama.cpp.
+    llm_extraction_enabled: bool = False
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_api_key: str = ""
+    llm_model: str = "gpt-4o-mini"
+    llm_temperature: float = 0.0
+    llm_timeout: float = 30.0
+
     # Memory engine. Hosted by default because the engine is what turns capture
     # into a proposal worth reviewing; unset falls back to local extraction
     # rather than failing, so a fresh clone still runs.
@@ -69,11 +79,34 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
+    # Deployment environment: "development", "test", or "production"
+    env: str = "development"
+    rate_limit_enabled: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
 
     @property
     def allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    def validate_for_production(self) -> list[str]:
+        """Returns blocking security violations if running in production."""
+        issues: list[str] = []
+        if self.env.lower() != "production":
+            return issues
+        if self.owner_token == "local-dev-token" or len(self.owner_token) < 20:
+            issues.append(
+                "BRAIN_OWNER_TOKEN must not be default 'local-dev-token' and must be at least 20 characters in production"
+            )
+        if self.seed_demo:
+            issues.append("BRAIN_SEED_DEMO must be false in production")
+        if self.database_url.startswith("sqlite"):
+            issues.append(
+                "BRAIN_DATABASE_URL must be a PostgreSQL connection in production (not SQLite)"
+            )
+        if not self.public_base_url.startswith("https://"):
+            issues.append("BRAIN_PUBLIC_BASE_URL must use https:// in production")
+        return issues
 
 
 @lru_cache

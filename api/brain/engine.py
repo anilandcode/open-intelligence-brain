@@ -24,11 +24,14 @@ Two rules this module exists to enforce:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
+from uuid import uuid4
 
 import httpx
 
@@ -103,6 +106,10 @@ class DerivedFact:
     text: str
     support_count: int = 0
     created_at: str = ""
+    exact_quote: str = ""
+    start_offset: int = -1
+    end_offset: int = -1
+    fact_type: str = ""
 
     @property
     def confidence_hint(self) -> str:
@@ -449,6 +456,261 @@ class SupermemoryEngine:
             log.warning("engine forget failed: %s", type(exc).__name__)
 
 
+def verify_span(
+    source_text: str,
+    quote: str,
+    start_offset: int = -1,
+    end_offset: int = -1,
+) -> tuple[int, int, str] | None:
+    """Anti-hallucination guard: verifies that a quote exists verbatim in source text.
+
+    Returns (start_offset, end_offset, matched_quote) if valid, or None if
+    the quote was fabricated or altered by the model.
+    """
+    if not quote or not quote.strip() or not source_text:
+        return None
+
+    clean_quote = quote.strip()
+    source_len = len(source_text)
+
+    # 1. Direct offset match check
+    if 0 <= start_offset < end_offset <= source_len:
+        slice_text = source_text[start_offset:end_offset]
+        if slice_text == clean_quote:
+            return (start_offset, end_offset, slice_text)
+        if slice_text.strip() == clean_quote:
+            l_strip = len(slice_text) - len(slice_text.lstrip())
+            adj_start = start_offset + l_strip
+            return (adj_start, adj_start + len(clean_quote), clean_quote)
+
+    # 2. Exact substring search
+    idx = source_text.find(clean_quote)
+    if idx != -1:
+        return (idx, idx + len(clean_quote), clean_quote)
+
+    # 3. Normalized whitespace regex search (handles newline/whitespace variations)
+    tokens = [re.escape(tok) for tok in clean_quote.split() if tok]
+    if tokens:
+        pattern = r"\s+".join(tokens)
+        try:
+            match = re.search(pattern, source_text)
+            if match:
+                return (match.start(), match.end(), match.group(0))
+        except re.error:
+            pass
+
+    return None
+
+
+EXTRACTION_SYSTEM_PROMPT = """You are the knowledge extraction engine for Open Intelligence Brain.
+Extract durable, high-signal knowledge facts from the source text (decisions, beliefs, lessons, theses, evidence, frameworks, stories).
+
+MANDATORY RULES:
+1. Every candidate MUST include an "exact_quote": a verbatim character-for-character excerpt copied directly from the text that proves the statement.
+2. If you paraphrase, invent, or alter the quote, the verification guard will reject the candidate.
+3. Keep the "statement" concise, atomic, and clear.
+4. Set "type" to one of: "decision", "belief", "lesson", "thesis", "evidence", "framework", "story".
+5. Provide start_offset and end_offset character indexes if known.
+
+Output JSON format:
+{
+  "candidates": [
+    {
+      "statement": "The project uses PostgreSQL for production deployments.",
+      "type": "decision",
+      "exact_quote": "We chose PostgreSQL as the primary database for all production deployments.",
+      "start_offset": 45,
+      "end_offset": 118
+    }
+  ]
+}
+"""
+
+
+class LLMExtractionEngine:
+    """Native provider-agnostic extraction engine with verbatim span verification.
+
+    Communicates with any OpenAI-compatible /v1/chat/completions endpoint
+    (OpenAI, Anthropic via proxy, Gemini, Ollama, vLLM, Groq).
+    Every extracted claim is checked by verify_span against the source content
+    before landing in the proposal queue.
+    """
+
+    name = "llm"
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str = "",
+        model: str = "gpt-4o-mini",
+        temperature: float = 0.0,
+        timeout: float = 30.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.model = model
+        self.temperature = temperature
+        self.timeout = timeout
+        self._documents: dict[str, list[DerivedFact]] = {}
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def available(self) -> EngineStatus:
+        is_local = "localhost" in self.base_url or "127.0.0.1" in self.base_url
+        if not self.api_key and not is_local:
+            return EngineStatus(
+                name=self.name,
+                available=False,
+                detail=f"No API key configured for remote LLM ({self.base_url})",
+            )
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/models",
+                headers=self._headers(),
+                timeout=min(self.timeout, 5.0),
+            )
+            if resp.status_code in (200, 404):
+                return EngineStatus(
+                    name=self.name, available=True, detail=f"LLM ready ({self.model})"
+                )
+            return EngineStatus(
+                name=self.name,
+                available=False,
+                detail=f"LLM endpoint returned HTTP {resp.status_code}",
+            )
+        except httpx.HTTPError as exc:
+            return EngineStatus(name=self.name, available=False, detail=type(exc).__name__)
+
+    def _parse_llm_json(self, raw: str) -> dict:
+        """Robust JSON extraction from LLM response text."""
+        raw = raw.strip()
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+
+        match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except Exception:
+                pass
+
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(raw[start : end + 1])
+            except Exception:
+                pass
+        return {}
+
+    def ingest(self, content: str, container_tag: str, metadata: dict | None = None) -> str:
+        """Call LLM extraction and verify quotes verbatim against source content."""
+        if not content.strip():
+            return ""
+
+        doc_id = f"doc_{uuid4().hex[:16]}"
+        payload: dict = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": f"Extract knowledge candidates from this document:\n\n{content}",
+                },
+            ],
+            "temperature": self.temperature,
+            "response_format": {"type": "json_object"},
+        }
+
+        try:
+            resp = httpx.post(
+                f"{self.base_url}/chat/completions",
+                headers=self._headers(),
+                json=payload,
+                timeout=self.timeout,
+            )
+            if resp.status_code == 400 and "response_format" in resp.text:
+                payload.pop("response_format", None)
+                resp = httpx.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout,
+                )
+        except httpx.HTTPError as exc:
+            log.warning("LLM extraction failed: %s", type(exc).__name__)
+            return ""
+
+        if resp.status_code >= 400:
+            log.warning("LLM extraction returned HTTP %s", resp.status_code)
+            return ""
+
+        try:
+            body = resp.json()
+            message_content = body["choices"][0]["message"]["content"]
+            parsed = self._parse_llm_json(message_content)
+        except (KeyError, IndexError, ValueError) as exc:
+            log.warning("Failed to parse LLM extraction response: %s", exc)
+            return ""
+
+        candidates = parsed.get("candidates") or []
+        verified_facts: list[DerivedFact] = []
+        now = datetime.now(UTC).isoformat()
+
+        for cand in candidates:
+            if not isinstance(cand, dict):
+                continue
+            statement = str(cand.get("statement") or "").strip()
+            exact_quote = str(cand.get("exact_quote") or "").strip()
+            fact_type = str(cand.get("type") or "decision").strip()
+            start_hint = int(cand.get("start_offset") or -1)
+            end_hint = int(cand.get("end_offset") or -1)
+
+            if not statement or not exact_quote:
+                continue
+
+            verified = verify_span(content, exact_quote, start_hint, end_hint)
+            if verified is None:
+                log.warning(
+                    "SpanVerifier REJECTED candidate: quote not found verbatim in source text: %r",
+                    exact_quote[:80],
+                )
+                continue
+
+            v_start, v_end, v_quote = verified
+            mem_id = f"mem_{uuid4().hex[:16]}"
+            verified_facts.append(
+                DerivedFact(
+                    memory_id=mem_id,
+                    text=statement,
+                    support_count=1,
+                    created_at=now,
+                    exact_quote=v_quote,
+                    start_offset=v_start,
+                    end_offset=v_end,
+                    fact_type=fact_type,
+                )
+            )
+
+        self._documents[doc_id] = verified_facts
+        return doc_id
+
+    def derived(self, document_id: str, limit: int = 50) -> list[DerivedFact]:
+        return self._documents.get(document_id, [])[:limit]
+
+    def review(self, container_tag: str, memory_id: str, action: str) -> bool:
+        return True
+
+    def forget(self, container_tag: str) -> None:
+        pass
+
+
 @dataclass
 class EngineRegistry:
     """Holds the active engine and remembers why if there is not one."""
@@ -465,11 +727,6 @@ def get_engine() -> MemoryEngine:
 
     Strict mode is checked here, before a client is constructed, so a hosted
     request is refused without a socket ever being opened.
-
-    The reason is recorded on every call rather than only on a change, because a
-    cold start with no key never transitions: the registry already holds the
-    local engine, so the cause would go unrecorded and the interface would show
-    only the generic fallback.
     """
     settings = get_settings()
     if settings.strict_local:
@@ -477,29 +734,51 @@ def get_engine() -> MemoryEngine:
         _registry.reason = "strict local mode: hosted engine refused"
         return _registry._engine
 
-    if not settings.supermemory_api_key:
-        _registry._engine = DeterministicEngine()
-        _registry.reason = "no BRAIN_SUPERMEMORY_API_KEY configured"
-        return _registry._engine
-
-    # Reuse the live engine rather than building a new one per call. A fresh
-    # instance would discard the probe cache, so every overview would re-probe
-    # and pay the full wait for an answer we already have.
-    if (
-        isinstance(_registry._engine, SupermemoryEngine)
-        and _registry._engine.base_url == settings.supermemory_base_url.rstrip("/")
-        and _registry._engine.api_key == settings.supermemory_api_key
+    # 1. Native LLM extraction engine
+    if settings.llm_extraction_enabled or (
+        settings.llm_api_key and not settings.supermemory_api_key
     ):
-        return _registry._engine
+        if (
+            isinstance(_registry._engine, LLMExtractionEngine)
+            and _registry._engine.base_url == settings.llm_base_url.rstrip("/")
+            and _registry._engine.api_key == settings.llm_api_key
+            and _registry._engine.model == settings.llm_model
+        ):
+            return _registry._engine
 
-    engine = SupermemoryEngine(
-        base_url=settings.supermemory_base_url,
-        api_key=settings.supermemory_api_key,
-        timeout=settings.supermemory_timeout,
-    )
-    _registry._engine = engine
-    _registry.reason = ""
-    return engine
+        engine = LLMExtractionEngine(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.llm_model,
+            temperature=settings.llm_temperature,
+            timeout=settings.llm_timeout,
+        )
+        _registry._engine = engine
+        _registry.reason = ""
+        return engine
+
+    # 2. Hosted Supermemory engine
+    if settings.supermemory_api_key:
+        if (
+            isinstance(_registry._engine, SupermemoryEngine)
+            and _registry._engine.base_url == settings.supermemory_base_url.rstrip("/")
+            and _registry._engine.api_key == settings.supermemory_api_key
+        ):
+            return _registry._engine
+
+        engine = SupermemoryEngine(
+            base_url=settings.supermemory_base_url,
+            api_key=settings.supermemory_api_key,
+            timeout=settings.supermemory_timeout,
+        )
+        _registry._engine = engine
+        _registry.reason = ""
+        return engine
+
+    # 3. Deterministic local fallback
+    _registry._engine = DeterministicEngine()
+    _registry.reason = "no BRAIN_LLM_API_KEY or BRAIN_SUPERMEMORY_API_KEY configured"
+    return _registry._engine
 
 
 def engine_status(workspace_id: str | None = None) -> EngineStatus:

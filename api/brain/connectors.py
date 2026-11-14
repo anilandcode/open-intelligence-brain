@@ -107,6 +107,95 @@ class OneDriveConnector:
         return FetchedDocument(title=title, content=content, external_id=document_id)
 
 
+class GitHubConnector:
+    name = "github"
+
+    def fetch_document(self, document_id: str, access_token: str) -> FetchedDocument:
+        headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "Open-Intelligence-Brain",
+        }
+        normalized = document_id.replace("#", "/issues/")
+        parts = [p for p in normalized.split("/") if p]
+        if len(parts) >= 4 and parts[2] in ("issues", "pulls"):
+            owner, repo, item_type, num = parts[0], parts[1], parts[2], parts[3]
+            issue_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{num}"
+            issue = _http_get(issue_url, access_token, headers=headers).json()
+            title = f"GitHub {repo}#{num}: {issue.get('title', 'Issue')}"
+            body = issue.get("body") or ""
+            comments_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{num}/comments"
+            try:
+                comments = _http_get(comments_url, access_token, headers=headers).json()
+                comment_texts = [
+                    f"**{c.get('user', {}).get('login', 'user')}**: {c.get('body', '')}"
+                    for c in comments
+                    if isinstance(c, dict) and c.get("body")
+                ]
+            except Exception:
+                comment_texts = []
+            full_content = body
+            if comment_texts:
+                full_content += "\n\n### Comments:\n" + "\n\n".join(comment_texts)
+            kind = "decision" if item_type == "pulls" or issue.get("pull_request") else "research"
+            return FetchedDocument(
+                title=title, content=full_content, kind=kind, external_id=document_id
+            )
+        elif len(parts) >= 3 and parts[2] == "contents":
+            owner, repo = parts[0], parts[1]
+            path = "/".join(parts[3:])
+            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{path}"
+            data = _http_get(content_url, access_token, headers=headers).json()
+            raw_text = ""
+            if data.get("content") and data.get("encoding") == "base64":
+                import base64
+
+                raw_text = base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+            else:
+                raw_text = _http_get(
+                    data.get("download_url", content_url), access_token, headers=headers
+                ).text
+            return FetchedDocument(
+                title=f"GitHub {repo}: {path}",
+                content=raw_text,
+                kind="note",
+                external_id=document_id,
+            )
+        else:
+            raise ConnectorError(
+                "GitHub document_id must be in format 'owner/repo/issues/123' or 'owner/repo/pulls/123'"
+            )
+
+
+class SlackConnector:
+    name = "slack"
+
+    def fetch_document(self, document_id: str, access_token: str) -> FetchedDocument:
+        if ":" in document_id:
+            channel, thread_ts = document_id.split(":", 1)
+            url = "https://slack.com/api/conversations.replies"
+            params = {"channel": channel, "ts": thread_ts, "limit": 100}
+        else:
+            channel = document_id
+            url = "https://slack.com/api/conversations.history"
+            params = {"channel": channel, "limit": 50}
+
+        resp = _http_get(url, access_token, params=params).json()
+        if not resp.get("ok"):
+            raise ConnectorError(f"Slack API error: {resp.get('error', 'unknown')}")
+
+        messages = resp.get("messages", [])
+        lines = [
+            f"**{m.get('user', 'user')}**: {m.get('text', '')}" for m in messages if m.get("text")
+        ]
+        content = "\n\n".join(lines)
+        return FetchedDocument(
+            title=f"Slack #{channel} Conversation",
+            content=content,
+            kind="interview",
+            external_id=document_id,
+        )
+
+
 def _notion_title(page: dict) -> str:
     for value in page.get("properties", {}).values():
         if isinstance(value, dict) and value.get("type") == "title":
@@ -125,6 +214,8 @@ _CONNECTORS = {
     "google-drive": GoogleDriveConnector,
     "notion": NotionConnector,
     "onedrive": OneDriveConnector,
+    "github": GitHubConnector,
+    "slack": SlackConnector,
 }
 PROVIDERS: tuple[str, ...] = tuple(_CONNECTORS)
 

@@ -101,6 +101,10 @@ def _memory_relations(items: list[Knowledge]) -> dict[str, dict[str, str]]:
             if sibling.id != item.id:
                 relations[item.id][sibling.id] = "extends"
 
+        # updates: supersession links
+        if item.superseded_by:
+            relations[item.id][item.superseded_by] = "updates"
+
     # derives: semantic similarity (pairwise, capped). Only when both embedded.
     embedded = [item for item in items if embeddings[item.id]]
     if 1 < len(embedded) <= MAX_NODES:
@@ -114,7 +118,12 @@ def _memory_relations(items: list[Knowledge]) -> dict[str, dict[str, str]]:
     return relations
 
 
-def build_graph(db: Session, scope: ReadScope, limit: int = MAX_NODES) -> dict[str, Any]:
+def build_graph(
+    db: Session,
+    scope: ReadScope,
+    limit: int = MAX_NODES,
+    include_superseded: bool = False,
+) -> dict[str, Any]:
     """Sources + approved knowledge as ``documents`` and their ``edges``.
 
     Read-only and scope-narrowed exactly like every other read. Returns the
@@ -122,14 +131,12 @@ def build_graph(db: Session, scope: ReadScope, limit: int = MAX_NODES) -> dict[s
     ``edges: GraphApiEdge[]``.
     """
     sources = {s.id: s for s in db.scalars(scope.apply(select(Source), Source)).all()}
-    knowledge = list(
-        db.scalars(
-            scope.apply(
-                select(Knowledge).where(Knowledge.status == "canonical"),
-                Knowledge,
-            )
-        ).all()
-    )[:limit]
+    query = select(Knowledge)
+    if include_superseded:
+        query = query.where(Knowledge.status.in_(("canonical", "superseded")))
+    else:
+        query = query.where(Knowledge.status == "canonical", Knowledge.valid_to.is_(None))
+    knowledge = list(db.scalars(scope.apply(query, Knowledge)).all())[:limit]
 
     relations = _memory_relations(knowledge)
 
@@ -152,15 +159,20 @@ def build_graph(db: Session, scope: ReadScope, limit: int = MAX_NODES) -> dict[s
                     "content": item.rationale,
                     "isStatic": False,
                     "spaceId": item.workspace_id,
-                    "isLatest": True,
-                    "isForgotten": False,
+                    "isLatest": item.superseded_by is None,
+                    "isForgotten": item.status == "superseded",
                     "forgetAfter": None,
-                    "forgetReason": None,
+                    "forgetReason": (
+                        f"Superseded by {item.superseded_by}" if item.superseded_by else None
+                    ),
                     "version": item.version,
                     "parentMemoryId": None,
                     "rootMemoryId": item.id,
                     "createdAt": _iso(item.approved_at),
                     "updatedAt": _iso(item.approved_at),
+                    "validFrom": _iso(item.valid_from),
+                    "validTo": _iso(item.valid_to),
+                    "supersededBy": item.superseded_by,
                     "memoryRelations": relations.get(item.id, {}),
                 }
             )
@@ -179,16 +191,21 @@ def build_graph(db: Session, scope: ReadScope, limit: int = MAX_NODES) -> dict[s
         )
 
     # memory→memory edges from memoryRelations (their computeEdges step 2).
-    seen: set[frozenset[str]] = set()
+    seen: set[tuple[str, str]] = set()
     known_ids = {k.id for k in knowledge}
     for item in knowledge:
         for target, relation in relations.get(item.id, {}).items():
             if target not in known_ids:
                 continue
-            key = frozenset((item.id, target))
-            if key in seen:
-                continue
-            seen.add(key)
+            if relation in ("extends", "derives"):
+                pair = tuple(sorted((item.id, target)))
+                if pair in seen:
+                    continue
+                seen.add(pair)
+            else:
+                if (item.id, target) in seen:
+                    continue
+                seen.add((item.id, target))
             edges.append({"source": item.id, "target": target, "edgeType": relation})
 
     return {"documents": documents, "edges": edges}
