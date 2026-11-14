@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -292,7 +292,7 @@ def resolve_workspace(
         workspace = db.get(Workspace, hashed.workspace_id)
         if workspace is None:
             raise AccessDenied("Unknown workspace")
-        if requested_slug and workspace.slug != requested_slug:
+        if requested_slug and workspace.slug != requested_slug and workspace.id != requested_slug:
             raise AccessDenied("This Brain token has no access to that workspace")
         scopes = credential_scopes(db, hashed.id)
         touch_last_used(db, hashed)
@@ -311,9 +311,13 @@ def resolve_workspace(
     if not grants:
         raise AccessDenied("Invalid Brain token")
     if requested_slug:
-        # The header names a slug; grants key on the workspace id, so resolve one
+        # The header names a slug or id; grants key on the workspace id, so resolve one
         # to the other before comparing.
-        workspace = db.scalar(select(Workspace).where(Workspace.slug == requested_slug))
+        workspace = db.scalar(
+            select(Workspace).where(
+                or_(Workspace.slug == requested_slug, Workspace.id == requested_slug)
+            )
+        )
         if workspace is None:
             raise AccessDenied("Unknown workspace")
         target = next((grant for grant in grants if grant.workspace_id == workspace.id), None)

@@ -32,7 +32,7 @@ class Brain:
         self,
         base_url: str = "http://localhost:8000",
         api_key: str | None = None,
-        workspace_id: str = "ws_default",
+        workspace_id: str | None = None,
         timeout: float = 30.0,
     ):
         self.base_url = base_url.rstrip("/")
@@ -46,6 +46,7 @@ class Brain:
         path: str,
         data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         url = f"{self.base_url}{path}"
         if params:
@@ -55,16 +56,20 @@ class Brain:
             if query:
                 url = f"{url}?{query}"
 
-        headers = {
+        req_headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "openbrain-python-sdk/2.0.0",
+            "User-Agent": "openbrain-python-sdk/2.4.0",
         }
         if self.api_key:
-            headers["X-Brain-Token"] = self.api_key
+            req_headers["X-Brain-Token"] = self.api_key
+        if self.workspace_id:
+            req_headers["X-Brain-Workspace"] = self.workspace_id
+        if headers:
+            req_headers.update(headers)
 
         body = json.dumps(data).encode("utf-8") if data is not None else None
-        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
 
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as response:
@@ -219,6 +224,57 @@ class Brain:
     def history(self, knowledge_id: str) -> list[dict[str, Any]]:
         """Retrieve the immutable revision history for a canonical knowledge atom."""
         return self._request("GET", f"/api/v1/knowledge/{knowledge_id}/revisions")
+
+    def graph(self, include_superseded: bool = False) -> dict[str, Any]:
+        """Fetch the knowledge graph nodes and edges."""
+        return self._request(
+            "GET",
+            "/api/v1/graph",
+            params={
+                "include_superseded": str(include_superseded).lower()
+                if include_superseded
+                else None
+            },
+        )
+
+    def reindex(self) -> dict[str, Any]:
+        """Trigger reindexing of vector embeddings and full-text search."""
+        return self._request("POST", "/api/v1/knowledge/reindex")
+
+    def get_policy(self, workspace_slug: str = "default") -> dict[str, Any]:
+        """Get the deterministic auto-approval policy for a workspace."""
+        return self._request("GET", f"/api/v1/workspaces/{workspace_slug}/policy")
+
+    def update_policy(
+        self, workspace_slug: str = "default", **kwargs: Any
+    ) -> dict[str, Any]:
+        """Update the auto-approval policy for a workspace."""
+        return self._request(
+            "PUT", f"/api/v1/workspaces/{workspace_slug}/policy", data=kwargs
+        )
+
+    def export_backup(self, passphrase: str | None = None) -> dict[str, Any]:
+        """Export a full workspace backup, optionally encrypted with a passphrase."""
+        params = {"passphrase": passphrase} if passphrase else None
+        return self._request("GET", "/api/v1/export", params=params)
+
+    def preview_restore(
+        self, backup_data: dict[str, Any], passphrase: str | None = None
+    ) -> dict[str, Any]:
+        """Preview restoration of a backup archive into the workspace."""
+        headers = {"X-Brain-Encryption-Passphrase": passphrase} if passphrase else None
+        return self._request(
+            "POST", "/api/v1/restore/preview", data=backup_data, headers=headers
+        )
+
+    def restore_backup(
+        self, backup_data: dict[str, Any], passphrase: str | None = None
+    ) -> dict[str, Any]:
+        """Restore a backup archive into the workspace (requires empty workspace)."""
+        headers = {"X-Brain-Encryption-Passphrase": passphrase} if passphrase else None
+        return self._request(
+            "POST", "/api/v1/restore", data=backup_data, headers=headers
+        )
 
     def __enter__(self) -> Self:
         return self
