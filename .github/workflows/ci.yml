@@ -65,6 +65,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e './api[dev,identity]'
+      - run: pip install -e sdks/python
       # Fail loudly if the service did not come up, before pytest can skip.
       - name: Assert PostgreSQL is reachable
         run: |
