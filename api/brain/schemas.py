@@ -7,7 +7,7 @@ from .triage import TRIAGE_VERSION
 
 class SourceCreate(BaseModel):
     title: str = Field(min_length=3, max_length=240)
-    kind: str = Field(default="note", pattern="^(note|research|interview|decision)$")
+    kind: str = Field(default="note", pattern="^(note|research|interview|decision|transcript)$")
     sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
     content: str = Field(min_length=20, max_length=100_000)
 
@@ -22,7 +22,7 @@ class ConnectorIngestRequest(BaseModel):
     document_id: str = Field(min_length=1, max_length=500)
     access_token: str = Field(min_length=1, max_length=4000)
     sensitivity: str = Field(default="private", pattern="^(private|internal|public)$")
-    kind: str = Field(default="research", pattern="^(note|research|interview|decision)$")
+    kind: str = Field(default="research", pattern="^(note|research|interview|decision|transcript)$")
 
 
 class SourceRead(BaseModel):

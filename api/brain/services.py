@@ -40,6 +40,7 @@ from .retrieval import (
     sync_fts_update,
 )
 from .schemas import ChatResponse, Citation, SourceCreate, WorkspacePolicyUpdate
+from .transcripts import normalize_transcript, transcript_spans
 
 log = logging.getLogger(__name__)
 
@@ -242,6 +243,8 @@ def add_source_version(
     create_proposals: bool = True,
     actor: WorkspaceAccess | None = None,
 ) -> SourceVersion:
+    if source.kind == "transcript":
+        content = normalize_transcript(content)
     digest = content_hash(content)
     existing = db.scalar(
         select(SourceVersion).where(
@@ -267,7 +270,12 @@ def add_source_version(
     )
     db.add(version)
     db.flush()
-    for start, end, text in extract_spans(content):
+    raw_spans = (
+        transcript_spans(content)
+        if source.kind == "transcript"
+        else [(s, e, t, None) for s, e, t in extract_spans(content)]
+    )
+    for start, end, text, speaker in raw_spans:
         span = SourceSpan(
             id=new_id("span"),
             source_version_id=version.id,
@@ -275,6 +283,7 @@ def add_source_version(
             end_offset=end,
             text=text,
             span_hash=content_hash(text),
+            speaker=speaker,
         )
         db.add(span)
         db.flush()
@@ -284,6 +293,7 @@ def add_source_version(
             conflict_id, conflict_note = check_proposal_conflict(
                 db, source.workspace_id, statement, p_type
             )
+            said_suffix = f" Said by {speaker} in the transcript." if speaker else ""
             proposal = Proposal(
                 id=new_id("prop"),
                 workspace_id=source.workspace_id,
@@ -292,7 +302,7 @@ def add_source_version(
                 statement=statement,
                 rationale=(
                     "Candidate extracted from an immutable source span. "
-                    "Review wording and evidence before approval."
+                    f"Review wording and evidence before approval.{said_suffix}"
                 ),
                 source_excerpt=text,
                 summary=summarize(statement),
@@ -341,10 +351,13 @@ def add_source_version(
 def create_source_with_proposals(
     db: Session, payload: SourceCreate, workspace_id: str, actor: WorkspaceAccess | None = None
 ) -> Source:
-    source = Source(id=new_id("src"), workspace_id=workspace_id, **payload.model_dump())
+    data = payload.model_dump()
+    if payload.kind == "transcript":
+        data["content"] = normalize_transcript(payload.content)
+    source = Source(id=new_id("src"), workspace_id=workspace_id, **data)
     db.add(source)
     db.flush()
-    add_source_version(db, source, payload.content, "Initial capture", actor=actor)
+    add_source_version(db, source, source.content, "Initial capture", actor=actor)
     audit(
         db,
         workspace_id,
