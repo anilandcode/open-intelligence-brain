@@ -1,0 +1,21 @@
+# /etc/systemd/system/open-brain.service — template; reconcile with the VM.
+# Runs the single image from the repository Dockerfile on loopback only, so
+# Caddy is the only public entry point. PostgreSQL 18 runs natively on the host.
+
+[Unit]
+Description=Open Brain (console + API + MCP)
+After=network-online.target docker.service postgresql.service
+Requires=docker.service
+
+[Service]
+Restart=always
+ExecStartPre=-/usr/bin/docker rm -f open-brain
+ExecStart=/usr/bin/docker run --name open-brain \
+  --env-file /etc/open-brain/brain.env \
+  --network host \
+  -e PORT=8080 \
+  open-brain:latest
+ExecStop=/usr/bin/docker stop open-brain
+
+[Install]
+WantedBy=multi-user.target

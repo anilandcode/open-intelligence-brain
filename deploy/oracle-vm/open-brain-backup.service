@@ -1,0 +1,12 @@
+# /etc/systemd/system/open-brain-backup.service
+[Unit]
+Description=Open Brain nightly PostgreSQL backup
+
+[Service]
+Type=oneshot
+User=postgres
+Environment=BRAIN_BACKUP_DATABASE_URL=postgresql:///brain
+Environment=BRAIN_BACKUP_DIR=/var/backups/open-brain
+# Copy each dump off the VM, e.g. "rclone copy --no-traverse" to a remote:
+Environment=BRAIN_BACKUP_UPLOAD_CMD=
+ExecStart=/opt/open-intelligence-brain/scripts/backup-postgres.sh

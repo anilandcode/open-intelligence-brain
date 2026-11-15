@@ -83,7 +83,33 @@ class Settings(BaseSettings):
     env: str = "development"
     rate_limit_enabled: bool = True
 
+    # First-owner bootstrap allowlist: comma-separated emails allowed to claim
+    # the default workspace while it has no members. On a public deployment an
+    # empty list refuses every claim.
+    bootstrap_allowed_emails: str = ""
+
+    # Delete legacy `workspace_grants` owner rows whose principal is not the
+    # configured owner token, once, at boot.
+    retire_legacy_owner_grants: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BRAIN_", extra="ignore")
+
+    @property
+    def is_public_deployment(self) -> bool:
+        """True when the advertised origin is HTTPS on a non-loopback host."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.public_base_url)
+        host = (parsed.hostname or "").lower()
+        return parsed.scheme == "https" and host not in {"", "localhost", "127.0.0.1", "::1"}
+
+    @property
+    def bootstrap_emails(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.bootstrap_allowed_emails.split(",")
+            if email.strip()
+        }
 
     @property
     def allowed_origins(self) -> list[str]:
