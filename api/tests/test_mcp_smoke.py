@@ -185,7 +185,26 @@ class TestMCPSmoke:
         try:
             ws = ensure_default_workspace(db)
             scope = ReadScope(ws.id, "owner")
-            # Create a source that produces a proposal, manually set conflict info
+            # First create and approve a real knowledge item so FK constraint on conflict_with_id is satisfied in PostgreSQL
+            base_src = create_source_with_proposals(
+                db,
+                SourceCreate(
+                    title="Base Conflict Source",
+                    kind="decision",
+                    sensitivity="internal",
+                    content="We mandate strict mutual TLS across all internal microservices.",
+                ),
+                ws.id,
+            )
+            base_prop = db.scalars(
+                select(Proposal).where(
+                    Proposal.source_id == base_src.id, Proposal.status == "proposed"
+                )
+            ).first()
+            assert base_prop is not None
+            k_conflict = approve_proposal(db, base_prop, None, None)
+
+            # Create a second source that produces a proposal and link conflict_with_id to k_conflict.id
             src = create_source_with_proposals(
                 db,
                 SourceCreate(
@@ -199,15 +218,15 @@ class TestMCPSmoke:
             prop = db.scalars(
                 select(Proposal).where(Proposal.source_id == src.id, Proposal.status == "proposed")
             ).first()
-            if prop:
-                prop.conflict_with_id = "know_conflict_sample"
-                prop.conflict_note = "Direct contradiction detected with know_conflict_sample"
-                db.commit()
+            assert prop is not None
+            prop.conflict_with_id = k_conflict.id
+            prop.conflict_note = f"Direct contradiction detected with {k_conflict.id}"
+            db.commit()
 
             queue = list_pending_reviews_scoped(10, scope)
             matching = [item for item in queue.items if item.proposal_id == prop.id]
-            if matching:
-                assert matching[0].conflict_with_id == "know_conflict_sample"
-                assert "contradiction" in matching[0].conflict_note.lower()
+            assert len(matching) == 1
+            assert matching[0].conflict_with_id == k_conflict.id
+            assert "contradiction" in matching[0].conflict_note.lower()
         finally:
             db.close()

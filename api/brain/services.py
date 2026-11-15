@@ -965,34 +965,29 @@ def search_knowledge(
     if not query.strip():
         return list(db.scalars(base.order_by(Knowledge.approved_at.desc()).limit(limit)).all())
 
-    # Try hybrid retrieval first: reciprocal-rank fusion of the dialect's keyword
-    # index (FTS5/BM25 or ts_rank_cd) with the vector channel. When neither
-    # answers it returns [] and we fall through to ILIKE.
-    ranked_ids = hybrid_search(db, scope, query, limit=limit)
-    if ranked_ids:
-        # Preserve fused ranking order; filter by scope and temporal conditions
-        items_stmt = scope.apply(
-            select(Knowledge).where(
-                Knowledge.id.in_(ranked_ids),
-                Knowledge.status.in_(valid_statuses),
-            ),
-            Knowledge,
-        )
-        if as_of is not None:
-            items_stmt = items_stmt.where(
-                or_(Knowledge.valid_from.is_(None), Knowledge.valid_from <= as_of)
-            ).where(or_(Knowledge.valid_to.is_(None), Knowledge.valid_to > as_of))
-        elif not include_superseded:
-            items_stmt = items_stmt.where(Knowledge.valid_to.is_(None))
+    # Try hybrid retrieval first for live canonical search: reciprocal-rank
+    # fusion of the dialect's keyword index (FTS5/BM25 or ts_rank_cd) with the
+    # vector channel. Because search_fts indexes only status='canonical',
+    # historical/time-travel queries (as_of / include_superseded) use the
+    # full-status scored query below so superseded items are never omitted.
+    if as_of is None and not include_superseded:
+        ranked_ids = hybrid_search(db, scope, query, limit=limit)
+        if ranked_ids:
+            items_stmt = scope.apply(
+                select(Knowledge).where(
+                    Knowledge.id.in_(ranked_ids),
+                    Knowledge.status.in_(valid_statuses),
+                    Knowledge.valid_to.is_(None),
+                ),
+                Knowledge,
+            )
+            items = list(db.scalars(items_stmt).all())
+            id_order = {kid: i for i, kid in enumerate(ranked_ids)}
+            items.sort(key=lambda item: id_order.get(item.id, 999))
+            if items:
+                return items[:limit]
 
-        items = list(db.scalars(items_stmt).all())
-        # Re-order to match the fused ranking
-        id_order = {kid: i for i, kid in enumerate(ranked_ids)}
-        items.sort(key=lambda item: id_order.get(item.id, 999))
-        if items:
-            return items[:limit]
-
-    # ILIKE fallback
+    # ILIKE fallback (and historical / include_superseded path)
     terms = _query_terms(query)
     stmt = base
     if terms:
