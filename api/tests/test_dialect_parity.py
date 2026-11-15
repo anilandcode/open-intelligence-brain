@@ -462,7 +462,7 @@ class TestGinIndexIsActuallyUsed:
                 "source_excerpt, status, critic_notes, engine_memory_id, created_at, summary, tags"
                 if table == "proposals"
                 else "id, workspace_id, proposal_id, source_id, type, statement, "
-                "rationale, source_excerpt, status, version, approved_at"
+                "rationale, source_excerpt, status, version, approved_at, valid_from"
             )
             select_list = (
                 f"'{id_prefix}' || lpad(g::text, 24, '0'), :ws, :src, 'decision', "
@@ -476,7 +476,7 @@ class TestGinIndexIsActuallyUsed:
                 f"CASE WHEN mod(g,300)=0 THEN 'enterprise customers pay an annual fee to avoid churn' "
                 f"ELSE 'unrelated operational note ' || g || ' about logistics and staffing' END, "
                 f"CASE WHEN mod(g,300)=0 THEN 'monthly billing caused churn' ELSE 'facilities note ' || g END, "
-                f"'excerpt ' || g, 'canonical', 1, now()"
+                f"'excerpt ' || g, 'canonical', 1, now(), now()"
             )
             pg_db.execute(
                 text(
