@@ -11,14 +11,29 @@ unverified memory stores (Mem0, Supermemory, Letta):
 
 from __future__ import annotations
 
+import os
+import tempfile
 import time
 from datetime import UTC, datetime
 from typing import Any
 
+# Run the benchmark against a hermetic temporary SQLite database so repeated
+# runs never hit duplicate-hash deduplication against existing local data.
+_bench_dir = tempfile.mkdtemp(prefix="open_brain_bench_")
+os.environ["BRAIN_DATABASE_URL"] = f"sqlite:///{_bench_dir}/bench.db"
+
 from brain.access import ReadScope, ensure_default_workspace
 from brain.database import Base, SessionLocal, engine
 from brain.engine import DerivedFact, verify_span
-from brain.migrate import add_temporal_knowledge_and_conflict_columns
+from brain.migrate import (
+    add_engine_link_columns,
+    add_knowledge_embedding,
+    add_knowledge_summary_tags,
+    add_knowledge_timeframe,
+    add_proposal_relation,
+    add_proposal_summary_tags,
+    add_temporal_knowledge_and_conflict_columns,
+)
 from brain.models import (
     KnowledgeRevision,
     Proposal,
@@ -260,5 +275,11 @@ def run_benchmark() -> dict[str, Any]:
 
 if __name__ == "__main__":
     Base.metadata.create_all(engine)
+    add_engine_link_columns()
+    add_knowledge_embedding()
+    add_proposal_summary_tags()
     add_temporal_knowledge_and_conflict_columns()
+    add_proposal_relation()
+    add_knowledge_timeframe()
+    add_knowledge_summary_tags()
     res = run_benchmark()
