@@ -145,7 +145,7 @@ Exit: disabling Jev leaves every core workflow working, and measured results jus
 - [ ] End-to-end launch test: connect a real account, stage and approve a
       cross-account post through Open Brain (LinkedIn app created and callback
       registered; the account connect and 72h burn-in remain).
-- [ ] Playwright suite codification for the connections hub flows.
+- [x] Playwright suite codification for the connections hub and core workbench flows (`web/e2e/brain.spec.ts`).
 - [x] Custom domain: `brain.trulyagentic.io` (console) and
       `bridge.trulyagentic.io` (broker + LinkedIn callback), TLS via Caddy.
 - [ ] Four-week personal usage study.

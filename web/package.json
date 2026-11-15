@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "build:site": "VITE_SHOW_LANDING=true VITE_CONSOLE_URL=https://brain.trulyagentic.io tsc -b && VITE_SHOW_LANDING=true VITE_CONSOLE_URL=https://brain.trulyagentic.io vite build",
     "lint": "eslint .",
-    "test": "VITE_SHOW_LANDING=true vitest run"
+    "test": "VITE_SHOW_LANDING=true vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@fontsource/figtree": "^5.3.0",
@@ -32,6 +33,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
