@@ -148,3 +148,29 @@ class TestOpenBrainCLI:
         graph = json.loads(captured.out)
         assert "nodes" in graph or "documents" in graph
         assert "edges" in graph
+
+    def test_cli_delete_source(self, cli_bridge, capsys):
+        parser = build_parser()
+        ingest_args = parser.parse_args(
+            [
+                "ingest",
+                "Temporary scratch note that will be deleted before approval.",
+                "--title",
+                "Scratch Note",
+                "--json",
+            ]
+        )
+        assert ingest_args.func(ingest_args) == 0
+        src = json.loads(capsys.readouterr().out)
+        sid = src["id"]
+
+        preview_args = parser.parse_args(["delete-source", sid, "--preview", "--json"])
+        assert preview_args.func(preview_args) == 0
+        prev = json.loads(capsys.readouterr().out)
+        assert prev["blocked"] is False
+
+        del_args = parser.parse_args(["delete-source", sid, "--json"])
+        assert del_args.func(del_args) == 0
+        deleted = json.loads(capsys.readouterr().out)
+        assert deleted["deleted"] is True
+        assert deleted["source_id"] == sid

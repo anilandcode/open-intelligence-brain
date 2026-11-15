@@ -400,6 +400,15 @@ export type RestorePreview = {
   reason?: string;
 };
 
+export type DeletionResult = {
+  source_id: string;
+  deleted: boolean;
+  versions_deleted: number;
+  spans_deleted: number;
+  proposals_deleted: number;
+  detail: string;
+};
+
 export type LoginResult = {
   session_token: string;
   expires_at: string;
@@ -485,6 +494,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ content, change_note: changeNote }),
     }),
+  deletionPreview: (id: string) =>
+    request<{ source_id: string; source_title: string; canonical_items: number; knowledge_revisions: number; proposals: number; source_versions: number; blocked: boolean; reason: string }>(`/api/v1/sources/${id}/deletion-preview`),
+  deleteSource: (id: string) =>
+    request<DeletionResult>(`/api/v1/sources/${id}`, { method: "DELETE" }),
   proposals: () => request<Proposal[]>("/api/v1/proposals?status=proposed"),
   knowledge: (
     query = "",

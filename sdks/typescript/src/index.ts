@@ -79,6 +79,26 @@ export interface BatchRejectResult {
   declined_ids: string[];
 }
 
+export interface DeletionPreview {
+  source_id: string;
+  source_title: string;
+  canonical_items: number;
+  knowledge_revisions: number;
+  proposals: number;
+  source_versions: number;
+  blocked: boolean;
+  reason: string;
+}
+
+export interface DeletionResult {
+  source_id: string;
+  deleted: boolean;
+  versions_deleted: number;
+  spans_deleted: number;
+  proposals_deleted: number;
+  detail: string;
+}
+
 export class BrainClient {
   private readonly baseUrl: string;
   private readonly apiKey?: string;
@@ -192,5 +212,15 @@ export class BrainClient {
   /** Retrieve revision provenance history for a knowledge item. */
   async history(knowledgeId: string): Promise<unknown[]> {
     return this.request<unknown[]>("GET", `/api/v1/knowledge/${knowledgeId}/revisions`);
+  }
+
+  /** Preview dependencies before deleting a source. */
+  async deletionPreview(sourceId: string): Promise<DeletionPreview> {
+    return this.request<DeletionPreview>("GET", `/api/v1/sources/${sourceId}/deletion-preview`);
+  }
+
+  /** Execute reviewed source deletion (fails with 409 if canonical knowledge depends on it). */
+  async deleteSource(sourceId: string): Promise<DeletionResult> {
+    return this.request<DeletionResult>("DELETE", `/api/v1/sources/${sourceId}`);
   }
 }

@@ -237,6 +237,53 @@ def test_deletion_preview_never_deletes_and_blocks_dependencies(client, headers)
     assert preview["canonical_items"] == 1
     assert len(client.get("/api/v1/sources", headers=headers).json()) == 1
 
+    # Reviewed deletion execution must fail closed with HTTP 409 when canonical knowledge depends on it
+    del_blocked = client.delete(f"/api/v1/sources/{source['id']}", headers=headers)
+    assert del_blocked.status_code == 409
+    assert "approved knowledge" in del_blocked.json()["detail"].lower()
+    assert len(client.get("/api/v1/sources", headers=headers).json()) == 1
+
+
+def test_reviewed_source_deletion_executes_when_unblocked(client, headers):
+    source = client.post(
+        "/api/v1/sources",
+        headers=headers,
+        json={
+            "title": "Ephemeral unapproved source",
+            "kind": "note",
+            "sensitivity": "internal",
+            "content": "We learned that an unapproved source with zero canonical items can be safely deleted.",
+        },
+    ).json()
+    preview = client.get(f"/api/v1/sources/{source['id']}/deletion-preview", headers=headers).json()
+    assert preview["blocked"] is False
+    assert preview["canonical_items"] == 0
+    assert preview["proposals"] >= 1
+
+    # Member role cannot delete sources (requires owner/admin)
+    with Session(engine) as db:
+        workspace = ensure_default_workspace(db)
+        grant_workspace(db, workspace, "member-del-token", role="member")
+        db.commit()
+    member_res = client.delete(
+        f"/api/v1/sources/{source['id']}",
+        headers={"X-Brain-Token": "member-del-token"},
+    )
+    assert member_res.status_code == 403
+
+    # Owner/admin executes reviewed deletion
+    res = client.delete(f"/api/v1/sources/{source['id']}", headers=headers)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["deleted"] is True
+    assert body["source_id"] == source["id"]
+    assert body["versions_deleted"] >= 1
+    assert body["proposals_deleted"] >= 1
+
+    # Source and its unapproved proposals are gone
+    assert len(client.get("/api/v1/sources", headers=headers).json()) == 0
+    assert len(client.get("/api/v1/proposals", headers=headers).json()) == 0
+
 
 def test_backup_restores_same_canonical_result_into_empty_workspace(client, headers):
     client.post(

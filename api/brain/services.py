@@ -1653,3 +1653,89 @@ def decrypt_backup_data(encrypted_bytes: bytes, passphrase: str) -> dict:
     except Exception as exc:
         raise ValueError("Decryption failed: incorrect passphrase or corrupted data") from exc
     return json.loads(decrypted.decode("utf-8"))
+
+
+def execute_source_deletion(
+    db: Session,
+    source: Source,
+    actor: WorkspaceAccess | None = None,
+) -> dict[str, object]:
+    """Execute reviewed deletion of a source and its unapproved children.
+
+    Fails closed (raises ValueError) if any canonical knowledge item or
+    knowledge revision depends on this source or its versions/spans.
+    """
+    from .studio import InterviewSession
+
+    canonical_count = (
+        db.scalar(select(func.count(Knowledge.id)).where(Knowledge.source_id == source.id)) or 0
+    )
+    revision_count = (
+        db.scalar(
+            select(func.count(KnowledgeRevision.id)).where(KnowledgeRevision.source_id == source.id)
+        )
+        or 0
+    )
+    if canonical_count > 0 or revision_count > 0:
+        raise ValueError("Deletion is blocked while approved knowledge depends on this source.")
+
+    version_ids = list(
+        db.scalars(select(SourceVersion.id).where(SourceVersion.source_id == source.id)).all()
+    )
+    span_ids = (
+        list(
+            db.scalars(
+                select(SourceSpan.id).where(SourceSpan.source_version_id.in_(version_ids))
+            ).all()
+        )
+        if version_ids
+        else []
+    )
+    proposal_ids = list(
+        db.scalars(select(Proposal.id).where(Proposal.source_id == source.id)).all()
+    )
+
+    # Clear InterviewSession references if any point to this source
+    for session_row in db.scalars(
+        select(InterviewSession).where(InterviewSession.source_id == source.id)
+    ).all():
+        session_row.source_id = None
+
+    if proposal_ids:
+        db.execute(
+            ProposalEvidence.__table__.delete().where(
+                ProposalEvidence.proposal_id.in_(proposal_ids)
+            )
+        )
+        db.execute(Proposal.__table__.delete().where(Proposal.id.in_(proposal_ids)))
+
+    if span_ids:
+        db.execute(SourceSpan.__table__.delete().where(SourceSpan.id.in_(span_ids)))
+
+    if version_ids:
+        db.execute(SourceVersion.__table__.delete().where(SourceVersion.id.in_(version_ids)))
+
+    source_id = source.id
+    source_title = source.title
+    workspace_id = source.workspace_id
+
+    db.delete(source)
+    audit(
+        db,
+        workspace_id,
+        "source.deleted",
+        "source",
+        source_id,
+        f"Deleted source '{source_title}' ({len(version_ids)} versions, {len(span_ids)} spans, {len(proposal_ids)} proposals)",
+        actor=actor,
+    )
+    db.commit()
+
+    return {
+        "source_id": source_id,
+        "deleted": True,
+        "versions_deleted": len(version_ids),
+        "spans_deleted": len(span_ids),
+        "proposals_deleted": len(proposal_ids),
+        "detail": f"Deleted source {source_id} and {len(proposal_ids)} unapproved proposals.",
+    }

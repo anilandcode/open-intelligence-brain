@@ -173,6 +173,37 @@ export function createDemoClient(): BrainClient {
     connectorIngest: async () => capture({ title: "Fetched provider document", kind: "research", sensitivity: "internal", content: "A document fetched from a connected provider, staged for human review before any of it becomes canonical knowledge." }),
     sourceVersions: async key => copy(versions.get(key) ?? []),
     addSourceVersion: async (key, content, changeNote) => { const s = find(sources,key); const v: SourceVersion = {id: id("version"),source_id:key,version:++s.current_version,content_hash:id("hash"),content,parser_version:"sample",change_note:changeNote,created_at:date(),span_count:1,proposal_count:1}; const p: Proposal = {id:id("proposal"),source_id:key,source_title:s.title,type:"lesson",statement:content.split(/[.!?]/)[0],rationale:"Sample interpretation of the updated source.",source_excerpt:content,status:"proposed",critic_notes:"Demo extraction only; review the source before approving.",created_at:date()}; proposals.unshift(p);proposalVersions.set(p.id,v.id);s.proposal_count++; s.content=content;s.content_hash=v.content_hash;versions.get(key)?.unshift(v);knowledge.filter(k=>k.source_id===key).forEach(k=>k.stale=true);event("source.versioned",s.title);return copy(v); },
+    deletionPreview: async key => {
+      const s = find(sources, key);
+      const canon = knowledge.filter(k => k.source_id === key).length;
+      const props = proposals.filter(p => p.source_id === key).length;
+      const vers = (versions.get(key) ?? []).length;
+      return {
+        source_id: key,
+        source_title: s.title,
+        canonical_items: canon,
+        knowledge_revisions: canon,
+        proposals: props,
+        source_versions: vers,
+        blocked: canon > 0,
+        reason: canon > 0 ? "Source backs canonical knowledge or revision history; supersede or export before deletion." : "No canonical knowledge depends on this source.",
+      };
+    },
+    deleteSource: async key => {
+      const s = find(sources, key);
+      const canon = knowledge.filter(k => k.source_id === key).length;
+      if (canon > 0) throw new Error("Source backs canonical knowledge; deletion blocked.");
+      const idx = sources.findIndex(item => item.id === key);
+      if (idx >= 0) sources.splice(idx, 1);
+      return {
+        source_id: key,
+        deleted: true,
+        versions_deleted: (versions.get(key) ?? []).length,
+        spans_deleted: 1,
+        proposals_deleted: proposals.filter(p => p.source_id === key).length,
+        detail: `Deleted source '${s.title}'.`,
+      };
+    },
     knowledgeRevisions: async key => copy(revisions.get(key) ?? []),
     supersedeKnowledge: async (key, statement, rationale, note) => {const k=find(knowledge,key);k.statement=statement;k.rationale=rationale;k.version++;k.revision_count++;k.approved_at=date();const original=revisions.get(key)![0];revisions.get(key)!.unshift({...original,id:id("revision"),revision:k.version,statement,rationale,change_note:note,approved_at:k.approved_at});event("knowledge.revised",statement);return copy(k);},
     approveProposal: async (key,statement,rationale) => {const p=find(proposals,key);if(p.status!=="proposed")throw new Error("Sample proposal has already been reviewed.");p.status="approved";const k:Knowledge={id:id("knowledge"),proposal_id:p.id,source_id:p.source_id,source_title:p.source_title,type:p.type,statement,rationale,source_excerpt:p.source_excerpt,status:"canonical",version:1,approved_at:date(),revision_count:1,stale:false,conflict_ids:[]};knowledge.unshift(k);revisions.set(k.id,[{id:id("revision"),knowledge_id:k.id,revision:1,statement,rationale,source_id:k.source_id,source_version_id:proposalVersions.get(p.id) ?? `${k.source_id}-v1`,source_span_id:null,source_excerpt:k.source_excerpt,change_note:"Sample approval",approved_at:k.approved_at}]);event("knowledge.approved",statement);return copy(k);},

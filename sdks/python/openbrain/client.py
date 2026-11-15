@@ -127,6 +127,14 @@ class Brain:
         }
         return self._request("POST", "/api/v1/sources", data=payload)
 
+    def deletion_preview(self, source_id: str) -> dict[str, Any]:
+        """Preview deletion of a source and check for canonical dependencies."""
+        return self._request("GET", f"/api/v1/sources/{source_id}/deletion-preview")
+
+    def delete_source(self, source_id: str) -> dict[str, Any]:
+        """Execute reviewed deletion of a source (blocked if canonical knowledge depends on it)."""
+        return self._request("DELETE", f"/api/v1/sources/{source_id}")
+
     def search(
         self,
         query: str = "",

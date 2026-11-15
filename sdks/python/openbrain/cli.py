@@ -536,6 +536,40 @@ def cmd_graph(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_delete_source(args: argparse.Namespace) -> int:
+    client = get_client(args)
+    try:
+        if args.preview:
+            res = client.deletion_preview(args.source_id)
+            if args.json:
+                print(json.dumps(res, indent=2))
+                return 0
+            blocked = res.get("blocked", False)
+            status_str = red("BLOCKED") if blocked else green("SAFE TO DELETE")
+            print(
+                f"{bold('Deletion Preview')} for {cyan(args.source_id)}: {status_str}"
+            )
+            print(f"  {dim('Canonical items:')}     {res.get('canonical_items', 0)}")
+            print(
+                f"  {dim('Knowledge revisions:')} {res.get('knowledge_revisions', 0)}"
+            )
+            print(f"  {dim('Proposals:')}           {res.get('proposals', 0)}")
+            print(f"  {dim('Source versions:')}     {res.get('source_versions', 0)}")
+            print(f"  {dim('Reason:')}              {res.get('reason', '')}")
+            return 0
+
+        res = client.delete_source(args.source_id)
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"{green('✔ Deleted source:')} {bold(args.source_id)}")
+            print(f"  {dim('Detail:')} {res.get('detail', '')}")
+        return 0
+    except BrainError as exc:
+        print(f"{red('Source deletion failed')}: {exc}", file=sys.stderr)
+        return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
@@ -672,6 +706,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Include historical supersession nodes",
     )
     p_graph.set_defaults(func=cmd_graph)
+
+    # delete-source
+    p_del_src = sub.add_parser(
+        "delete-source",
+        parents=[common],
+        help="Preview or execute reviewed source deletion",
+    )
+    p_del_src.add_argument("source_id", help="Source ID to preview or delete")
+    p_del_src.add_argument(
+        "--preview",
+        action="store_true",
+        help="Preview deletion dependencies without deleting",
+    )
+    p_del_src.set_defaults(func=cmd_delete_source)
 
     return parser
 

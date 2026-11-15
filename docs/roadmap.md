@@ -1,6 +1,6 @@
 # Dependency-ordered roadmap
 
-## v1.1 — hosted identity and persistence (in progress)
+## v1.1 — hosted identity and persistence (done)
 
 - [x] `users` + `workspace_members` and the identity provider boundary
       (`identity.py`): identity is a verified provider assertion, never a
@@ -27,12 +27,11 @@
       `identity_firebase_project_id`); optional `google-auth` extra. Web gate
       offers human sign-in when `/api/v1/auth/status` reports a provider, and
       still accepts machine token paste.
-- [ ] Wire Firebase web SDK + Google button on the hosted console (needs a
-      Firebase project id in env). Until then: paste Firebase ID token or use
-      `local` provider for dev.
-- [ ] First-owner bootstrap: auto-membership for the first verified human, or
-      an explicit invite flow, so Google sign-in is usable without a prior
-      `workspace_members` row.
+- [x] Wire Google / Firebase sign-in on the hosted console (`web/src/google-signin.ts`)
+      with fallback to token paste or `local` provider for dev.
+- [x] First-owner bootstrap (`POST /api/v1/auth/bootstrap` in `auth_api.py` and
+      console claim flow): auto-membership for the first verified human when
+      a workspace has zero human owners.
 - [x] Hosted Streamable HTTP MCP at `/mcp` with OAuth 2.1 paste-token consent
       and dual Bearer (OAuth token or raw Brain API key). Read-only tools only;
       approval stays in the console. `BRAIN_PUBLIC_BASE_URL` for issuer/resource.
@@ -50,6 +49,17 @@ proposal→approve→canon model (never their auto-memory-write product):
 - Richer extraction (semantic chunking + summarize/tag on proposals) — done.
 - Connectors (Drive/Notion/OneDrive fetch → review) — done.
 
+## v2.0 – v2.4 — Enterprise Governed Memory & Ecosystem (done)
+
+- [x] **Bit 1 — Production Hardening (`v1.7.0`)**: Hermetic zero-leak test DBs, fail-closed production config validation (`config.py`), and HTTP security middleware (`RequestId`, `SecurityHeaders`, `RateLimit`, `AccessLog` in `middleware.py`).
+- [x] **Bit 2 — Native AI Extraction & Exact-Span Verification (`v1.8.0`)**: `LLMExtractionEngine` (`llm_extractor.py`) with structured JSON schema extraction and anti-hallucination verbatim substring check (`verify_span`).
+- [x] **Bit 3 — Bi-Temporal Knowledge & Fast Review (`v1.9.0`)**: Temporal validity windows (`valid_from`, `valid_to`, `superseded_by`), time-travel search (`as_of`), Conflict Radar at ingestion, and batch approval/rejection (`POST /api/v1/proposals/batch-approve`, `/batch-reject`).
+- [x] **Bit 4 — Drop-in Mem0 Compatibility, SDKs & Benchmark (`v2.0.0`)**: Drop-in `/v1/memories` REST shim (`mem0_shim.py`), zero-dependency Python SDK (`sdks/python/openbrain`), TypeScript SDK (`sdks/typescript`), and reproducible Provenance Benchmark (`benchmarks/run_provenance_benchmark.py`).
+- [x] **Bit 5 — Bi-Temporal MCP Tools & Time-Travel UI (`v2.1.0`)**: `as_of` and `include_superseded` support in `search_brain` plus `list_pending_reviews` across stdio and HTTP MCP transports; interactive Time-Travel picker in `BrainView`.
+- [x] **Bit 6 — Policy-Based Auto-Approval Engine (`v2.2.0`)**: Deterministic `WorkspacePolicy` evaluation (`evaluate_auto_approval`), `GET/PUT /api/v1/workspaces/{slug}/policy`, and `GovernanceSettingsPanel` in the console.
+- [x] **Bit 7 — Bi-Temporal Graph Lineage & On-Demand Reindexing (`v2.3.0`)**: Directed `updates` supersession edges in `GET /api/v1/graph?include_superseded=true`, interactive graph toggle, and `POST /api/v1/knowledge/reindex`.
+- [x] **Bit 8 — Passphrase-Encrypted Backups, Developer Connectors & CLI (`v2.4.0`)**: Schema v4 AES-256 Fernet + PBKDF2 encrypted backups (`.oib`), `ExportRestoreDialog` modal, GitHub and Slack connectors (`connectors.py`), reviewed source deletion (`DELETE /api/v1/sources/{id}`), and the official `openbrain` developer CLI (`sdks/python/openbrain/cli.py`).
+
 ## M1 — trusted thin slice (implemented)
 
 - Source capture.
@@ -62,20 +72,20 @@ proposal→approve→canon model (never their auto-memory-write product):
 - React workbench, tests, and local documentation.
 - Research-aligned application shell and judgement-first review interface.
 
-## M2 — durable knowledge (in progress)
+## M2 — durable knowledge (done)
 
 - [x] Immutable source versions and content hashes.
 - [x] Source-span offsets, optional speakers, and parser metadata.
 - [x] Knowledge revisions, supersession, and historical queries.
 - [x] Deterministic stale-source and possible-conflict signals.
-- [x] Schema-v2 backup, empty-workspace restore, and deletion previews.
+- [x] Schema-v2/v4 backup, empty-workspace restore, and deletion previews.
 - [x] SQLite FTS5 full-text search with BM25 ranking.
 - [x] Improved conflict detection with same-topic/same-type matching.
 - [x] Dialect parity (v1.0.2): PostgreSQL `tsvector`/`ts_rank_cd` ranked search over a GIN index, OR-term query semantics matching SQLite/ILIKE recall, standard `GROUP BY`, rollback-safe capability probing, native `DROP NOT NULL` migrations that preserve every foreign key.
 - [x] Search-index versioning (`SEARCH_INDEX_VERSION` persisted in `search_index_state`, stale/absent versions rebuilt at boot).
 - [x] Restart release gate on both dialects (`test_restart_gate.py`): create → approve → close → restart → search → grounded → citation survives.
-- [ ] Local embeddings and a fused full-text + vector candidate path.
-- [ ] Encrypted backup packaging and reviewed deletion execution.
+- [x] Local embeddings and a fused full-text + vector candidate path (`hybrid_search` + `POST /api/v1/knowledge/reindex`).
+- [x] Encrypted backup packaging (Schema v4 AES-256 Fernet + PBKDF2) and reviewed deletion execution (`DELETE /api/v1/sources/{id}`).
 
 Exit: a changed source cannot silently rewrite approved knowledge, and a fresh restore produces the same canonical results.
 

@@ -172,6 +172,15 @@ class DeletionPreview(BaseModel):
     reason: str
 
 
+class DeletionResult(BaseModel):
+    source_id: str
+    deleted: bool
+    versions_deleted: int
+    spans_deleted: int
+    proposals_deleted: int
+    detail: str
+
+
 class RestoreRequest(BaseModel):
     backup: dict | str = Field(default_factory=dict)
     passphrase: str | None = None

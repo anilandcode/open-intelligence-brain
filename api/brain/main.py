@@ -77,6 +77,7 @@ from .schemas import (
     ChatResponse,
     ConnectorIngestRequest,
     DeletionPreview,
+    DeletionResult,
     EventCreate,
     EventIntake,
     EventRead,
@@ -124,6 +125,7 @@ from .services import (
     create_source_with_proposals,
     decrypt_backup_data,
     encrypt_backup_data,
+    execute_source_deletion,
     export_workspace_data,
     get_or_create_workspace_policy,
     integrity_snapshot,
@@ -955,6 +957,27 @@ def preview_source_deletion(
             else "Preview only. No data has been deleted."
         ),
     )
+
+
+@app.delete("/api/v1/sources/{source_id}", response_model=DeletionResult)
+def delete_source(
+    source_id: str,
+    access: WorkspaceAccess = Depends(resolve_access),
+    db: Session = Depends(get_db),
+):
+    """Execute reviewed deletion of a source when no canonical knowledge depends on it."""
+    require_scope(access, "sources:write")
+    if not access.can_administer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an owner or admin can delete sources",
+        )
+    source = require_in_workspace(db, access, Source, source_id)
+    try:
+        result = execute_source_deletion(db, source, actor=access)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return DeletionResult(**result)
 
 
 @app.get("/api/v1/proposals", response_model=list[ProposalRead])
